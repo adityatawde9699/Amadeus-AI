@@ -161,4 +161,4 @@ Please refer to the `CONTRIBUTING.md` file for detailed guidelines on how to get
 
 ## 📜 License
 
-Distributed under the MIT License. See `LICENSE` for more information.
+Distributed under the Apache License. See `LICENSE` for more information.
