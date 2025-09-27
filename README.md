@@ -43,7 +43,7 @@ Follow these steps to get Amadeus running on your local machine.
 
 1.  **Clone the Repository**
     ```bash
-    git clone [https://github.com/your-username/Amadeus-AI.git](https://github.com/your-username/Amadeus-AI.git)
+    git clone (https://github.com/your-username/Amadeus-AI.git)
     cd Amadeus-AI
     ```
 
