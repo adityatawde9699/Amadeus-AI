@@ -12,6 +12,8 @@ from memory_utils import load_memory, save_memory, update_memory
 
 import google.generativeai as genai
 import os
+import json
+from dotenv import load_dotenv
 from datetime import datetime
 
 class Amadeus:
