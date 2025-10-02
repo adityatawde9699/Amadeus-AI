@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+python-dotenv
+google-generativeai
+httpx
+dateparser
+pyjokes
+wikipedia
+psutil
+python-multipart
+pydantic
