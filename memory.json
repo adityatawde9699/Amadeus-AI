@@ -1,0 +1,102 @@
+{
+    "last_used_feature": "tell me some good",
+    "user_name": "",
+    "frequent_queries": [],
+    "conversations": [
+        {
+            "prompt": "we",
+            "response": "Please continue.",
+            "timestamp": "2025-10-03 00:40:21.742526"
+        },
+        {
+            "prompt": "hey mids",
+            "response": "Hi.",
+            "timestamp": "2025-10-03 00:41:36.690622"
+        },
+        {
+            "prompt": "clothes",
+            "response": "What about them?",
+            "timestamp": "2025-10-03 00:41:58.171545"
+        },
+        {
+            "prompt": "close chrome",
+            "response": "I can't close applications.",
+            "timestamp": "2025-10-03 00:42:07.818609"
+        },
+        {
+            "prompt": "i can't close the application",
+            "response": "I can't close applications.",
+            "timestamp": "2025-10-03 00:42:20.129585"
+        },
+        {
+            "prompt": "ok what happened to your text to speech",
+            "response": "I don't have text-to-speech capabilities.",
+            "timestamp": "2025-10-03 00:42:34.081794"
+        },
+        {
+            "prompt": "tell me",
+            "response": "Tell you what?",
+            "timestamp": "2025-10-03 00:42:55.012540"
+        },
+        {
+            "prompt": "tell me who was albert",
+            "response": "Albert Einstein was a theoretical physicist who developed the theory of relativity.",
+            "timestamp": "2025-10-03 00:43:05.781847"
+        },
+        {
+            "prompt": "stop the train",
+            "response": "I can't control physical objects.",
+            "timestamp": "2025-10-03 00:43:13.001068"
+        },
+        {
+            "prompt": "search wikipedia for ninjas",
+            "response": "Ninjas were covert agents or mercenaries in feudal Japan, skilled in espionage, sabotage, and guerrilla warfare.",
+            "timestamp": "2025-10-03 00:43:45.617426"
+        },
+        {
+            "prompt": "comedy",
+            "response": "What about comedy?",
+            "timestamp": "2025-10-03 00:44:04.976206"
+        },
+        {
+            "prompt": "tell me a joke",
+            "response": "Why don't scientists trust atoms? Because they make up everything!",
+            "timestamp": "2025-10-03 00:44:18.919960"
+        },
+        {
+            "prompt": "stop my device",
+            "response": "I can't stop your device.",
+            "timestamp": "2025-10-03 00:44:46.315802"
+        },
+        {
+            "prompt": "nokia models i am going to add a stop functionality",
+            "response": "Nokia has models like the 3310, Lumia series, and current Android phones. What kind of stop functionality are you adding?",
+            "timestamp": "2025-10-03 00:45:18.362214"
+        },
+        {
+            "prompt": "nokia",
+            "response": "More about Nokia, or the stop functionality?",
+            "timestamp": "2025-10-03 00:45:35.896297"
+        },
+        {
+            "prompt": "i am going to add a",
+            "response": "A what?",
+            "timestamp": "2025-10-03 00:45:51.738017"
+        },
+        {
+            "prompt": "hey my dear how are you",
+            "response": "I'm functioning optimally, thank you for asking. How can I assist you today?",
+            "timestamp": "2025-10-03 01:54:04.512148"
+        },
+        {
+            "prompt": "ok tell me some hot gossi",
+            "response": "I don't deal in gossip, as my function is to provide factual and helpful information. How else can I assist you?",
+            "timestamp": "2025-10-03 01:54:42.977783"
+        },
+        {
+            "prompt": "tell me some good",
+            "response": "I can offer helpful information or interesting facts. What are you curious about?",
+            "timestamp": "2025-10-03 01:55:00.883650"
+        }
+    ]
+}
