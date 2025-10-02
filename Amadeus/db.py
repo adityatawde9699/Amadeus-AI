@@ -1,21 +1,36 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy.engine import Engine
-from sqlalchemy import event
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.orm import declarative_base
 import config
+import sqlalchemy
 
-# Ensure SQLite has foreign key support
-def _enable_sqlite_foreign_keys(dbapi_conn, conn_record):
-    cursor = dbapi_conn.cursor()
-    cursor.execute("PRAGMA foreign_keys=ON")
-    cursor.close()
+# Async engine using aiosqlite driver
+ASYNC_DB_URL = config.DB_URL.replace('sqlite:///', 'sqlite+aiosqlite:///')
+engine = create_async_engine(ASYNC_DB_URL, echo=False, future=True)
 
-engine = create_engine(config.DB_URL, connect_args={"check_same_thread": False})
-event.listen(engine, 'connect', _enable_sqlite_foreign_keys)
+# Async session factory using async_sessionmaker (accepts AsyncEngine)
+async_session = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-def init_db():
-    import models  # noqa: F401 - ensure models are imported so Base.metadata.create_all works
-    Base.metadata.create_all(bind=engine)
+
+async def init_db_async():
+    """Create DB tables asynchronously. Import models inside to avoid circular imports."""
+    # Import models so they are registered on Base
+    import models  # noqa: F401
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def get_async_session():
+    """Async context manager yielding an AsyncSession instance.
+
+    Usage: async with get_async_session() as session:
+               ...
+    """
+    async with async_session() as session:
+        yield session
+
