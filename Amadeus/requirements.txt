@@ -4,6 +4,7 @@ sqlalchemy
 python-dotenv
 google-generativeai
 httpx
+aiosqlite
 dateparser
 pyjokes
 wikipedia

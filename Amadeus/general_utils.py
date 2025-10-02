@@ -1,6 +1,7 @@
 # general_utils.py (Streamlined)
 
 import requests
+import httpx
 import pyjokes
 import webbrowser
 import wikipedia
@@ -20,7 +21,30 @@ model = genai.GenerativeModel('gemini-pro')
 
 # --- Core Utility Functions ---
 
+async def get_news_async():
+    """Async: Fetches top news headlines from Google News India using httpx."""
+    try:
+        news_api_key = os.getenv("news_api")
+        if not news_api_key:
+            return "News API key is not configured."
+        url = f"https://newsapi.org/v2/top-headlines?sources=google-news-in&apiKey={news_api_key}"
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            articles = resp.json().get('articles', [])
+        if not articles:
+            return "No news headlines found."
+        headlines = [article['title'] for article in articles[:5]]
+        return "\n".join([f"{i+1}. {headline}" for i, headline in enumerate(headlines)])
+    except httpx.RequestError as e:
+        print(f"Error fetching news: {e}")
+        return "Sorry, I couldn't connect to the news service."
+
+
 def get_news():
+    """Sync wrapper for older codepaths."""
+    import asyncio
+    return asyncio.run(get_news_async())
     """Fetches top news headlines from Google News India."""
     try:
         news_api_key = os.getenv("news_api")
@@ -40,7 +64,31 @@ def get_news():
         print(f"Error fetching news: {e}")
         return "Sorry, I couldn't connect to the news service."
 
+async def get_weather_async(location="India"):
+    """Async: Gets current weather information for a specified location using httpx."""
+    try:
+        api_key = os.getenv("weather_api")
+        if not api_key:
+            return "Weather API key is not set."
+        url = f"https://api.openweathermap.org/data/2.5/weather?q={location}&appid={api_key}&units=metric"
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            data = resp.json()
+        main = data['main']
+        wind = data['wind']
+        weather_desc = data['weather'][0]['description']
+        return (f"The weather in {location} is currently {weather_desc} with a temperature of "
+                f"{main['temp']} degrees Celsius, but it feels like {main['feels_like']}. "
+                f"Humidity is at {main['humidity']}% and wind speed is {wind['speed']} meters per second.")
+    except Exception as e:
+        print(f"Error fetching weather: {e}")
+        return f"Sorry, I couldn't fetch the weather for {location}."
+
+
 def get_weather(location="India"):
+    import asyncio
+    return asyncio.run(get_weather_async(location))
     """Gets current weather information for a specified location."""
     try:
         api_key = os.getenv("weather_api")

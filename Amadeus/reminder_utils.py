@@ -1,60 +1,62 @@
 # reminder_utils.py
 
-from typing import Dict, List
-from db import SessionLocal, init_db
+from typing import Dict, List, Optional
+from db import get_async_session, init_db_async
 import models
-from sqlalchemy.orm import Session
 from datetime import datetime
 import dateparser
 from speech_utils import speak
-import threading
+import asyncio
+from sqlalchemy import select, update, delete
 
 
-# Initialize DB tables
-init_db()
+# Async reminder functions. Call await init_db_async() at startup.
 
 
-def _get_session() -> Session:
-    return SessionLocal()
-
-
-def add_reminder(title: str, time_str: str, description: str = "") -> Dict:
-    """Add a reminder. time_str can be natural language; we'll store ISO string."""
+async def add_reminder(title: str, time_str: str, description: str = "") -> Dict:
     parsed = dateparser.parse(time_str)
     if not parsed:
         return {"status": "error", "message": "Invalid date/time provided."}
     if parsed < datetime.now():
         return {"status": "error", "message": "Cannot set reminder for a past time."}
-    with _get_session() as db:
+    async with get_async_session() as db:
         reminder = models.Reminder(title=title, time=parsed.isoformat(), description=description)
         db.add(reminder)
-        db.commit()
-        db.refresh(reminder)
+        await db.commit()
+        await db.refresh(reminder)
         return {"status": "success", "message": f"Reminder set for {title} at {parsed.isoformat()}", "id": reminder.id}
 
 
-def list_reminders() -> List[Dict]:
-    with _get_session() as db:
-        reminders = db.query(models.Reminder).filter(models.Reminder.status == 'active').order_by(models.Reminder.created_at.desc()).all()
+async def list_reminders() -> List[Dict]:
+    async with get_async_session() as db:
+        stmt = select(models.Reminder).where(models.Reminder.status == 'active').order_by(models.Reminder.created_at.desc())
+        res = await db.execute(stmt)
+        reminders = res.scalars().all()
         return [{"id": r.id, "title": r.title, "time": r.time, "description": r.description, "status": r.status} for r in reminders]
 
 
-def delete_reminder(reminder_id: int) -> Dict:
-    with _get_session() as db:
-        rem = db.query(models.Reminder).get(reminder_id)
+async def delete_reminder(reminder_id: int) -> Dict:
+    async with get_async_session() as db:
+        stmt = select(models.Reminder).where(models.Reminder.id == reminder_id)
+        res = await db.execute(stmt)
+        rem = res.scalars().first()
         if not rem:
             return {"status": "error", "message": "Reminder not found."}
-        db.delete(rem)
-        db.commit()
+        await db.execute(delete(models.Reminder).where(models.Reminder.id == reminder_id))
+        await db.commit()
         return {"status": "success", "message": f"Reminder {reminder_id} deleted."}
 
 
-def _check_due_reminders():
-    """Check due reminders and speak them. Run periodically in a background thread."""
+async def check_due_reminders_loop(stop_event: Optional[asyncio.Event] = None):
+    """Async loop that periodically checks for due reminders and speaks them."""
     while True:
-        with _get_session() as db:
+        if stop_event and stop_event.is_set():
+            break
+        async with get_async_session() as db:
             now = datetime.utcnow()
-            due = db.query(models.Reminder).filter(models.Reminder.status == 'active').all()
+            stmt = select(models.Reminder).where(models.Reminder.status == 'active')
+            res = await db.execute(stmt)
+            due = res.scalars().all()
             for r in due:
                 try:
                     time_str = getattr(r, 'time', None)
@@ -73,13 +75,7 @@ def _check_due_reminders():
                         speak(message)
                     except Exception:
                         pass
-                    setattr(r, 'status', 'completed')
-                    db.add(r)
-            db.commit()
-        # Sleep for 30 seconds before next check
-        threading.Event().wait(30)
+                    await db.execute(update(models.Reminder).where(models.Reminder.id == r.id).values(status='completed'))
+            await db.commit()
+        await asyncio.sleep(30)
 
-
-# Start background checker in daemon thread
-_reminder_thread = threading.Thread(target=_check_due_reminders, daemon=True)
-_reminder_thread.start()
