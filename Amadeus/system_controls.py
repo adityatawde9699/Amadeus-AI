@@ -13,35 +13,46 @@ from datetime import datetime
 # File readers - import only when needed
 def import_pdf_reader():
     try:
-        from PyPDF2 import PdfReader
+        import importlib
+        pdf_mod = importlib.import_module("PyPDF2")
+        PdfReader = getattr(pdf_mod, "PdfReader", None)
+        if PdfReader is None:
+            speak("PyPDF2 is installed but PdfReader could not be found. Please ensure PyPDF2>=2.x is installed.")
+            return None
         return PdfReader
-    except ImportError:
+    except Exception:
         speak("PyPDF2 library not found. Please install it to read PDF files.")
         return None
 
 def import_docx_reader():
     try:
-        import docx
+        import importlib
+        docx = importlib.import_module("docx")
         return docx
-    except ImportError:
+    except Exception:
         speak("python-docx library not found. Please install it to read DOCX files.")
         return None
 
 def import_image_ocr():
     try:
-        from PIL import Image
-        import pytesseract
+        import importlib
+        Image = importlib.import_module("PIL.Image")
+        pytesseract = importlib.import_module("pytesseract")
         return Image, pytesseract
-    except ImportError:
-        speak("PIL or pytesseract libraries not found. Please install them for image OCR.")
+    except Exception:
+        speak("PIL (Pillow) or pytesseract libraries not found. Please install them for image OCR.")
         return None, None
 
 def import_dataframe_reader():
     try:
-        import pandas as pd
+        import importlib
+        pd = importlib.import_module("pandas")
         return pd
     except ImportError:
         speak("pandas library not found. Please install it to read CSV or Excel files.")
+        return None
+    except Exception as e:
+        speak(f"An unexpected error occurred while importing pandas: {e}")
         return None
 
 def copy_file(source_path, destination_path):
