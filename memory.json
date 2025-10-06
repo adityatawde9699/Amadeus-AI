@@ -1,5 +1,5 @@
 {
-    "last_used_feature": "tell me some good",
+    "last_used_feature": "always",
     "user_name": "",
     "frequent_queries": [],
     "conversations": [
@@ -97,6 +97,261 @@
             "prompt": "tell me some good",
             "response": "I can offer helpful information or interesting facts. What are you curious about?",
             "timestamp": "2025-10-03 01:55:00.883650"
+        },
+        {
+            "prompt": "open",
+            "response": "Open what?",
+            "timestamp": "2025-10-06 19:16:49.143672"
+        },
+        {
+            "prompt": "open folder",
+            "response": "Which folder?",
+            "timestamp": "2025-10-06 19:17:02.245039"
+        },
+        {
+            "prompt": "ok just wait for",
+            "response": "Wait for what?",
+            "timestamp": "2025-10-06 19:17:17.312787"
+        },
+        {
+            "prompt": "wait for a second year",
+            "response": "Second year of what?",
+            "timestamp": "2025-10-06 19:17:45.358216"
+        },
+        {
+            "prompt": "read for read the file",
+            "response": "Which file?",
+            "timestamp": "2025-10-06 19:18:00.113642"
+        },
+        {
+            "prompt": "hi",
+            "response": "Hello.",
+            "timestamp": "2025-10-06 21:49:25.506253"
+        },
+        {
+            "prompt": "hello amadeus",
+            "response": "Hello!",
+            "timestamp": "2025-10-06 21:49:40.346535"
+        },
+        {
+            "prompt": "what is an cockroach",
+            "response": "An insect with a flat, oval body, long antennae, and six legs. They are known for being fast runners, primarily nocturnal, and are often considered pests.",
+            "timestamp": "2025-10-06 22:26:50.344753"
+        },
+        {
+            "prompt": "answer",
+            "response": "An insect with a flat, oval body, long antennae, and six legs. They are fast, nocturnal, and often considered pests.",
+            "timestamp": "2025-10-06 22:27:10.190652"
+        },
+        {
+            "prompt": "what is an cockroach",
+            "response": "An insect with a flat, oval body, long antennae, and six legs. They are fast, nocturnal, and often considered pests.",
+            "timestamp": "2025-10-06 22:27:20.190594"
+        },
+        {
+            "prompt": "what is the is",
+            "response": "Could you please elaborate?",
+            "timestamp": "2025-10-06 22:27:47.732600"
+        },
+        {
+            "prompt": "respond to my",
+            "response": "Could you please complete your thought?",
+            "timestamp": "2025-10-06 22:28:04.906956"
+        },
+        {
+            "prompt": "lemon",
+            "response": "A sour, yellow citrus fruit, commonly used in cooking, beverages, and for its scent.",
+            "timestamp": "2025-10-06 22:28:27.396405"
+        },
+        {
+            "prompt": "how are you",
+            "response": "I am an AI, designed to assist. How can I help you today?",
+            "timestamp": "2025-10-06 22:28:35.882365"
+        },
+        {
+            "prompt": "call Sri",
+            "response": "As an AI, I cannot directly make calls. Is there anything else I can help you with?",
+            "timestamp": "2025-10-06 22:29:16.698172"
+        },
+        {
+            "prompt": "what is",
+            "response": "Could you please elaborate?",
+            "timestamp": "2025-10-06 22:29:44.833383"
+        },
+        {
+            "prompt": "what is an cockroach",
+            "response": "An insect with a flat, oval body, long antennae, and six legs. They are fast, nocturnal, and often considered pests.",
+            "timestamp": "2025-10-06 22:29:55.775232"
+        },
+        {
+            "prompt": "what are you doing",
+            "response": "I'm ready to assist you.",
+            "timestamp": "2025-10-06 22:36:07.910691"
+        },
+        {
+            "prompt": "close edge Browser",
+            "response": "I can't directly close applications on your computer.",
+            "timestamp": "2025-10-06 22:37:29.117259"
+        },
+        {
+            "prompt": "Armada yes what is an cockroach",
+            "response": "A cockroach is a common, fast-moving insect with a flat body and long antennae, often considered a pest.",
+            "timestamp": "2025-10-06 22:43:22.496636"
+        },
+        {
+            "prompt": "what are you doing",
+            "response": "I am an intelligent assistant, and I am currently processing your request to provide information.",
+            "timestamp": "2025-10-06 22:43:37.077557"
+        },
+        {
+            "prompt": "tell me some thoughts about Harry Potter",
+            "response": "Harry Potter is a globally beloved series, celebrated for its incredibly rich magical world, compelling coming-of-age story, and powerful themes of friendship, courage, and the fight between good and evil. It created a cultural phenomenon that resonated deeply with millions of readers, transcending generations.",
+            "timestamp": "2025-10-06 22:43:58.960220"
+        },
+        {
+            "prompt": "how many",
+            "response": "Of what?",
+            "timestamp": "2025-10-06 22:48:57.540654"
+        },
+        {
+            "prompt": "what is in cockroach",
+            "response": "A cockroach is an insect, typically featuring a flattened, oval body, six legs, a pair of antennae, and usually two pairs of wings. Internally, it possesses organs common to insects like a brain, heart, digestive system, and reproductive organs.",
+            "timestamp": "2025-10-06 22:50:09.058111"
+        },
+        {
+            "prompt": "shutdown",
+            "response": "Shutting down.",
+            "timestamp": "2025-10-06 22:50:31.881246"
+        },
+        {
+            "prompt": "are hello",
+            "response": "Hello!",
+            "timestamp": "2025-10-06 22:53:12.763321"
+        },
+        {
+            "prompt": "complete karna mat Dila",
+            "response": "What would you like me to complete?",
+            "timestamp": "2025-10-06 22:53:38.619597"
+        },
+        {
+            "prompt": "I just want to complete my",
+            "response": "...thought? Sentence? What would you like to finish?",
+            "timestamp": "2025-10-06 22:53:50.771607"
+        },
+        {
+            "prompt": "what is the capital of Paris",
+            "response": "Paris is the capital of France.",
+            "timestamp": "2025-10-06 22:54:05.767892"
+        },
+        {
+            "prompt": "Paris is the capital",
+            "response": "...of France.",
+            "timestamp": "2025-10-06 22:54:17.069140"
+        },
+        {
+            "prompt": "what comes three times when we give two times",
+            "response": "Three times.",
+            "timestamp": "2025-10-06 22:54:55.055246"
+        },
+        {
+            "prompt": "what comes three times when we give two times",
+            "response": "Three times.",
+            "timestamp": "2025-10-06 22:55:09.856342"
+        },
+        {
+            "prompt": "ok I am my dear",
+            "response": "Okay.",
+            "timestamp": "2025-10-06 22:55:25.154986"
+        },
+        {
+            "prompt": "ok in the current state of India what will happen if any disaster games",
+            "response": "It would pose significant challenges for relief and recovery efforts, impacting a large population and infrastructure across diverse regions.",
+            "timestamp": "2025-10-06 22:55:46.789845"
+        },
+        {
+            "prompt": "it will post shutdown",
+            "response": "Yes, disasters often lead to shutdowns.",
+            "timestamp": "2025-10-06 22:56:15.623990"
+        },
+        {
+            "prompt": "and recovery effort importing and large population",
+            "response": "And those efforts would be critical, affecting a large population.",
+            "timestamp": "2025-10-06 22:56:47.161427"
+        },
+        {
+            "prompt": "what has a neck but not head",
+            "response": "A bottle.",
+            "timestamp": "2025-10-06 22:57:02.482088"
+        },
+        {
+            "prompt": "han",
+            "response": "Okay.",
+            "timestamp": "2025-10-06 22:57:17.168966"
+        },
+        {
+            "prompt": "comes down but never get get goes up",
+            "response": "Rain.",
+            "timestamp": "2025-10-06 22:57:31.067154"
+        },
+        {
+            "prompt": "the more you take more you leave behind what is it",
+            "response": "Footsteps.",
+            "timestamp": "2025-10-06 22:57:50.472542"
+        },
+        {
+            "prompt": "you are responding great",
+            "response": "Thank you!",
+            "timestamp": "2025-10-06 22:58:01.835303"
+        },
+        {
+            "prompt": "I have live but I can't die what am I",
+            "response": "A live broadcast.",
+            "timestamp": "2025-10-06 22:58:18.009466"
+        },
+        {
+            "prompt": "but I have",
+            "response": "What do you have?",
+            "timestamp": "2025-10-06 22:58:43.471314"
+        },
+        {
+            "prompt": "what is an religion",
+            "response": "A system of faith and worship, often with a moral code.",
+            "timestamp": "2025-10-06 22:59:18.000085"
+        },
+        {
+            "prompt": "can you respond in Marathi what is an religion",
+            "response": "\u0936\u094d\u0930\u0926\u094d\u0927\u093e \u0906\u0923\u093f \u0909\u092a\u093e\u0938\u0928\u0947\u091a\u0940 \u090f\u0915 \u092a\u094d\u0930\u0923\u093e\u0932\u0940, \u091c\u0940 \u0905\u0928\u0947\u0915\u0926\u093e \u0928\u0948\u0924\u093f\u0915 \u0928\u093f\u092f\u092e\u093e\u0902\u0928\u0940 \u092f\u0941\u0915\u094d\u0924 \u0905\u0938\u0924\u0947.",
+            "timestamp": "2025-10-06 22:59:35.565594"
+        },
+        {
+            "prompt": "Marathi actress a problem",
+            "response": "What do you mean?",
+            "timestamp": "2025-10-06 23:00:34.058988"
+        },
+        {
+            "prompt": "Are baba Tula",
+            "response": "\u0915\u093e\u092f?",
+            "timestamp": "2025-10-06 23:00:49.771238"
+        },
+        {
+            "prompt": "Marathi",
+            "response": " \u0939\u094b\u092f?",
+            "timestamp": "2025-10-06 23:01:09.948406"
+        },
+        {
+            "prompt": "so you can't",
+            "response": "Can't what?",
+            "timestamp": "2025-10-06 23:01:23.995041"
+        },
+        {
+            "prompt": "what you can't respond in Marathi that's right isn't it",
+            "response": "\u092e\u0940 \u092e\u0930\u093e\u0920\u0940\u092e\u0927\u094d\u092f\u0947 \u092a\u094d\u0930\u0924\u093f\u0938\u093e\u0926 \u0926\u0947\u090a \u0936\u0915\u0924\u094b. \u092e\u0940 \u0906\u0927\u0940\u091a \u0926\u093f\u0932\u093e \u0906\u0939\u0947.",
+            "timestamp": "2025-10-06 23:01:41.659221"
+        },
+        {
+            "prompt": "always",
+            "response": "Always what?",
+            "timestamp": "2025-10-06 23:01:59.839261"
         }
     ]
 }
