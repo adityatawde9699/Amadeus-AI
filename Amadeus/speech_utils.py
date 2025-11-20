@@ -10,7 +10,7 @@ load_dotenv()
 # Initialize TTS
 engine = pyttsx3.init()
 voices = engine.getProperty('voices')
-engine.setProperty('voice', voices[1].id) # Keeping your preferred voice settings
+engine.setProperty('voice', voices[1].id) # type: ignore # Keeping your preferred voice settings
 engine.setProperty('rate', 150)
 
 # Initialize Whisper (Load once at startup to save time)
@@ -46,12 +46,12 @@ def recognize_speech(timeout: int = 5, phrase_time_limit: int = 10) -> str:
             
             # Save to a temporary file because Whisper needs a file path
             with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio:
-                temp_audio.write(audio_data.get_wav_data())
+                temp_audio.write(audio_data.get_wav_data()) # type: ignore
                 temp_audio_path = temp_audio.name
 
             # Transcribe using your local Whisper model
             result = audio_model.transcribe(temp_audio_path, fp16=False) # fp16=False is crucial for CPU
-            text = result['text'].strip()
+            text = result['text'].strip() # type: ignore
             
             # Clean up temp file
             os.remove(temp_audio_path)
