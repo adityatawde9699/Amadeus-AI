@@ -1,0 +1,22 @@
+{
+    "last_used_feature": "I want to go.",
+    "user_name": "",
+    "frequent_queries": [],
+    "conversations": [
+        {
+            "prompt": "Du darfst er nun.",
+            "response": "Gerne.",
+            "timestamp": "2025-11-20 15:32:25.341851"
+        },
+        {
+            "prompt": "are you translating me?",
+            "response": "No, I am responding to you in German, as you are speaking German.",
+            "timestamp": "2025-11-20 15:32:42.714782"
+        },
+        {
+            "prompt": "I want to go.",
+            "response": "Where would you like to go?",
+            "timestamp": "2025-11-20 15:33:20.065882"
+        }
+    ]
+}
