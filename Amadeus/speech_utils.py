@@ -1,3 +1,4 @@
+import sys
 import speech_recognition as sr
 import pyttsx3
 import whisper
@@ -56,7 +57,8 @@ def recognize_speech(timeout: int = 5, phrase_time_limit: int = 10) -> str:
             # Clean up temp file
             os.remove(temp_audio_path)
             
-            print(f"You said: {text}")
+            safe_text = text.encode(sys.stdout.encoding, errors='replace').decode(sys.stdout.encoding)
+            print(f"You said: {safe_text}")
             return text
 
         except sr.WaitTimeoutError:
