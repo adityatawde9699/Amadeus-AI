@@ -1,5 +1,5 @@
 {
-    "last_used_feature": "I want to go.",
+    "last_used_feature": "\u0647\u0644 \u0623\u0639\u0637\u0628\u0647\u061f \u0647\u0644 \u0623\u0639\u0637\u0628\u0647\u061f",
     "user_name": "",
     "frequent_queries": [],
     "conversations": [
@@ -17,6 +17,11 @@
             "prompt": "I want to go.",
             "response": "Where would you like to go?",
             "timestamp": "2025-11-20 15:33:20.065882"
+        },
+        {
+            "prompt": "\u0647\u0644 \u0623\u0639\u0637\u0628\u0647\u061f \u0647\u0644 \u0623\u0639\u0637\u0628\u0647\u061f",
+            "response": "\u0639\u0646 \u0623\u064a \u0634\u064a\u0621 \u062a\u062a\u062d\u062f\u062b\u061f",
+            "timestamp": "2025-11-21 17:56:59.811018"
         }
     ]
 }
