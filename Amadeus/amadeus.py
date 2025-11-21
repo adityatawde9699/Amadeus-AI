@@ -54,11 +54,11 @@ class Amadeus:
         The descriptions help the AI understand what each tool does.
         """
         tools = {
+            # --- Core System Tools ---
             "get_news": {
                 "function": get_news,
                 "description": "Fetches the top news headlines from Google News India."
             },
-
             "get_weather": {
                 "function": get_weather,
                 "description": "Gets the current weather for a specified location. Requires a 'location' argument."
@@ -71,15 +71,76 @@ class Amadeus:
                 "function": search_file,
                 "description": "Searches for a file on the local system. Requires a 'file_name' argument."
             },
-            # ... Add all your other tools here in the same format ...
             "system_status": {
                 "function": generate_system_summary,
                 "description": "Provides a summary of the current system status (CPU, memory, etc.)."
             },
             "get_datetime_info": {
-            "function": get_datetime_info,
-            "description": "Gets the current date, time, or day of the week based on the user's query."
+                "function": get_datetime_info,
+                "description": "Gets the current date, time, or day of the week based on the user's query."
             },
+
+            # --- Productivity: Tasks ---
+            "add_task": {
+                "function": add_task,
+                "description": "Adds a new task to the to-do list. Requires 'task_content' (str)."
+            },
+            "list_tasks": {
+                "function": list_tasks,
+                "description": "Lists all tasks. Optional 'status_filter' ('pending' or 'completed')."
+            },
+            "complete_task": {
+                "function": complete_task,
+                "description": "Marks a task as complete. Requires 'identifier' (ID or part of content)."
+            },
+            "delete_task": {
+                "function": delete_task,
+                "description": "Deletes a task. Requires 'identifier' (ID or part of content)."
+            },
+            "get_task_summary": {
+                "function": get_task_summary,
+                "description": "Provides a quick summary of total, pending, and completed tasks."
+            },
+
+            # --- Productivity: Notes ---
+            "create_note": {
+                "function": create_note,
+                "description": "Creates a new note. Requires 'title' and 'content'. Optional 'tags' (list of strings)."
+            },
+            "list_notes": {
+                "function": list_notes,
+                "description": "Lists notes. Optional 'tag' to filter by."
+            },
+            "get_note": {
+                "function": get_note,
+                "description": "Retrieves full content of a note by ID. Requires 'note_id' (int)."
+            },
+            "update_note": {
+                "function": update_note,
+                "description": "Updates a note. Requires 'note_id'. Optional 'title', 'content', 'tags'."
+            },
+            "delete_note": {
+                "function": delete_note,
+                "description": "Deletes a note. Requires 'note_id' (int)."
+            },
+            "get_notes_summary": {
+                "function": get_notes_summary,
+                "description": "Summarizes total notes, top tags, and recent notes."
+            },
+
+            # --- Productivity: Reminders ---
+            "add_reminder": {
+                "function": self.reminder_manager.add_reminder,
+                "description": "Sets a reminder. Requires 'title' and 'time_str' (natural language, e.g., 'tomorrow at 5pm'). Optional 'description'."
+            },
+            "list_reminders": {
+                "function": self.reminder_manager.list_reminders,
+                "description": "Lists all active reminders."
+            },
+            "delete_reminder": {
+                "function": self.reminder_manager.delete_reminder,
+                "description": "Deletes a reminder. Requires 'reminder_id' (int)."
+            }
         }
         print(f"Loaded {len(tools)} tools.")
         return tools
