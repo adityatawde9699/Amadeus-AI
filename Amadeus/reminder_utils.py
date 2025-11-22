@@ -56,7 +56,7 @@ async def check_due_reminders_loop(stop_event: Optional[asyncio.Event] = None):
             break
         async with get_async_session() as db:
             now = datetime.utcnow()
-            stmt = select(models.Reminder).where(models.Reminder.status == 'active')
+            stmt = select(models.Reminder).where(models.Reminder.status == 'active').order_by(models.Reminder.created_at.desc())
             res = await db.execute(stmt)
             due = res.scalars().all()
             for r in due:
