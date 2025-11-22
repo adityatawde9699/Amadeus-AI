@@ -365,10 +365,10 @@ class Amadeus:
         
         # Information Tools
         info_tools = [
-            Tool("get_news", get_news,
+            Tool("get_news", get_news_async,  
                  "Fetches top news headlines from India",
                  ToolCategory.INFORMATION),
-            Tool("get_weather", get_weather,
+            Tool("get_weather", get_weather_async, 
                  "Gets weather for a location. Args: location (str, default: India)",
                  ToolCategory.INFORMATION, {'location': 'str'}),
              # --- NEW: Wikipedia ---
@@ -682,9 +682,8 @@ User: {prompt}
         
         # Weather - with validation and error recovery
         try:
-            weather = get_weather(self.config.get('default_location', 'India'))
+            weather = await get_weather_async(self.config.get('default_location', 'India')) # <--- CHANGED
             if weather and isinstance(weather, str):
-                # Check for error indicators
                 if "Sorry" not in weather and "error" not in weather.lower():
                     parts.append(weather)
                 else:
