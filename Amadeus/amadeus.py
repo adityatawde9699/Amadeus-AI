@@ -365,16 +365,15 @@ class Amadeus:
         
         # Information Tools
         info_tools = [
-            Tool("get_news", get_news_async,  
-                 "Fetches top news headlines from India",
-                 ToolCategory.INFORMATION),
-            Tool("get_weather", get_weather_async, 
-                 "Gets weather for a location. Args: location (str, default: India)",
-                 ToolCategory.INFORMATION, {'location': 'str'}),
-             # --- NEW: Wikipedia ---
-            Tool("wikipedia_search", wikipedia_search,
-                 "Searches Wikipedia for a summary. Args: query (str)",
-                 ToolCategory.INFORMATION, {'query': 'str'}),
+          Tool("get_news", get_news_async,  
+         "Fetches top news headlines from India",
+            ToolCategory.INFORMATION),
+          Tool("get_weather", get_weather_async,
+         "Gets weather for a location. Args: location (str, default: India)",
+            ToolCategory.INFORMATION, {'location': 'str'}),
+          Tool("wikipedia_search", wikipedia_search_async, 
+         "Searches Wikipedia for a summary. Args: query (str)",
+            ToolCategory.INFORMATION, {'query': 'str'}),
         ]
 
         # Communication / Fun Tools
@@ -682,7 +681,8 @@ User: {prompt}
         
         # Weather - with validation and error recovery
         try:
-            weather = await get_weather_async(self.config.get('default_location', 'India')) # <--- CHANGED
+           
+            weather = await get_weather_async(self.config.get('default_location', 'India'))
             if weather and isinstance(weather, str):
                 if "Sorry" not in weather and "error" not in weather.lower():
                     parts.append(weather)
