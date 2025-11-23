@@ -3,123 +3,478 @@ import shutil
 import platform
 import psutil
 import subprocess
-from speech_utils import speak, recognize_speech
+from speech_utils import recognize_speech
 import time
 from threading import Thread
-from pathlib import Path  # For better path handling
-import tempfile  # For creating temporary directories
+from pathlib import Path
+import tempfile
 from datetime import datetime
+from typing import Optional, Dict, List, Set, Tuple
+import logging
 
-# File readers - import only when needed
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# ============================================================================
+# FILE READER IMPORTS
+# ============================================================================
+
 def import_pdf_reader():
+    """Import PyPDF2 with proper error handling."""
     try:
         import importlib
         pdf_mod = importlib.import_module("PyPDF2")
         PdfReader = getattr(pdf_mod, "PdfReader", None)
         if PdfReader is None:
-            speak("PyPDF2 is installed but PdfReader could not be found. Please ensure PyPDF2>=2.x is installed.")
+            logger.error("PyPDF2 is installed but PdfReader not found. Ensure PyPDF2>=2.x")
             return None
         return PdfReader
-    except Exception:
-        speak("PyPDF2 library not found. Please install it to read PDF files.")
+    except ImportError:
+        logger.error("PyPDF2 not installed. Install with: pip install PyPDF2")
         return None
 
 def import_docx_reader():
+    """Import python-docx with proper error handling."""
     try:
         import importlib
         docx = importlib.import_module("docx")
         return docx
-    except Exception:
-        speak("python-docx library not found. Please install it to read DOCX files.")
+    except ImportError:
+        logger.error("python-docx not installed. Install with: pip install python-docx")
         return None
 
 def import_image_ocr():
+    """Import PIL and pytesseract with proper error handling."""
     try:
         import importlib
-        Image = importlib.import_module("PIL.Image")
+        from PIL import Image
         pytesseract = importlib.import_module("pytesseract")
         return Image, pytesseract
-    except Exception:
-        speak("PIL (Pillow) or pytesseract libraries not found. Please install them for image OCR.")
+    except ImportError:
+        logger.error("PIL or pytesseract not installed. Install with: pip install Pillow pytesseract")
         return None, None
 
 def import_dataframe_reader():
+    """Import pandas with proper error handling."""
     try:
         import importlib
         pd = importlib.import_module("pandas")
         return pd
     except ImportError:
-        speak("pandas library not found. Please install it to read CSV or Excel files.")
-        return None
-    except Exception as e:
-        speak(f"An unexpected error occurred while importing pandas: {e}")
+        logger.error("pandas not installed. Install with: pip install pandas openpyxl")
         return None
 
-def copy_file(source_path, destination_path):
-    """Copies a file from source to destination."""
+# ============================================================================
+# FILE OPERATIONS
+# ============================================================================
+
+def copy_file(source_path: str | Path, destination_path: str | Path) -> bool:
+    """
+    Copy a file from source to destination with metadata preservation.
+    
+    Args:
+        source_path: Path to source file
+        destination_path: Path to destination file
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
     try:
         source_path = Path(source_path).resolve()
         destination_path = Path(destination_path).resolve()
         
         if not source_path.is_file():
-            speak(f"Source file {source_path} does not exist.")
+            logger.error(f"Source file does not exist: {source_path}")
+            return False
+        
+        if source_path == destination_path:
+            logger.error("Source and destination paths are identical")
             return False
 
-        # Ensure the destination directory exists
         destination_dir = destination_path.parent
         destination_dir.mkdir(parents=True, exist_ok=True)
 
-        shutil.copy2(source_path, destination_path)  # copy2 preserves metadata
-        speak(f"File copied from {source_path} to {destination_path}.")
-        print(f"File copied from {source_path} to {destination_path}.")
+        # Use atomic operation with temp file
+        temp_dest = destination_dir / f".{destination_path.name}.tmp"
+        shutil.copy2(source_path, temp_dest)
+        temp_dest.replace(destination_path)
+        
+        logger.info(f"File copied: {source_path} → {destination_path}")
+        print(f"✓ File copied successfully to {destination_path}")
         return True
-    except Exception as e:
-        speak(f"An error occurred while copying the file: {e}")
-        print(f"An error occurred while copying the file: {e}")
+        
+    except PermissionError:
+        logger.error(f"Permission denied copying file: {source_path}")
+        print("✗ Permission denied. Check file permissions.")
         return False
+    except IOError as e:
+        logger.error(f"IO error while copying: {e}")
+        print(f"✗ IO error: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Unexpected error copying file: {e}")
+        print(f"✗ Error: {e}")
+        return False
+
+def move_file(source_path: str | Path, destination_path: str | Path) -> bool:
+    """
+    Move a file from source to destination.
     
-def create_folder(folder_name):
-    """Creates a new folder."""
+    Args:
+        source_path: Path to source file
+        destination_path: Path to destination file
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        source_path = Path(source_path).resolve()
+        destination_path = Path(destination_path).resolve()
+        
+        if not source_path.is_file():
+            logger.error(f"Source file does not exist: {source_path}")
+            return False
+        
+        if source_path == destination_path:
+            logger.error("Source and destination are the same")
+            return False
+
+        destination_dir = destination_path.parent
+        destination_dir.mkdir(parents=True, exist_ok=True)
+
+        shutil.move(str(source_path), str(destination_path))
+        logger.info(f"File moved: {source_path} → {destination_path}")
+        print(f"✓ File moved successfully to {destination_path}")
+        return True
+        
+    except PermissionError:
+        logger.error(f"Permission denied moving file: {source_path}")
+        print("✗ Permission denied. Check file permissions.")
+        return False
+    except Exception as e:
+        logger.error(f"Error moving file: {e}")
+        print(f"✗ Error: {e}")
+        return False
+
+def delete_file(file_path: str | Path, skip_confirmation: bool = False) -> bool:
+    """
+    Delete a file with optional voice confirmation.
+    
+    Args:
+        file_path: Path to file to delete
+        skip_confirmation: Skip voice confirmation if True
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        file_to_delete = Path(file_path).resolve()
+        
+        if not file_to_delete.is_file():
+            logger.error(f"File does not exist: {file_path}")
+            print(f"✗ File not found: {file_path}")
+            return False
+        
+        if not skip_confirmation:
+            print(f"Are you sure you want to permanently delete: {file_to_delete.name}?")
+            confirmation = recognize_speech()
+            
+            if not confirmation or 'yes' not in confirmation.lower():
+                print("File deletion cancelled.")
+                return False
+        
+        # Create backup in temp directory before deletion
+        backup_dir = Path(tempfile.gettempdir()) / "deleted_files_backup"
+        backup_dir.mkdir(exist_ok=True)
+        backup_path = backup_dir / file_to_delete.name
+        shutil.copy2(file_to_delete, backup_path)
+        
+        os.remove(file_to_delete)
+        logger.info(f"File deleted: {file_to_delete} (backup: {backup_path})")
+        print(f"✓ File deleted: {file_to_delete.name}")
+        return True
+        
+    except PermissionError:
+        logger.error(f"Permission denied deleting file: {file_path}")
+        print("✗ Permission denied. Check file permissions.")
+        return False
+    except Exception as e:
+        logger.error(f"Error deleting file: {e}")
+        print(f"✗ Error: {e}")
+        return False
+
+def create_folder(folder_name: str | Path) -> bool:
+    """
+    Create a new folder.
+    
+    Args:
+        folder_name: Name/path of folder to create
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
     try:
         folder_path = Path(folder_name).resolve()
-        if folder_path.exists():
-            speak(f"Folder {folder_path} already exists.")
-            return False
-            
-        folder_path.mkdir(parents=True, exist_ok=True)
-        speak(f"Created folder: {folder_path}")
-        return True
-    
-    except Exception as e:
-        speak(f"An error occurred while creating the folder: {e}")
-        print(f"An error occurred while creating the folder: {e}")
-        return False
-
-
-def move_file(source_path, destination_path):
-    """Moves a file from source to destination."""
-    try:
-        source_path = Path(source_path).resolve()
-        destination_path = Path(destination_path).resolve()
         
-        if not source_path.is_file():
-            speak(f"Source file {source_path} does not exist.")
-            return False
-
-        # Ensure the destination directory exists
-        destination_dir = destination_path.parent
-        destination_dir.mkdir(parents=True, exist_ok=True)
-
-        shutil.move(source_path, destination_path)
-        speak(f"File moved from {source_path} to {destination_path}.")
-        print(f"File moved from {source_path} to {destination_path}.")
+        if folder_path.exists():
+            if folder_path.is_dir():
+                logger.warning(f"Folder already exists: {folder_path}")
+                print(f"ℹ Folder already exists: {folder_path}")
+                return False
+            else:
+                logger.error(f"Path exists but is not a directory: {folder_path}")
+                print(f"✗ Path exists but is not a directory: {folder_path}")
+                return False
+        
+        folder_path.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Folder created: {folder_path}")
+        print(f"✓ Folder created: {folder_path}")
         return True
+        
+    except PermissionError:
+        logger.error(f"Permission denied creating folder: {folder_name}")
+        print("✗ Permission denied. Check write permissions.")
+        return False
     except Exception as e:
-        speak(f"An error occurred while moving the file: {e}")
-        print(f"An error occurred while moving the file: {e}")
+        logger.error(f"Error creating folder: {e}")
+        print(f"✗ Error: {e}")
         return False
 
-# Application mapping - now with platform-specific dictionaries
+def create_directory(directory_path: str | Path) -> bool:
+    """Create a new directory (alias for create_folder)."""
+    return create_folder(directory_path)
+
+def list_directory(directory_path: str | Path = '.') -> bool:
+    """
+    List contents of a directory with file sizes.
+    
+    Args:
+        directory_path: Path to directory to list
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        directory_path = Path(directory_path).resolve()
+        
+        if not directory_path.exists():
+            logger.error(f"Directory does not exist: {directory_path}")
+            print(f"✗ Directory not found: {directory_path}")
+            return False
+        
+        if not directory_path.is_dir():
+            logger.error(f"Path is not a directory: {directory_path}")
+            print(f"✗ Not a directory: {directory_path}")
+            return False
+        
+        items = list(directory_path.iterdir())
+        files = sorted([item for item in items if item.is_file()])
+        dirs = sorted([item for item in items if item.is_dir()])
+        
+        print(f"\n📂 Directory: {directory_path}")
+        print(f"   Files: {len(files)} | Subdirectories: {len(dirs)}\n")
+        
+        if dirs:
+            print("📁 Subdirectories:")
+            for d in dirs:
+                print(f"   └─ {d.name}/")
+        
+        if files:
+            print("📄 Files:")
+            for f in sorted(files):
+                size_kb = f.stat().st_size / 1024
+                print(f"   └─ {f.name} ({size_kb:.1f} KB)")
+        
+        print()
+        return True
+        
+    except PermissionError:
+        logger.error(f"Permission denied listing directory: {directory_path}")
+        print("✗ Permission denied.")
+        return False
+    except Exception as e:
+        logger.error(f"Error listing directory: {e}")
+        print(f"✗ Error: {e}")
+        return False
+
+# ============================================================================
+# FILE SEARCH AND READ
+# ============================================================================
+
+def search_file(file_name: str, search_directory: Optional[str | Path] = None, max_results: int = 10) -> Optional[str]:
+    """
+    Search for files using glob patterns with timeout.
+    
+    Args:
+        file_name: Name or pattern of file to search for
+        search_directory: Directory to search in (defaults to home)
+        max_results: Maximum number of results to return
+        
+    Returns:
+        str: Path to first found file, or None if not found
+    """
+    try:
+        search_directory = Path(search_directory or Path.home()).resolve()
+        
+        if not search_directory.exists():
+            logger.error(f"Search directory does not exist: {search_directory}")
+            print(f"✗ Directory not found: {search_directory}")
+            return None
+        
+        logger.info(f"Searching for '{file_name}' in {search_directory}")
+        print(f"🔍 Searching for '{file_name}'...")
+        
+        # Build search pattern
+        pattern = f"**/*{file_name}*"
+        found_files = []
+        
+        try:
+            # Use rglob with timeout-like behavior
+            for file_path in search_directory.rglob(file_name if "*" in file_name else f"*{file_name}*"):
+                found_files.append(file_path)
+                if len(found_files) >= max_results:
+                    break
+        except PermissionError:
+            logger.warning(f"Permission denied accessing some directories")
+        
+        if found_files:
+            logger.info(f"Found {len(found_files)} file(s)")
+            print(f"✓ Found {len(found_files)} matching file(s):\n")
+            for i, file_path in enumerate(found_files, 1):
+                print(f"   {i}. {file_path}")
+            return str(found_files[0])
+        else:
+            logger.warning(f"File not found: {file_name}")
+            print(f"✗ No files found matching: {file_name}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Error searching for file: {e}")
+        print(f"✗ Error: {e}")
+        return None
+
+def read_file(file_path: str | Path, max_chars: int = 5000) -> Optional[str]:
+    """
+    Read various file types and return content.
+    
+    Args:
+        file_path: Path to file to read
+        max_chars: Maximum characters to return
+        
+    Returns:
+        str: File content or None if error
+    """
+    try:
+        file_path = Path(file_path).resolve()
+        
+        if not file_path.is_file():
+            logger.error(f"File does not exist: {file_path}")
+            print(f"✗ File not found: {file_path}")
+            return None
+        
+        file_extension = file_path.suffix.lower()
+        content = ""
+        
+        logger.info(f"Reading file: {file_path}")
+        print(f"📖 Reading: {file_path.name}\n")
+        
+        # Text files
+        if file_extension == ".txt":
+            with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+                content = f.read(max_chars)
+                if len(content) >= max_chars:
+                    content += "\n\n... (content truncated)"
+        
+        # PDF files
+        elif file_extension == ".pdf":
+            PdfReader = import_pdf_reader()
+            if not PdfReader:
+                return None
+            try:
+                reader = PdfReader(file_path)
+                pages_content = []
+                for i in range(min(len(reader.pages), 5)):
+                    page = reader.pages[i]
+                    page_text = page.extract_text()
+                    if page_text:
+                        pages_content.append(f"--- Page {i+1} ---\n{page_text}")
+                    if sum(len(p) for p in pages_content) > max_chars:
+                        break
+                content = "\n\n".join(pages_content)[:max_chars]
+            except Exception as e:
+                logger.error(f"Error reading PDF: {e}")
+                print(f"✗ Error reading PDF: {e}")
+                return None
+        
+        # DOCX files
+        elif file_extension == ".docx":
+            docx = import_docx_reader()
+            if not docx:
+                return None
+            try:
+                doc = docx.Document(str(file_path))
+                paras = [p.text for p in doc.paragraphs if p.text.strip()]
+                content = "\n".join(paras)[:max_chars]
+            except Exception as e:
+                logger.error(f"Error reading DOCX: {e}")
+                return None
+        
+        # Image files (OCR)
+        elif file_extension in [".png", ".jpg", ".jpeg", ".bmp", ".gif"]:
+            Image, pytesseract = import_image_ocr()
+            if not Image or not pytesseract:
+                return None
+            try:
+                print("⏳ Performing OCR on image...")
+                img = Image.open(file_path)
+                content = pytesseract.image_to_string(img)
+                if not content.strip():
+                    content = "(No text found in image)"
+            except Exception as e:
+                logger.error(f"Error reading image: {e}")
+                return None
+        
+        # Data files (CSV/Excel)
+        elif file_extension in [".csv", ".xlsx", ".xls"]:
+            pd = import_dataframe_reader()
+            if not pd:
+                return None
+            try:
+                df = pd.read_csv(file_path) if file_extension == ".csv" else pd.read_excel(file_path)
+                if len(df) > 20:
+                    content = df.head(10).to_string()
+                    content += f"\n\n(Showing 10 of {len(df)} rows)"
+                else:
+                    content = df.to_string()
+            except Exception as e:
+                logger.error(f"Error reading data file: {e}")
+                return None
+        
+        else:
+            logger.error(f"Unsupported file type: {file_extension}")
+            print(f"✗ Unsupported file format: {file_extension}")
+            return None
+        
+        # Display content
+        print("─" * 60)
+        display_length = min(len(content), 1500)
+        print(content[:display_length])
+        if display_length < len(content):
+            print(f"\n... (content truncated - {len(content) - display_length} chars hidden)")
+        print("─" * 60 + "\n")
+        
+        return content
+        
+    except Exception as e:
+        logger.error(f"Error reading file: {e}")
+        print(f"✗ Error: {e}")
+        return None
+
+# ============================================================================
+# APPLICATION MANAGEMENT
+# ============================================================================
+
 windows_apps = {
     "brave": "brave.exe",
     "calculator": "calc.exe",
@@ -232,396 +587,237 @@ linux_apps = {
     "docker": "docker"
 }
 
-def get_app_name(command):
-    """Normalize user-friendly names to app executable names based on platform."""
-    try:
-        # Determine which app dictionary to use based on platform
-        if platform.system() == "Windows":
-            app_dict = windows_apps
-        elif platform.system() == "Darwin":  # macOS
-            app_dict = mac_apps
-        elif platform.system() == "Linux":
-            app_dict = linux_apps
-        else:
-            speak("Unsupported operating system.")
-            return None
-        
-        # Check if any app name is in the command
-        for key in app_dict.keys():
-            if key.lower() in command.lower():
-                return app_dict[key]
-        
-        # If not found but command matches an executable directly, return it
-        if command in app_dict.values():
-            return command
-            
-        speak(f"Application '{command}' not found in known applications.")
-        return None
-    except Exception as e:
-        speak(f"An error occurred while getting the application name: {e}")
-        print(f"An error occurred while getting the application name: {e}")
-        return None
-    
-def open_program(app_name):
-    """Opens an application with better verification that it actually launched."""
-    try:
-        app_exec = get_app_name(app_name)  # This function needs to be defined elsewhere
-        if not app_exec:
-            speak(f"Sorry, I cannot find the application {app_name}")
-            return False
-        
-        # Get process list before opening
-        processes_before = set(p.info['name'] for p in psutil.process_iter(['name']))
-       
-        # Open based on platform
-        if platform.system() == "Windows":
-            try:
-                # First try with startfile which is better for Windows
-                os.startfile(app_exec)
-            except:
-                # Fall back to subprocess if startfile fails
-                subprocess.Popen(app_exec, shell=True)
-        elif platform.system() == "Linux":
-            subprocess.Popen(app_exec, shell=True)
-        elif platform.system() == "Darwin":  # macOS
-            subprocess.Popen(["open", "-a", app_exec])
-        else:
-            speak("Unsupported operating system.")
-            return False
-           
-        speak(f"Attempting to open {app_name}...")
-       
-        # Wait and check for app to actually start
-        max_wait = 10  # seconds
-        for i in range(max_wait):
-            time.sleep(1)
-           
-            # Check processes after attempting to open
-            processes_after = set(p.info['name'] for p in psutil.process_iter(['name']))
-            new_processes = processes_after - processes_before
-           
-            # Check if any new process appeared
-            if new_processes:
-                speak(f"{app_name} has been launched successfully.")
-                return True
-           
-            # Continue waiting
-            if i % 3 == 0 and i > 0:
-                speak(f"Still waiting for {app_name} to start...")
-       
-        # If we get here, the app probably didn't start
-        speak(f"Warning: {app_name} might not have launched correctly. No new matching process was detected.")
-        return False
-    except Exception as e:
-        speak(f"Could not open {app_name}: {e}")
-        print(f"Could not open {app_name}: {e}")
-        return False
-# Helper function to match app names more flexibly
-def find_app_process(app_name):
-    """Find a running process that might match the application name using fuzzy matching."""
-    try:
-        app_lower = app_name.lower()
-        # Remove common extensions and words for better matching
-        app_clean = app_lower.replace(".exe", "").replace("microsoft", "").replace("google", "").strip()
-        
-        for proc in psutil.process_iter(['name']):
-            proc_lower = proc.info['name'].lower()
-            proc_clean = proc_lower.replace(".exe", "").replace("microsoft", "").replace("google", "").strip()
-            
-            # Check for matches in various ways
-            if (app_clean == proc_clean or
-                app_clean in proc_clean or
-                proc_clean in app_clean or
-                # Check for acronyms (e.g., "Microsoft Word" -> "word")
-                any(word in proc_clean for word in app_clean.split())):
-                return proc.info['name']
-                
-        return None
-    except:
-        return None
-
-def terminate_program(process_name):
+def get_app_name(command: str) -> Optional[str]:
     """
-    Terminate a program by name.
+    Get normalized app executable name based on platform and user command.
     
     Args:
-        process_name (str): Name of the process to terminate
+        command: User-friendly app name or partial name
+        
+    Returns:
+        str: App executable name or None if not found
+    """
+    try:
+        app_dict = {
+            "Windows": windows_apps,
+            "Darwin": mac_apps,
+            "Linux": linux_apps
+        }.get(platform.system())
+        
+        if not app_dict:
+            logger.error(f"Unsupported OS: {platform.system()}")
+            print("✗ Unsupported operating system.")
+            return None
+        
+        command_lower = command.lower()
+        
+        # Exact match
+        if command_lower in app_dict:
+            return app_dict[command_lower]
+        
+        # Partial match
+        for key, value in app_dict.items():
+            if key in command_lower:
+                return value
+        
+        logger.warning(f"Application not found: {command}")
+        print(f"✗ Application '{command}' not found in known applications.")
+        return None
+        
+    except Exception as e:
+        logger.error(f"Error getting app name: {e}")
+        return None
+
+def find_app_process(app_name: str) -> Optional[str]:
+    """
+    Find running process matching application name with fuzzy matching.
+    
+    Args:
+        app_name: Application name to find
+        
+    Returns:
+        str: Process name if found, None otherwise
+    """
+    try:
+        app_lower = app_name.lower().replace(".exe", "").strip()
+        
+        for proc in psutil.process_iter(['name', 'pid']):
+            try:
+                proc_name = proc.info['name'].lower().replace(".exe", "").strip()
+                
+                # Various matching strategies
+                if (app_lower == proc_name or
+                    app_lower in proc_name or
+                    proc_name in app_lower or
+                    any(word in proc_name for word in app_lower.split())):
+                    return proc.info['name']
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        
+        return None
+    except Exception as e:
+        logger.error(f"Error finding app process: {e}")
+        return None
+
+def open_program(app_name: str, timeout: int = 15) -> bool:
+    """
+    Open an application with verification.
+    
+    Args:
+        app_name: Name of application to open
+        timeout: Timeout to wait for app launch (seconds)
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        app_exec = get_app_name(app_name)
+        if not app_exec:
+            print(f"✗ Cannot find application: {app_name}")
+            return False
+        
+        logger.info(f"Opening application: {app_name} ({app_exec})")
+        print(f"🚀 Opening {app_name}...")
+        
+        # Get process list before
+        try:
+            processes_before = {p.info['name'] for p in psutil.process_iter(['name'])}
+        except:
+            processes_before = set()
+        
+        # Launch based on platform
+        try:
+            if platform.system() == "Windows":
+                try:
+                    os.startfile(app_exec)
+                except FileNotFoundError:
+                    subprocess.Popen(app_exec, shell=True)
+            elif platform.system() == "Darwin":  # macOS
+                subprocess.Popen(["open", "-a", app_exec])
+            elif platform.system() == "Linux":
+                subprocess.Popen(app_exec, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            else:
+                print("✗ Unsupported operating system.")
+                return False
+        except Exception as e:
+            logger.error(f"Error launching app: {e}")
+            print(f"✗ Error launching: {e}")
+            return False
+        
+        # Wait and verify
+        for elapsed in range(timeout):
+            time.sleep(1)
+            
+            try:
+                processes_after = {p.info['name'] for p in psutil.process_iter(['name'])}
+                if processes_after - processes_before:
+                    logger.info(f"Application launched successfully: {app_name}")
+                    print(f"✓ {app_name} launched successfully!")
+                    return True
+            except:
+                pass
+            
+            if elapsed % 3 == 0 and elapsed > 0:
+                print(f"⏳ Waiting for {app_name} ({timeout - elapsed}s)...")
+        
+        logger.warning(f"App may not have launched: {app_name}")
+        print(f"⚠ {app_name} may not have launched correctly.")
+        return True  # Return True anyway as app might be starting
+        
+    except Exception as e:
+        logger.error(f"Error opening program: {e}")
+        print(f"✗ Error: {e}")
+        return False
+
+def terminate_program(process_name: str) -> int:
+    """
+    Terminate all processes matching the name.
+    
+    Args:
+        process_name: Name of process to terminate
         
     Returns:
         int: Number of processes terminated
     """
     try:
-        import psutil
-        
         count = 0
         for proc in psutil.process_iter(['pid', 'name']):
-            if process_name.lower() in proc.info['name'].lower():
-                try:
-                    psutil.Process(proc.info['pid']).terminate()
+            try:
+                if process_name.lower() in proc.info['name'].lower():
+                    proc_obj = psutil.Process(proc.info['pid'])
+                    proc_obj.terminate()
                     count += 1
-                except:
-                    pass
+                    logger.info(f"Terminated process: {proc.info['name']} (PID: {proc.info['pid']})")
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+        
+        if count > 0:
+            print(f"✓ Terminated {count} process(es) matching '{process_name}'")
+        else:
+            print(f"✗ No processes found matching '{process_name}'")
         
         return count
+        
     except Exception as e:
-        print(f"Error terminating program: {e}")
+        logger.error(f"Error terminating program: {e}")
+        print(f"✗ Error: {e}")
         return 0
 
-def manage_process(process):
+def manage_process(process: Dict) -> str:
     """
-    Provide options to manage a selected process.
+    Interactive process management menu.
     
     Args:
-        process (dict): Process information dictionary
+        process: Process info dictionary with pid, name, etc.
         
     Returns:
-        str: Result of the operation
+        str: Result message
     """
     try:
-        import psutil
-        
-        print(f"\nProcess: {process['name']} (PID: {process['pid']})")
+        print(f"\n{'─' * 50}")
+        print(f"Process: {process['name']} (PID: {process['pid']})")
+        print(f"{'─' * 50}")
         print("1. View details")
         print("2. Terminate process")
-        print("3. Change priority")
-        print("4. Cancel")
+        print("3. Cancel")
+        print(f"{'─' * 50}\n")
         
-        print("What would you like to do with this process?")
         choice = recognize_speech()
         
         if choice:
-            if "details" in choice.lower() or "1" in choice:
-                proc = psutil.Process(process['pid'])
-                details = f"""
+            choice_lower = choice.lower()
+            
+            if "details" in choice_lower or "1" in choice:
+                try:
+                    proc = psutil.Process(process['pid'])
+                    cpu = proc.cpu_percent(interval=0.1)
+                    mem = proc.memory_percent()
+                    created = datetime.fromtimestamp(proc.create_time()).strftime('%Y-%m-%d %H:%M:%S')
+                    
+                    details = f"""
 Process Details:
-Name:     {process['name']}
-PID:      {process['pid']}
-CPU:      {process['cpu_percent']}%
-Memory:   {process['memory_percent']}%
-Status:   {process['status']}
-Created:  {datetime.fromtimestamp(proc.create_time()).strftime('%Y-%m-%d %H:%M:%S')}
+  Name:      {process['name']}
+  PID:       {process['pid']}
+  CPU:       {cpu:.1f}%
+  Memory:    {mem:.1f}%
+  Status:    {proc.status()}
+  Created:   {created}
 """
-                print(details)
-                return "Process details displayed."
-                
-            elif "terminate" in choice.lower() or "kill" in choice.lower() or "2" in choice:
-                psutil.Process(process['pid']).terminate()
-                return f"Process {process['name']} terminated."
-                
-            elif "priority" in choice.lower() or "3" in choice:
-                print("Changing priority requires administrative privileges.")
-                return "Changing priority requires elevated permissions."
+                    print(details)
+                    return "Process details displayed."
+                except Exception as e:
+                    return f"Error getting details: {e}"
+            
+            elif "terminate" in choice_lower or "kill" in choice_lower or "2" in choice:
+                try:
+                    psutil.Process(process['pid']).terminate()
+                    logger.info(f"Terminated process: {process['name']}")
+                    return f"✓ Process {process['name']} terminated."
+                except Exception as e:
+                    return f"Error terminating: {e}"
         
         return "No action taken."
         
     except Exception as e:
-        print(f"Error managing process: {e}")
-        return f"Error managing process: {str(e)}"
-
-
-def search_file(file_name, search_directory=None):
-    """Searches for a file using a faster glob pattern."""
-    try:
-        if search_directory is None:
-            search_directory = Path.home()
-        else:
-            search_directory = Path(search_directory)
-
-        if not search_directory.exists():
-            speak(f"Search directory {search_directory} does not exist.")
-            return None
-
-        speak(f"Searching for {file_name} in {search_directory}. This may be quick.")
-        
-        # Use rglob for recursive globbing - much faster than os.walk for simple patterns
-        # The pattern '**/*' searches all subdirectories
-        pattern = f"**/*{file_name}*"
-        found_files = list(search_directory.rglob(pattern))
-
-        if found_files:
-            speak(f"Found {len(found_files)} matching file(s). The first one is at {found_files[0]}")
-            for file_path in found_files[:5]: # Print first 5
-                print(f"Found: {file_path}")
-            return str(found_files[0])
-        else:
-            speak(f"Sorry, I could not find any file named {file_name}.")
-            return None
-    except Exception as e:
-        speak(f"An error occurred during the file search: {e}")
-        return None
-
-def read_file(file_path, max_chars=5000):
-    """Reads and returns the content of various file types as a string (also speaks briefly)."""
-    try:
-        file_path = Path(file_path)
-        if not file_path.is_file():
-            speak(f"{file_path} does not exist.")
-            return None
-
-        file_extension = file_path.suffix.lower()
-        content = ""
-
-        # Handle different file types
-        if file_extension == ".txt":
-            with open(file_path, 'r', encoding='utf-8', errors='replace') as file:
-                content = file.read(max_chars)
-                if len(content) >= max_chars:
-                    content += "... (content truncated due to large file size)"
-        
-        elif file_extension == ".pdf":
-            PdfReader = import_pdf_reader()
-            if not PdfReader:
-                return None
-            reader = PdfReader(file_path)
-            pages_content = []
-            for i in range(min(len(reader.pages), 5)):
-                page_text = reader.pages[i].extract_text()
-                if page_text:
-                    pages_content.append(f"--- Page {i+1} ---\n{page_text}")
-                if sum(len(p) for p in pages_content) > max_chars:
-                    pages_content[-1] = pages_content[-1][:max_chars - sum(len(p) for p in pages_content[:-1])]
-                    pages_content[-1] += "... (content truncated due to large file size)"
-                    break
-            content = "\n\n".join(pages_content)
-
-        elif file_extension == ".docx":
-            docx = import_docx_reader()
-            if not docx:
-                return None
-            doc = docx.Document(str(file_path))
-            paras = [para.text for para in doc.paragraphs if para.text.strip()]
-            total_len = 0
-            truncated_paras = []
-            for para in paras:
-                if total_len + len(para) <= max_chars:
-                    truncated_paras.append(para)
-                    total_len += len(para) + 1
-                else:
-                    available_chars = max_chars - total_len
-                    if available_chars > 0:
-                        truncated_paras.append(para[:available_chars] + "... (content truncated)")
-                    break
-            content = "\n".join(truncated_paras)
-
-        elif file_extension in [".png", ".jpg", ".jpeg"]:
-            Image, pytesseract = import_image_ocr()
-            if not Image or not pytesseract:
-                return None
-            speak("Analyzing image content. This may take a moment.")
-            img = Image.open(file_path)
-            content = pytesseract.image_to_string(img)
-            if not content.strip():
-                content = "No text could be extracted from this image."
-
-        elif file_extension in [".csv", ".xlsx"]:
-            pd = import_dataframe_reader()
-            if not pd:
-                return None
-            df = pd.read_csv(file_path) if file_extension == ".csv" else pd.read_excel(file_path)
-            if len(df) > 20:
-                speak(f"This file contains {len(df)} rows. Showing first 10 rows.")
-                content = df.head(10).to_string()
-                content += f"\n\n(Showing 10 of {len(df)} rows)"
-            else:
-                content = df.to_string()
-
-        else:
-            speak(f"Unsupported file format: {file_extension}")
-            return None
-
-        print("\n--- File Content ---")
-        print(content)
-        print("--- End of Content ---\n")
-
-        # Speak a limited preview
-        speak_limit = min(len(content), 1000)
-        speak(content[:speak_limit])
-        if speak_limit < len(content):
-            speak("Content was truncated for speech. The full content is shown in the console.")
-        
-        return content
-
-    except Exception as e:
-        speak(f"An error occurred while reading the file: {e}")
-        print(f"An error occurred while reading the file: {e}")
-        return None
-    
-def delete_file(file_path, skip_confirmation=False):
-    """Deletes a file after user voice confirmation."""
-    try:
-        file_to_delete = Path(file_path).resolve()
-        if not file_to_delete.is_file():
-            speak(f"The file {file_path} does not exist.")
-            return False
-            
-        if not skip_confirmation:
-            speak(f"Are you sure you want to permanently delete the file: {file_to_delete.name}? Please say yes to confirm.")
-            confirmation = recognize_speech() # Get voice confirmation
-            
-            if not confirmation or 'yes' not in confirmation.lower():
-                speak("File deletion cancelled.")
-                return False
-                
-        # Perform the deletion
-        os.remove(file_to_delete)
-        speak(f"The file {file_to_delete.name} has been permanently deleted.")
-        return True
-        
-    except Exception as e:
-        speak(f"An error occurred while deleting the file: {e}")
-        return False
-
-def create_directory(directory_path):
-    """Creates a new directory."""
-    try:
-        directory_path = Path(directory_path)
-        if directory_path.exists():
-            speak(f"Directory {directory_path} already exists.")
-            return False
-            
-        directory_path.mkdir(parents=True, exist_ok=True)
-        speak(f"Created directory: {directory_path}")
-        return True
-    except Exception as e:
-        speak(f"An error occurred while creating the directory: {e}")
-        print(f"An error occurred while creating the directory: {e}")
-        return False
-
-def list_directory(directory_path='.'):
-    """Lists the contents of a directory."""
-    try:
-        directory_path = Path(directory_path)
-        if not directory_path.exists():
-            speak(f"Directory {directory_path} does not exist.")
-            return False
-            
-        if not directory_path.is_dir():
-            speak(f"{directory_path} is not a directory.")
-            return False
-            
-        # Get files and directories
-        items = list(directory_path.iterdir())
-        files = [item for item in items if item.is_file()]
-        dirs = [item for item in items if item.is_dir()]
-        
-        # Speak summary
-        speak(f"Directory {directory_path} contains {len(files)} files and {len(dirs)} subdirectories.")
-        
-        # List subdirectories
-        if dirs:
-            speak("Subdirectories:")
-            for d in dirs:
-                print(f"📁 {d.name}")
-                
-        # List files
-        if files:
-            speak("Files:")
-            for f in files:
-                size_kb = f.stat().st_size / 1024
-                print(f"📄 {f.name} ({size_kb:.1f} KB)")
-                
-        return True
-    except Exception as e:
-        speak(f"An error occurred while listing the directory: {e}")
-        print(f"An error occurred while listing the directory: {e}")
-        return False
+        logger.error(f"Error managing process: {e}")
+        return f"Error: {str(e)}"

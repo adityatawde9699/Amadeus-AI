@@ -357,6 +357,9 @@ class Amadeus:
             Tool("search_file", search_file,
                  "Searches for files. Args: file_name (str), search_directory (optional)",
                  ToolCategory.SYSTEM, {'file_name': 'str'}),
+            Tool("read_file", read_file,
+                "Reads content from a file (PDF, DOCX, TXT, Images). Args: file_path (str)",
+                 ToolCategory.SYSTEM, {'file_path': 'str'}),
              # --- NEW: Open Websites ---
             Tool("open_website", open_website,
                  "Opens a website or performs a Google search. Args: query (str - url or search term)",
@@ -829,44 +832,43 @@ User: {prompt}
             print("✓ Amadeus shutdown complete.")
         except Exception as e:
             logger.error(f"Shutdown error: {e}", exc_info=True)
-    
-    
-    # Enhanced entry point with better CLI
-    if __name__ == "__main__":
-        import argparse
+
+ # Enhanced entry point with better CLI
+if __name__ == "__main__":
+    import argparse
         
-        parser = argparse.ArgumentParser(
-            description="Amadeus AI Assistant",
-            formatter_class=argparse.RawDescriptionHelpFormatter,
-            epilog="""
+    parser = argparse.ArgumentParser(
+        description="Amadeus AI Assistant",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
     Examples:
       python amadeus.py              # Run normally with voice
       python amadeus.py --debug      # Text-only debug mode
       python amadeus.py --brief      # Show daily brief and exit
             """
         )
-        parser.add_argument('--debug', '-d', action='store_true', 
-                           help='Run in debug/text mode (no voice)')
-        parser.add_argument('--brief', '-b', action='store_true', 
-                           help='Show daily briefing and exit')
-        parser.add_argument('--no-voice', action='store_true',
-                           help='Disable voice output but run normally')
-        parser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
-                           default='INFO', help='Set logging level')
+    parser.add_argument('--debug', '-d', action='store_true', 
+                help='Run in debug/text mode (no voice)')
+    parser.add_argument('--brief', '-b', action='store_true', 
+                help='Show daily briefing and exit')
+    parser.add_argument('--no-voice', action='store_true',
+                help='Disable voice output but run normally')
+    parser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+                default='INFO', help='Set logging level')
         
-        args = parser.parse_args()
+    args = parser.parse_args()
         
         # Configure logging
-        logging.getLogger('Amadeus').setLevel(getattr(logging, args.log_level))
+    logging.getLogger('Amadeus').setLevel(getattr(logging, args.log_level))
         
         # Initialize assistant
-        assistant = Amadeus( # pyright: ignore[reportUndefinedVariable]
-            debug_mode=args.debug,
-            voice_enabled=not (args.debug or args.no_voice)
-        )
+    assistant = Amadeus( # pyright: ignore[reportUndefinedVariable]
+        debug_mode=args.debug,
+        voice_enabled=not (args.debug or args.no_voice)
+    )
         
-        if args.brief:
-            brief = asyncio.run(assistant.generate_daily_brief())
-            print(brief)
-        else:
-            assistant.start()
+    if args.brief:
+        brief = asyncio.run(assistant.generate_daily_brief())
+        print(brief)
+    else:
+        assistant.start()

@@ -8022,3 +8022,413 @@
 2025-11-21 22:38:27,886 - faster_whisper - INFO - Processing audio with duration 00:05.480
 2025-11-21 22:38:28,566 - faster_whisper - INFO - Detected language 'en' with probability 0.80
 2025-11-21 22:38:31,068 - Amadeus - INFO - Amadeus shutdown complete
+2025-11-23 18:51:22,055 - Amadeus - WARNING - Optional API key 'NEWS_API_KEY' not configured
+2025-11-23 18:51:22,056 - Amadeus - WARNING - Optional API key 'WEATHER_API_KEY' not configured
+2025-11-23 18:51:22,056 - Amadeus - INFO - API keys validated successfully
+2025-11-23 18:51:22,057 - Amadeus - INFO - Gemini API configured successfully
+2025-11-23 18:51:22,098 - Amadeus - INFO - Amadeus initialized with 24 tools
+2025-11-23 18:51:27,059 - Amadeus - INFO - Initializing database...
+2025-11-23 18:51:30,549 - faster_whisper - INFO - Processing audio with duration 00:01.440
+2025-11-23 18:51:31,418 - faster_whisper - INFO - Detected language 'en' with probability 0.61
+2025-11-23 18:51:33,524 - Amadeus - INFO - Processing command: Come on, here is....
+2025-11-23 18:51:35,445 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 18:51:41,041 - faster_whisper - INFO - Processing audio with duration 00:01.834
+2025-11-23 18:51:41,798 - faster_whisper - INFO - Detected language 'en' with probability 0.45
+2025-11-23 18:51:42,596 - Amadeus - INFO - Processing command: I'm Ades, how are you?...
+2025-11-23 18:51:43,734 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 18:51:50,709 - faster_whisper - INFO - Processing audio with duration 00:04.667
+2025-11-23 18:51:51,785 - faster_whisper - INFO - Detected language 'en' with probability 0.72
+2025-11-23 18:51:52,636 - Amadeus - INFO - Processing command: can you hear amadios?...
+2025-11-23 18:51:54,050 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 18:51:58,771 - faster_whisper - INFO - Processing audio with duration 00:02.090
+2025-11-23 18:51:59,460 - faster_whisper - INFO - Detected language 'en' with probability 0.33
+2025-11-23 18:52:00,279 - Amadeus - INFO - Processing command: Your name is Amidus....
+2025-11-23 18:52:01,246 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 18:52:06,233 - faster_whisper - INFO - Processing audio with duration 00:02.485
+2025-11-23 18:52:06,983 - faster_whisper - INFO - Detected language 'en' with probability 0.70
+2025-11-23 18:52:07,760 - Amadeus - INFO - Processing command: your right, my name is Amarir....
+2025-11-23 18:52:08,792 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 18:52:14,728 - faster_whisper - INFO - Processing audio with duration 00:03.460
+2025-11-23 18:52:15,521 - faster_whisper - INFO - Detected language 'en' with probability 0.32
+2025-11-23 18:52:16,358 - Amadeus - INFO - Processing command: open facebook for me...
+2025-11-23 18:52:17,497 - Amadeus - INFO - Tool selection: open_website (confidence: 0.95)
+2025-11-23 18:52:17,498 - Amadeus - INFO - Executing tool 'open_website' with args: {'query': 'facebook.com'} (attempt 1)
+2025-11-23 18:52:25,340 - faster_whisper - INFO - Processing audio with duration 00:05.619
+2025-11-23 18:52:26,266 - faster_whisper - INFO - Detected language 'en' with probability 0.69
+2025-11-23 18:52:27,182 - Amadeus - INFO - Processing command: WW dot ok and you make decisions ok am I yes...
+2025-11-23 18:52:28,098 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 18:52:35,265 - faster_whisper - INFO - Processing audio with duration 00:03.669
+2025-11-23 18:52:35,937 - faster_whisper - INFO - Detected language 'nl' with probability 0.36
+2025-11-23 18:52:39,467 - Amadeus - WARNING - Speech recognition timeout
+2025-11-23 18:52:45,170 - faster_whisper - INFO - Processing audio with duration 00:02.206
+2025-11-23 18:52:45,879 - faster_whisper - INFO - Detected language 'en' with probability 0.36
+2025-11-23 18:52:49,188 - faster_whisper - INFO - Processing audio with duration 00:01.532
+2025-11-23 18:52:49,851 - faster_whisper - INFO - Detected language 'en' with probability 0.59
+2025-11-23 18:52:51,580 - Amadeus - INFO - Processing command: ah...
+2025-11-23 18:52:52,662 - Amadeus - INFO - Tool selection: open_website (confidence: 0.6)
+2025-11-23 18:52:52,663 - Amadeus - INFO - Executing tool 'open_website' with args: {'query': 'ah'} (attempt 1)
+2025-11-23 18:52:59,250 - faster_whisper - INFO - Processing audio with duration 00:03.924
+2025-11-23 18:53:00,063 - faster_whisper - INFO - Detected language 'en' with probability 0.28
+2025-11-23 18:53:01,179 - Amadeus - INFO - Processing command: Ah, so I'll just get there, you know....
+2025-11-23 18:53:02,176 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 18:53:06,632 - faster_whisper - INFO - Processing audio with duration 00:02.601
+2025-11-23 18:53:07,389 - faster_whisper - INFO - Detected language 'id' with probability 0.21
+2025-11-23 18:53:09,692 - Amadeus - INFO - Processing command: 3BK PDR4...
+2025-11-23 18:53:10,910 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 18:53:16,920 - faster_whisper - INFO - Processing audio with duration 00:03.692
+2025-11-23 18:53:17,608 - faster_whisper - INFO - Detected language 'en' with probability 0.78
+2025-11-23 18:53:19,026 - Amadeus - INFO - Processing command: search Wikipedia for Anna Donkey....
+2025-11-23 18:53:20,223 - Amadeus - INFO - Tool selection: wikipedia_search (confidence: 0.95)
+2025-11-23 18:53:20,224 - Amadeus - INFO - Executing tool 'wikipedia_search' with args: {'query': 'Anna Donkey'} (attempt 1)
+2025-11-23 18:53:32,445 - faster_whisper - INFO - Processing audio with duration 00:04.853
+2025-11-23 18:53:33,174 - faster_whisper - INFO - Detected language 'en' with probability 0.64
+2025-11-23 18:53:33,890 - Amadeus - INFO - Processing command: search Wikipedia for Alexander the Great....
+2025-11-23 18:53:35,003 - Amadeus - INFO - Tool selection: wikipedia_search (confidence: 0.95)
+2025-11-23 18:53:35,004 - Amadeus - INFO - Executing tool 'wikipedia_search' with args: {'query': 'Alexander the Great'} (attempt 1)
+2025-11-23 18:53:42,832 - faster_whisper - INFO - Processing audio with duration 00:03.228
+2025-11-23 18:53:43,477 - faster_whisper - INFO - Detected language 'en' with probability 0.30
+2025-11-23 18:53:48,378 - faster_whisper - INFO - Processing audio with duration 00:03.460
+2025-11-23 18:53:49,061 - faster_whisper - INFO - Detected language 'en' with probability 0.70
+2025-11-23 18:53:49,786 - Amadeus - INFO - Processing command: search Wikipedia for Alexander the Great....
+2025-11-23 18:53:50,880 - Amadeus - INFO - Tool selection: wikipedia_search (confidence: 0.95)
+2025-11-23 18:53:50,880 - Amadeus - INFO - Executing tool 'wikipedia_search' with args: {'query': 'Alexander the Great'} (attempt 1)
+2025-11-23 18:54:01,049 - faster_whisper - INFO - Processing audio with duration 00:08.266
+2025-11-23 18:54:01,217 - Amadeus - WARNING - Speech recognition timeout
+2025-11-23 18:54:01,880 - faster_whisper - INFO - Detected language 'en' with probability 0.86
+2025-11-23 18:54:10,428 - faster_whisper - INFO - Processing audio with duration 00:01.695
+2025-11-23 18:54:11,163 - faster_whisper - INFO - Detected language 'en' with probability 0.64
+2025-11-23 18:54:12,549 - Amadeus - INFO - Processing command: Uh-huh....
+2025-11-23 18:54:13,550 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 18:54:17,913 - faster_whisper - INFO - Processing audio with duration 00:01.974
+2025-11-23 18:54:18,587 - faster_whisper - INFO - Detected language 'en' with probability 0.67
+2025-11-23 18:54:19,292 - Amadeus - INFO - Processing command: Okay, note this....
+2025-11-23 18:54:20,421 - Amadeus - INFO - Tool selection: create_note (confidence: 0.8)
+2025-11-23 18:54:20,422 - Amadeus - INFO - Executing tool 'create_note' with args: {'title': 'Untitled', 'content': 'this'} (attempt 1)
+2025-11-23 18:54:26,918 - faster_whisper - INFO - Processing audio with duration 00:02.299
+2025-11-23 18:54:27,622 - faster_whisper - INFO - Detected language 'en' with probability 0.95
+2025-11-23 18:54:28,449 - Amadeus - INFO - Processing command: and title note created....
+2025-11-23 18:54:29,449 - Amadeus - INFO - Tool selection: create_note (confidence: 0.8)
+2025-11-23 18:54:29,449 - Amadeus - INFO - Executing tool 'create_note' with args: {'title': 'note', 'content': 'created'} (attempt 1)
+2025-11-23 18:54:35,900 - faster_whisper - INFO - Processing audio with duration 00:03.622
+2025-11-23 18:54:36,576 - faster_whisper - INFO - Detected language 'en' with probability 0.69
+2025-11-23 18:54:37,384 - Amadeus - INFO - Processing command: Note that I have to repair some of your features....
+2025-11-23 18:54:38,686 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 18:54:45,670 - faster_whisper - INFO - Processing audio with duration 00:03.947
+2025-11-23 18:54:46,367 - faster_whisper - INFO - Detected language 'en' with probability 0.70
+2025-11-23 18:54:48,789 - Amadeus - INFO - Processing command: one-oversational. Note this....
+2025-11-23 18:54:50,053 - Amadeus - INFO - Tool selection: create_note (confidence: 0.8)
+2025-11-23 18:54:50,054 - Amadeus - INFO - Executing tool 'create_note' with args: {'title': 'one-oversational', 'content': 'Note this.'} (attempt 1)
+2025-11-23 18:54:53,667 - faster_whisper - INFO - Processing audio with duration 00:01.556
+2025-11-23 18:54:54,384 - faster_whisper - INFO - Detected language 'en' with probability 0.34
+2025-11-23 18:54:56,523 - Amadeus - INFO - Processing command: uh...
+2025-11-23 18:54:57,550 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 18:55:05,269 - faster_whisper - INFO - Processing audio with duration 00:01.579
+2025-11-23 18:55:05,982 - faster_whisper - INFO - Detected language 'en' with probability 0.69
+2025-11-23 18:55:06,721 - Amadeus - INFO - Processing command: update notice....
+2025-11-23 18:55:07,762 - Amadeus - INFO - Tool selection: update_note (confidence: 0.4)
+2025-11-23 18:55:07,763 - Amadeus - INFO - Executing tool 'update_note' with args: {'note_id': 'unknown', 'title/content/tags (optional)': 'unknown'} (attempt 1)
+2025-11-23 18:55:12,516 - faster_whisper - INFO - Processing audio with duration 00:01.416
+2025-11-23 18:55:13,168 - faster_whisper - INFO - Detected language 'en' with probability 0.84
+2025-11-23 18:55:13,864 - Amadeus - INFO - Processing command: ok....
+2025-11-23 18:55:14,952 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 18:55:21,167 - faster_whisper - INFO - Processing audio with duration 00:03.413
+2025-11-23 18:55:22,244 - faster_whisper - INFO - Detected language 'en' with probability 0.78
+2025-11-23 18:55:23,092 - Amadeus - INFO - Processing command: understand nothing can you search Wikipedia?...
+2025-11-23 18:55:24,256 - Amadeus - INFO - Tool selection: wikipedia_search (confidence: 0.9)
+2025-11-23 18:55:24,257 - Amadeus - INFO - Executing tool 'wikipedia_search' with args: {'query': 'nothing'} (attempt 1)
+2025-11-23 18:55:33,081 - faster_whisper - INFO - Processing audio with duration 00:06.269
+2025-11-23 18:55:33,791 - faster_whisper - INFO - Detected language 'en' with probability 0.87
+2025-11-23 18:55:34,582 - Amadeus - INFO - Processing command: So, search Wikipedia error nothing okay search Wik...
+2025-11-23 18:55:35,624 - Amadeus - INFO - Tool selection: wikipedia_search (confidence: 0.95)
+2025-11-23 18:55:35,625 - Amadeus - INFO - Executing tool 'wikipedia_search' with args: {'query': 'Alexander the great'} (attempt 1)
+2025-11-23 18:55:43,906 - faster_whisper - INFO - Processing audio with duration 00:01.904
+2025-11-23 18:55:44,576 - faster_whisper - INFO - Detected language 'te' with probability 0.28
+2025-11-23 18:55:51,250 - Amadeus - WARNING - Speech recognition timeout
+2025-11-23 18:55:58,978 - faster_whisper - INFO - Processing audio with duration 00:01.115
+2025-11-23 18:55:59,945 - faster_whisper - INFO - Detected language 'en' with probability 0.44
+2025-11-23 18:56:02,805 - faster_whisper - INFO - Processing audio with duration 00:01.184
+2025-11-23 18:56:03,510 - faster_whisper - INFO - Detected language 'en' with probability 0.17
+2025-11-23 18:56:05,413 - Amadeus - INFO - Processing command: browser...
+2025-11-23 18:56:06,553 - Amadeus - INFO - Tool selection: open_program (confidence: 0.8)
+2025-11-23 18:56:06,554 - Amadeus - INFO - Executing tool 'open_program' with args: {'app_name': 'browser'} (attempt 1)
+2025-11-23 18:56:10,337 - faster_whisper - INFO - Processing audio with duration 00:01.788
+2025-11-23 18:56:11,064 - faster_whisper - INFO - Detected language 'en' with probability 0.66
+2025-11-23 18:56:13,183 - Amadeus - INFO - Processing command: Alright, so I'm up here....
+2025-11-23 18:56:14,539 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 18:56:18,714 - faster_whisper - INFO - Processing audio with duration 00:01.788
+2025-11-23 18:56:19,388 - faster_whisper - INFO - Detected language 'id' with probability 0.39
+2025-11-23 18:56:20,167 - Amadeus - INFO - Processing command: Oppa nanti brawjar....
+2025-11-23 18:56:21,520 - Amadeus - INFO - Tool selection: add_task (confidence: 0.7)
+2025-11-23 18:56:21,521 - Amadeus - INFO - Executing tool 'add_task' with args: {'task_content': 'Oppa nanti brawjar'} (attempt 1)
+2025-11-23 18:56:24,659 - faster_whisper - INFO - Processing audio with duration 00:01.486
+2025-11-23 18:56:25,365 - faster_whisper - INFO - Detected language 'en' with probability 0.30
+2025-11-23 18:56:27,251 - Amadeus - INFO - Processing command: What's that?...
+2025-11-23 18:56:28,470 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 18:56:34,037 - faster_whisper - INFO - Processing audio with duration 00:01.625
+2025-11-23 18:56:34,712 - faster_whisper - INFO - Detected language 'pt' with probability 0.23
+2025-11-23 18:56:36,982 - Amadeus - INFO - Processing command: Opa, né de braus, né?...
+2025-11-23 18:56:38,096 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 18:56:43,207 - faster_whisper - INFO - Processing audio with duration 00:02.647
+2025-11-23 18:56:43,877 - faster_whisper - INFO - Detected language 'en' with probability 0.59
+2025-11-23 18:56:45,656 - Amadeus - INFO - Processing command: Open edge browser....
+2025-11-23 18:56:46,903 - Amadeus - INFO - Tool selection: open_program (confidence: 0.95)
+2025-11-23 18:56:46,904 - Amadeus - INFO - Executing tool 'open_program' with args: {'app_name': 'edge'} (attempt 1)
+2025-11-23 18:57:02,316 - faster_whisper - INFO - Processing audio with duration 00:02.090
+2025-11-23 18:57:03,681 - faster_whisper - INFO - Detected language 'en' with probability 0.66
+2025-11-23 18:57:06,835 - Amadeus - INFO - Processing command: later....
+2025-11-23 18:57:08,074 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 18:57:15,374 - faster_whisper - INFO - Processing audio with duration 00:01.695
+2025-11-23 18:57:16,902 - faster_whisper - INFO - Detected language 'en' with probability 0.31
+2025-11-23 18:57:23,321 - faster_whisper - INFO - Processing audio with duration 00:04.272
+2025-11-23 18:57:24,321 - faster_whisper - INFO - Detected language 'hi' with probability 0.27
+2025-11-23 18:57:27,637 - Amadeus - INFO - Processing command: O pen & calculator.  Liter neeri.  Calculator....
+2025-11-23 18:57:28,785 - Amadeus - INFO - Tool selection: open_program (confidence: 0.6)
+2025-11-23 18:57:28,786 - Amadeus - INFO - Executing tool 'open_program' with args: {'app_name': 'calculator'} (attempt 1)
+2025-11-23 18:57:33,811 - faster_whisper - INFO - Processing audio with duration 00:02.392
+2025-11-23 18:57:34,598 - faster_whisper - INFO - Detected language 'en' with probability 0.31
+2025-11-23 18:57:35,505 - Amadeus - INFO - Processing command: Okay, close calculator....
+2025-11-23 18:57:36,601 - Amadeus - INFO - Tool selection: conversational (confidence: 0.9)
+2025-11-23 18:57:47,734 - faster_whisper - INFO - Processing audio with duration 00:04.272
+2025-11-23 18:57:47,888 - Amadeus - WARNING - Speech recognition timeout
+2025-11-23 18:57:48,954 - faster_whisper - INFO - Detected language 'en' with probability 0.72
+2025-11-23 18:57:49,676 - faster_whisper - INFO - Processing audio with duration 00:00.929
+2025-11-23 18:57:50,941 - faster_whisper - INFO - Detected language 'en' with probability 0.64
+2025-11-23 18:57:52,917 - Amadeus - INFO - Processing command: It's neat thing....
+2025-11-23 18:57:54,180 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 18:57:58,885 - faster_whisper - INFO - Processing audio with duration 00:01.811
+2025-11-23 18:57:59,809 - faster_whisper - INFO - Detected language 'en' with probability 0.61
+2025-11-23 18:58:02,842 - Amadeus - INFO - Processing command: and please miss...
+2025-11-23 18:58:03,840 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 18:58:09,409 - faster_whisper - INFO - Processing audio with duration 00:02.833
+2025-11-23 18:58:10,431 - faster_whisper - INFO - Detected language 'en' with probability 0.72
+2025-11-23 18:58:11,421 - Amadeus - INFO - Processing command: What is the distance between America and India?...
+2025-11-23 18:58:12,574 - Amadeus - INFO - Tool selection: open_website (confidence: 0.95)
+2025-11-23 18:58:12,574 - Amadeus - INFO - Executing tool 'open_website' with args: {'query': 'distance between America and India'} (attempt 1)
+2025-11-23 18:58:23,109 - faster_whisper - INFO - Processing audio with duration 00:01.858
+2025-11-23 18:58:24,201 - faster_whisper - INFO - Detected language 'en' with probability 0.59
+2025-11-23 18:58:26,374 - Amadeus - INFO - Processing command: This is the story....
+2025-11-23 18:58:27,488 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 18:58:36,612 - faster_whisper - INFO - Processing audio with duration 00:05.805
+2025-11-23 18:58:37,316 - faster_whisper - INFO - Detected language 'en' with probability 0.67
+2025-11-23 18:58:38,161 - Amadeus - INFO - Processing command: Tell me the distance between America and India and...
+2025-11-23 18:58:39,135 - Amadeus - INFO - Tool selection: open_website (confidence: 0.95)
+2025-11-23 18:58:39,135 - Amadeus - INFO - Executing tool 'open_website' with args: {'query': 'distance between America and India'} (attempt 1)
+2025-11-23 18:58:44,730 - faster_whisper - INFO - Processing audio with duration 00:01.324
+2025-11-23 18:58:45,635 - faster_whisper - INFO - Detected language 'en' with probability 0.54
+2025-11-23 18:58:51,736 - faster_whisper - INFO - Processing audio with duration 00:03.808
+2025-11-23 18:58:52,453 - faster_whisper - INFO - Detected language 'en' with probability 0.74
+2025-11-23 18:58:53,329 - Amadeus - INFO - Processing command: distance between America and Canada and do not...
+2025-11-23 18:58:54,365 - Amadeus - INFO - Tool selection: open_website (confidence: 0.9)
+2025-11-23 18:58:54,367 - Amadeus - INFO - Executing tool 'open_website' with args: {'query': 'distance between America and Canada'} (attempt 1)
+2025-11-23 18:59:04,173 - faster_whisper - INFO - Processing audio with duration 00:05.921
+2025-11-23 18:59:05,036 - faster_whisper - INFO - Detected language 'en' with probability 0.81
+2025-11-23 18:59:05,084 - Amadeus - WARNING - Speech recognition timeout
+2025-11-23 18:59:19,220 - faster_whisper - INFO - Processing audio with duration 00:05.550
+2025-11-23 18:59:19,977 - faster_whisper - INFO - Detected language 'en' with probability 0.66
+2025-11-23 18:59:20,229 - Amadeus - WARNING - Speech recognition timeout
+2025-11-23 18:59:23,252 - faster_whisper - INFO - Processing audio with duration 00:00.859
+2025-11-23 18:59:23,926 - faster_whisper - INFO - Detected language 'en' with probability 0.81
+2025-11-23 18:59:24,709 - Amadeus - INFO - Processing command: I am having trouble....
+2025-11-23 18:59:25,944 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 18:59:30,096 - faster_whisper - INFO - Processing audio with duration 00:01.602
+2025-11-23 18:59:30,804 - faster_whisper - INFO - Detected language 'en' with probability 0.78
+2025-11-23 18:59:33,012 - Amadeus - INFO - Processing command: More or less like this....
+2025-11-23 18:59:34,023 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 18:59:43,704 - faster_whisper - INFO - Processing audio with duration 00:01.463
+2025-11-23 18:59:44,476 - faster_whisper - INFO - Detected language 'en' with probability 0.44
+2025-11-23 18:59:50,124 - faster_whisper - INFO - Processing audio with duration 00:03.738
+2025-11-23 18:59:50,912 - faster_whisper - INFO - Detected language 'en' with probability 0.51
+2025-11-23 18:59:51,824 - Amadeus - INFO - Processing command: The big function is not working well....
+2025-11-23 18:59:52,983 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 19:00:01,678 - faster_whisper - INFO - Processing audio with duration 00:02.624
+2025-11-23 19:00:02,691 - faster_whisper - INFO - Detected language 'en' with probability 0.68
+2025-11-23 19:00:04,922 - Amadeus - WARNING - Speech recognition timeout
+2025-11-23 19:00:08,171 - faster_whisper - INFO - Processing audio with duration 00:02.647
+2025-11-23 19:00:08,927 - faster_whisper - INFO - Detected language 'en' with probability 0.45
+2025-11-23 19:00:16,603 - faster_whisper - INFO - Processing audio with duration 00:05.759
+2025-11-23 19:00:17,339 - faster_whisper - INFO - Detected language 'en' with probability 0.64
+2025-11-23 19:00:18,168 - Amadeus - INFO - Processing command: critical error critical error...
+2025-11-23 19:00:19,555 - Amadeus - INFO - Tool selection: system_status (confidence: 0.7)
+2025-11-23 19:00:19,556 - Amadeus - INFO - Executing tool 'system_status' with args: {} (attempt 1)
+2025-11-23 19:00:33,863 - faster_whisper - INFO - Processing audio with duration 00:02.508
+2025-11-23 19:00:34,647 - faster_whisper - INFO - Detected language 'en' with probability 0.30
+2025-11-23 19:00:35,533 - Amadeus - INFO - Processing command: Really?...
+2025-11-23 19:00:37,246 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 19:00:43,080 - faster_whisper - INFO - Processing audio with duration 00:02.183
+2025-11-23 19:00:43,964 - faster_whisper - INFO - Detected language 'en' with probability 0.58
+2025-11-23 19:00:44,927 - Amadeus - INFO - Processing command: Oh, you, you, you, you....
+2025-11-23 19:00:46,025 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 19:00:52,272 - faster_whisper - INFO - Processing audio with duration 00:03.553
+2025-11-23 19:00:52,932 - faster_whisper - INFO - Detected language 'en' with probability 0.37
+2025-11-23 19:00:55,057 - Amadeus - INFO - Processing command: and...
+2025-11-23 19:00:56,133 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 19:01:02,653 - faster_whisper - INFO - Processing audio with duration 00:02.159
+2025-11-23 19:01:04,045 - faster_whisper - INFO - Detected language 'en' with probability 0.66
+2025-11-23 19:01:05,703 - Amadeus - INFO - Processing command: Get me the notes summary....
+2025-11-23 19:01:06,845 - Amadeus - INFO - Tool selection: get_notes_summary (confidence: 0.95)
+2025-11-23 19:01:06,846 - Amadeus - INFO - Executing tool 'get_notes_summary' with args: {} (attempt 1)
+2025-11-23 19:01:18,614 - faster_whisper - INFO - Processing audio with duration 00:04.133
+2025-11-23 19:01:19,350 - faster_whisper - INFO - Detected language 'en' with probability 0.42
+2025-11-23 19:01:20,218 - Amadeus - INFO - Processing command: Okay.  Delete notes....
+2025-11-23 19:01:21,232 - Amadeus - INFO - Tool selection: delete_note (confidence: 0.6)
+2025-11-23 19:01:34,511 - faster_whisper - INFO - Processing audio with duration 00:01.416
+2025-11-23 19:01:35,193 - faster_whisper - INFO - Detected language 'en' with probability 0.52
+2025-11-23 19:01:36,177 - Amadeus - INFO - Processing command: delete node....
+2025-11-23 19:01:37,235 - Amadeus - INFO - Tool selection: delete_task (confidence: 0.7)
+2025-11-23 19:01:41,213 - faster_whisper - INFO - Processing audio with duration 00:01.904
+2025-11-23 19:01:41,884 - faster_whisper - INFO - Detected language 'en' with probability 0.38
+2025-11-23 19:01:42,710 - Amadeus - INFO - Executing tool 'delete_task' with args: {'identifier': 'node'} (attempt 1)
+2025-11-23 19:01:48,778 - faster_whisper - INFO - Processing audio with duration 00:04.180
+2025-11-23 19:01:49,540 - faster_whisper - INFO - Detected language 'en' with probability 0.59
+2025-11-23 19:01:50,302 - Amadeus - INFO - Processing command: delete notes...
+2025-11-23 19:01:51,357 - Amadeus - INFO - Tool selection: delete_note (confidence: 0.6)
+2025-11-23 19:01:56,739 - faster_whisper - INFO - Processing audio with duration 00:02.159
+2025-11-23 19:01:57,484 - faster_whisper - INFO - Detected language 'en' with probability 0.82
+2025-11-23 19:01:58,403 - Amadeus - INFO - Executing tool 'delete_note' with args: {'note_id': 0} (attempt 1)
+2025-11-23 19:02:08,771 - faster_whisper - INFO - Processing audio with duration 00:01.440
+2025-11-23 19:02:09,478 - faster_whisper - INFO - Detected language 'en' with probability 0.48
+2025-11-23 19:02:10,241 - Amadeus - INFO - Processing command: update mode....
+2025-11-23 19:02:11,160 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 19:02:17,164 - faster_whisper - INFO - Processing audio with duration 00:01.509
+2025-11-23 19:02:17,926 - faster_whisper - INFO - Detected language 'en' with probability 0.39
+2025-11-23 19:02:18,762 - Amadeus - INFO - Processing command: Thank you....
+2025-11-23 19:02:19,833 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 19:02:24,748 - faster_whisper - INFO - Processing audio with duration 00:02.276
+2025-11-23 19:02:25,630 - faster_whisper - INFO - Detected language 'ja' with probability 0.17
+2025-11-23 19:02:27,799 - Amadeus - INFO - Processing command: じゃなな...
+2025-11-23 19:02:29,104 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 19:02:35,347 - faster_whisper - INFO - Processing audio with duration 00:02.670
+2025-11-23 19:02:36,061 - faster_whisper - INFO - Detected language 'hi' with probability 0.21
+2025-11-23 19:02:36,917 - Amadeus - INFO - Processing command: tell me a joke....
+2025-11-23 19:02:38,069 - Amadeus - INFO - Tool selection: tell_joke (confidence: 1.0)
+2025-11-23 19:02:38,070 - Amadeus - INFO - Executing tool 'tell_joke' with args: {} (attempt 1)
+2025-11-23 19:02:45,950 - faster_whisper - INFO - Processing audio with duration 00:01.440
+2025-11-23 19:02:46,671 - faster_whisper - INFO - Detected language 'hi' with probability 0.61
+2025-11-23 19:02:48,838 - Amadeus - INFO - Processing command: Nanje deska....
+2025-11-23 19:02:49,880 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 19:02:57,804 - faster_whisper - INFO - Processing audio with duration 00:02.113
+2025-11-23 19:02:58,577 - faster_whisper - INFO - Detected language 'nn' with probability 0.31
+2025-11-23 19:03:06,249 - faster_whisper - INFO - Processing audio with duration 00:01.486
+2025-11-23 19:03:06,910 - faster_whisper - INFO - Detected language 'ja' with probability 0.88
+2025-11-23 19:03:07,978 - Amadeus - INFO - Processing command: 何者ですか...
+2025-11-23 19:03:09,088 - Amadeus - INFO - Tool selection: wikipedia_search (confidence: 0.8)
+2025-11-23 19:03:09,089 - Amadeus - INFO - Executing tool 'wikipedia_search' with args: {'query': '何者ですか'} (attempt 1)
+2025-11-23 19:03:15,764 - faster_whisper - INFO - Processing audio with duration 00:01.440
+2025-11-23 19:03:16,432 - faster_whisper - INFO - Detected language 'zh' with probability 0.28
+2025-11-23 19:03:18,159 - Amadeus - INFO - Processing command: 我都...
+2025-11-23 19:03:19,098 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 19:03:24,273 - faster_whisper - INFO - Processing audio with duration 00:02.624
+2025-11-23 19:03:25,030 - faster_whisper - INFO - Detected language 'en' with probability 0.37
+2025-11-23 19:03:28,065 - faster_whisper - INFO - Processing audio with duration 00:01.254
+2025-11-23 19:03:28,747 - faster_whisper - INFO - Detected language 'en' with probability 0.32
+2025-11-23 19:03:32,478 - faster_whisper - INFO - Processing audio with duration 00:02.020
+2025-11-23 19:03:33,227 - faster_whisper - INFO - Detected language 'en' with probability 0.38
+2025-11-23 19:03:39,900 - faster_whisper - INFO - Processing audio with duration 00:04.505
+2025-11-23 19:03:40,612 - faster_whisper - INFO - Detected language 'en' with probability 0.47
+2025-11-23 19:03:41,499 - Amadeus - INFO - Processing command: How will I say what time it is in Japanese?...
+2025-11-23 19:03:42,894 - Amadeus - INFO - Tool selection: open_website (confidence: 0.7)
+2025-11-23 19:03:42,894 - Amadeus - INFO - Executing tool 'open_website' with args: {'query': 'how to tell time in Japanese'} (attempt 1)
+2025-11-23 19:03:48,716 - faster_whisper - INFO - Processing audio with duration 00:01.904
+2025-11-23 19:03:50,453 - faster_whisper - INFO - Detected language 'en' with probability 0.43
+2025-11-23 19:03:56,262 - faster_whisper - INFO - Processing audio with duration 00:02.113
+2025-11-23 19:03:57,125 - faster_whisper - INFO - Detected language 'en' with probability 0.51
+2025-11-23 19:03:58,262 - Amadeus - INFO - Processing command: Thank you....
+2025-11-23 19:03:59,560 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 19:04:09,419 - faster_whisper - INFO - Processing audio with duration 00:03.367
+2025-11-23 19:04:10,084 - faster_whisper - INFO - Detected language 'en' with probability 0.82
+2025-11-23 19:04:10,908 - Amadeus - INFO - Processing command: I ran just as I say thank you to you....
+2025-11-23 19:04:11,968 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 19:04:19,952 - faster_whisper - INFO - Processing audio with duration 00:04.969
+2025-11-23 19:04:20,635 - faster_whisper - INFO - Detected language 'en' with probability 0.43
+2025-11-23 19:04:21,522 - Amadeus - INFO - Processing command: Your search in Google too much, and until you usin...
+2025-11-23 19:04:22,433 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 19:04:36,380 - faster_whisper - INFO - Processing audio with duration 00:02.113
+2025-11-23 19:04:37,021 - faster_whisper - INFO - Detected language 'te' with probability 0.55
+2025-11-23 19:04:39,686 - Amadeus - WARNING - Speech recognition timeout
+2025-11-23 19:04:41,494 - faster_whisper - INFO - Processing audio with duration 00:01.161
+2025-11-23 19:04:42,622 - faster_whisper - INFO - Detected language 'en' with probability 0.45
+2025-11-23 19:04:44,346 - Amadeus - INFO - Processing command: Thank you....
+2025-11-23 19:04:45,981 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 19:04:52,126 - faster_whisper - INFO - Processing audio with duration 00:02.763
+2025-11-23 19:04:52,811 - faster_whisper - INFO - Detected language 'ar' with probability 0.34
+2025-11-23 19:04:55,133 - Amadeus - INFO - Processing command: تل من حوولها سي...
+2025-11-23 19:04:56,529 - Amadeus - INFO - Tool selection: open_website (confidence: 0.7)
+2025-11-23 19:04:56,532 - Amadeus - INFO - Executing tool 'open_website' with args: {'query': 'تل من حوولها سي'} (attempt 1)
+2025-11-23 19:05:00,752 - faster_whisper - INFO - Processing audio with duration 00:01.997
+2025-11-23 19:05:02,546 - faster_whisper - INFO - Detected language 'en' with probability 0.56
+2025-11-23 19:05:10,374 - faster_whisper - INFO - Processing audio with duration 00:04.992
+2025-11-23 19:05:11,093 - faster_whisper - INFO - Detected language 'en' with probability 0.52
+2025-11-23 19:05:11,962 - Amadeus - INFO - Processing command: Tell me how will I say what is the time in Japanes...
+2025-11-23 19:05:13,500 - Amadeus - INFO - Tool selection: open_website (confidence: 0.8)
+2025-11-23 19:05:13,501 - Amadeus - INFO - Executing tool 'open_website' with args: {'query': 'how to tell time in Japanese'} (attempt 1)
+2025-11-23 19:05:20,749 - faster_whisper - INFO - Processing audio with duration 00:01.974
+2025-11-23 19:05:21,569 - faster_whisper - INFO - Detected language 'en' with probability 0.41
+2025-11-23 19:05:22,567 - Amadeus - INFO - Processing command: Thank you....
+2025-11-23 19:05:23,577 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 19:05:31,402 - faster_whisper - INFO - Processing audio with duration 00:02.926
+2025-11-23 19:05:32,292 - faster_whisper - INFO - Detected language 'en' with probability 0.39
+2025-11-23 19:05:37,935 - faster_whisper - INFO - Processing audio with duration 00:01.556
+2025-11-23 19:05:39,287 - faster_whisper - INFO - Detected language 'en' with probability 0.38
+2025-11-23 19:05:49,946 - faster_whisper - INFO - Processing audio with duration 00:02.531
+2025-11-23 19:05:51,164 - faster_whisper - INFO - Detected language 'en' with probability 0.31
+2025-11-23 19:05:54,413 - faster_whisper - INFO - Processing audio with duration 00:01.393
+2025-11-23 19:05:55,138 - faster_whisper - INFO - Detected language 'ja' with probability 0.97
+2025-11-23 19:05:55,914 - Amadeus - INFO - Processing command: マナンジですか?...
+2025-11-23 19:05:56,939 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 19:06:02,824 - faster_whisper - INFO - Processing audio with duration 00:02.368
+2025-11-23 19:06:03,481 - faster_whisper - INFO - Detected language 'ja' with probability 0.98
+2025-11-23 19:06:04,287 - Amadeus - INFO - Processing command: 今、何時ですか?...
+2025-11-23 19:06:05,261 - Amadeus - INFO - Tool selection: get_datetime_info (confidence: 0.95)
+2025-11-23 19:06:05,262 - Amadeus - INFO - Executing tool 'get_datetime_info' with args: {'query': 'time'} (attempt 1)
+2025-11-23 19:06:09,244 - faster_whisper - INFO - Processing audio with duration 00:01.509
+2025-11-23 19:06:09,919 - faster_whisper - INFO - Detected language 'en' with probability 0.57
+2025-11-23 19:06:13,531 - faster_whisper - INFO - Processing audio with duration 00:01.695
+2025-11-23 19:06:14,233 - faster_whisper - INFO - Detected language 'ja' with probability 0.40
+2025-11-23 19:06:15,015 - Amadeus - INFO - Processing command: そして...
+2025-11-23 19:06:16,154 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 19:06:20,823 - faster_whisper - INFO - Processing audio with duration 00:01.370
+2025-11-23 19:06:21,501 - faster_whisper - INFO - Detected language 'en' with probability 0.37
+2025-11-23 19:06:24,825 - faster_whisper - INFO - Processing audio with duration 00:01.649
+2025-11-23 19:06:25,500 - faster_whisper - INFO - Detected language 'en' with probability 0.23
+2025-11-23 19:06:30,360 - Amadeus - INFO - Processing command: Eh uh......
+2025-11-23 19:06:31,533 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 19:06:37,511 - faster_whisper - INFO - Processing audio with duration 00:01.695
+2025-11-23 19:06:38,232 - faster_whisper - INFO - Detected language 'en' with probability 0.22
+2025-11-23 19:06:39,014 - Amadeus - INFO - Processing command: Sumimasen...
+2025-11-23 19:06:40,028 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 19:06:47,224 - faster_whisper - INFO - Processing audio with duration 00:01.765
+2025-11-23 19:06:47,920 - faster_whisper - INFO - Detected language 'en' with probability 0.41
+2025-11-23 19:06:48,959 - Amadeus - INFO - Processing command: Go men aside...
+2025-11-23 19:06:50,068 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 19:06:56,313 - faster_whisper - INFO - Processing audio with duration 00:03.135
+2025-11-23 19:06:56,980 - faster_whisper - INFO - Detected language 'ja' with probability 0.75
+2025-11-23 19:06:57,756 - Amadeus - INFO - Processing command: ごめんなさい...
+2025-11-23 19:06:59,115 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 19:07:10,875 - Amadeus - WARNING - Speech recognition timeout
+2025-11-23 19:07:11,699 - faster_whisper - INFO - Processing audio with duration 00:09.915
+2025-11-23 19:07:12,632 - faster_whisper - INFO - Processing audio with duration 00:00.952
+2025-11-23 19:07:13,812 - faster_whisper - INFO - Detected language 'en' with probability 0.93
+2025-11-23 19:07:13,897 - faster_whisper - INFO - Detected language 'en' with probability 0.15
+2025-11-23 19:07:15,486 - Amadeus - INFO - Processing command: and this show....
+2025-11-23 19:07:16,630 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 19:07:22,872 - faster_whisper - INFO - Processing audio with duration 00:02.995
+2025-11-23 19:07:23,583 - faster_whisper - INFO - Detected language 'en' with probability 0.44
+2025-11-23 19:07:27,651 - faster_whisper - INFO - Processing audio with duration 00:02.345
+2025-11-23 19:07:28,292 - faster_whisper - INFO - Detected language 'en' with probability 0.77
+2025-11-23 19:07:29,069 - Amadeus - INFO - Processing command: I'm a deus, but see you're doing man....
+2025-11-23 19:07:29,941 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 19:07:37,553 - faster_whisper - INFO - Processing audio with duration 00:01.718
+2025-11-23 19:07:38,199 - faster_whisper - INFO - Detected language 'en' with probability 0.55
+2025-11-23 19:07:45,076 - faster_whisper - INFO - Processing audio with duration 00:02.995
+2025-11-23 19:07:45,795 - faster_whisper - INFO - Detected language 'th' with probability 0.49
+2025-11-23 19:07:48,896 - Amadeus - WARNING - Speech recognition timeout
+2025-11-23 19:07:54,471 - faster_whisper - INFO - Processing audio with duration 00:03.994
+2025-11-23 19:07:58,499 - faster_whisper - INFO - Detected language 'en' with probability 0.90
+2025-11-23 19:07:58,911 - Amadeus - WARNING - Speech recognition timeout
+2025-11-23 19:08:03,966 - faster_whisper - INFO - Processing audio with duration 00:01.695
+2025-11-23 19:08:04,670 - faster_whisper - INFO - Detected language 'en' with probability 0.74
+2025-11-23 19:08:05,440 - Amadeus - INFO - Processing command: I am not...
+2025-11-23 19:08:06,913 - Amadeus - INFO - Tool selection: conversational (confidence: 1.0)
+2025-11-23 19:08:16,699 - faster_whisper - INFO - Processing audio with duration 00:01.324
+2025-11-23 19:08:17,376 - faster_whisper - INFO - Detected language 'en' with probability 0.65
+2025-11-23 19:08:22,971 - Amadeus - INFO - Amadeus shutdown complete

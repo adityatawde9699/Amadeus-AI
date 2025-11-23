@@ -140,17 +140,6 @@ async def get_weather_async(location: str = "India") -> str:
     except Exception as e:
         return f"Sorry, I couldn't fetch the weather: {e}"
 
-
-def get_weather(location: str = "India") -> str:
-    """Synchronous wrapper for get_weather_async."""
-    try:
-        return asyncio.run(get_weather_async(location))
-    except RuntimeError:
-        # Already in async context
-        loop = asyncio.get_event_loop()
-        return loop.run_until_complete(get_weather_async(location))
-
-
 # ============== NEWS UTILITIES ==============
 
 async def get_news_async(
@@ -215,16 +204,6 @@ async def get_news_async(
     except Exception as e:
         return f"Sorry, I couldn't fetch the news: {e}"
 
-
-def get_news(category: str = "general", country: str = "in") -> str:
-    """Synchronous wrapper for get_news_async."""
-    try:
-        return asyncio.run(get_news_async(category, country))
-    except RuntimeError:
-        loop = asyncio.get_event_loop()
-        return loop.run_until_complete(get_news_async(category, country))
-
-
 # ============== WEB BROWSING UTILITIES ==============
 
 def open_website(query: str) -> str:
@@ -260,28 +239,6 @@ def open_website(query: str) -> str:
             
     except Exception as e:
         return f"Failed to open browser: {e}"
-
-
-def open_url(url: str) -> str:
-    """Opens a specific URL in the default browser."""
-    try:
-        if not url.startswith(("http://", "https://")):
-            url = "https://" + url
-        webbrowser.open(url)
-        return f"Opened {url}"
-    except Exception as e:
-        return f"Failed to open URL: {e}"
-
-
-def google_search(query: str) -> str:
-    """Performs a Google search."""
-    try:
-        search_url = f"https://www.google.com/search?q={urllib.parse.quote(query)}"
-        webbrowser.open(search_url)
-        return f"Searching Google for: {query}"
-    except Exception as e:
-        return f"Failed to search: {e}"
-
 
 # ============== WIKIPEDIA UTILITIES ==============
 
@@ -392,8 +349,32 @@ JOKES = [
     ("A SQL query walks into a bar, walks up to two tables and asks...", "Can I join you?"),
     ("Why do Python programmers have low self-esteem?", "They're constantly comparing themselves to others!"),
     ("What's a computer's least favorite food?", "Spam!"),
+    ("Why did the programmer quit his job?", "Because he didn't get arrays."),
+    ("How many programmers does it take to change a light bulb?", "None — that's a hardware problem."),
+    ("Why did the computer show up at work late?", "It had a hard drive."),
+    ("Why was the computer cold?", "It left its Windows open."),
+    ("Why do programmers always mix up Halloween and Christmas?", "Because Oct 31 == Dec 25."),
+    ("Why was the developer calm?", "He knew how to handle exceptions."),
+    ("Why did the programmer get stuck in the shower?", "Because the bottle said: Lather, Rinse, Repeat."),
+    ("Why did the programmer bring a ladder to work?", "To climb the corporate stack."),
+    ("Why did the coder plant a light bulb?", "He wanted to grow a power plant."),
+    ("What's a programmer's favorite place to hang out online?", "Stack Overflow."),
+    ("Why did the computer need glasses?", "To improve its web sight."),
+    ("Why did the smartphone need glasses?", "It lost its contacts."),
+    ("Why did the programmer go to the beach?", "To surf the web."),
+    ("Why did the coder cross the road?", "To get to the other IDE."),
+    ("Why was the array sad?", "Because it had too many nulls."),
+    ("What do you get when you cross a computer and a lifeguard?", "A screensaver."),
+    ("Why did the developer adopt a cat?", "To help with purrformance tuning."),
+    ("Why did the database administrator leave the party early?", "There were too many joins."),
+    ("Why was the JavaScript developer always tired?", "Because he kept chasing callbacks."),
+    ("Why did the computer break up with the internet?", "There was too much buffering in the relationship."),
+    ("Why did the developer go broke buying cloud services?", "He couldn't stop scaling his bills."),
+    ("Why did the function blush?", "Because it had a private variable."),
+    ("Why did the router get promoted?", "It had excellent connections."),
+    ("Why did the computer squeak?", "Because someone stepped on its mouse."),
+    ("Why do programmers write code in pencil?", "So they can erase their mistakes."),
 ]
-
 
 async def tell_joke_async() -> str:
     """

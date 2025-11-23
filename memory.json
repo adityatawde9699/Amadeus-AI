@@ -1,233 +1,8 @@
 {
-    "last_used_feature": "nice things",
-    "user_name": "",
+    "last_used_feature": "I am not",
+    "user_name": "Amarir.",
     "frequent_queries": [],
     "conversations": [
-        {
-            "prompt": "shutdown",
-            "response": "Shutting down.",
-            "timestamp": "2025-10-06 22:50:31.881246"
-        },
-        {
-            "prompt": "are hello",
-            "response": "Hello!",
-            "timestamp": "2025-10-06 22:53:12.763321"
-        },
-        {
-            "prompt": "complete karna mat Dila",
-            "response": "What would you like me to complete?",
-            "timestamp": "2025-10-06 22:53:38.619597"
-        },
-        {
-            "prompt": "I just want to complete my",
-            "response": "...thought? Sentence? What would you like to finish?",
-            "timestamp": "2025-10-06 22:53:50.771607"
-        },
-        {
-            "prompt": "what is the capital of Paris",
-            "response": "Paris is the capital of France.",
-            "timestamp": "2025-10-06 22:54:05.767892"
-        },
-        {
-            "prompt": "Paris is the capital",
-            "response": "...of France.",
-            "timestamp": "2025-10-06 22:54:17.069140"
-        },
-        {
-            "prompt": "what comes three times when we give two times",
-            "response": "Three times.",
-            "timestamp": "2025-10-06 22:54:55.055246"
-        },
-        {
-            "prompt": "what comes three times when we give two times",
-            "response": "Three times.",
-            "timestamp": "2025-10-06 22:55:09.856342"
-        },
-        {
-            "prompt": "ok I am my dear",
-            "response": "Okay.",
-            "timestamp": "2025-10-06 22:55:25.154986"
-        },
-        {
-            "prompt": "ok in the current state of India what will happen if any disaster games",
-            "response": "It would pose significant challenges for relief and recovery efforts, impacting a large population and infrastructure across diverse regions.",
-            "timestamp": "2025-10-06 22:55:46.789845"
-        },
-        {
-            "prompt": "it will post shutdown",
-            "response": "Yes, disasters often lead to shutdowns.",
-            "timestamp": "2025-10-06 22:56:15.623990"
-        },
-        {
-            "prompt": "and recovery effort importing and large population",
-            "response": "And those efforts would be critical, affecting a large population.",
-            "timestamp": "2025-10-06 22:56:47.161427"
-        },
-        {
-            "prompt": "what has a neck but not head",
-            "response": "A bottle.",
-            "timestamp": "2025-10-06 22:57:02.482088"
-        },
-        {
-            "prompt": "han",
-            "response": "Okay.",
-            "timestamp": "2025-10-06 22:57:17.168966"
-        },
-        {
-            "prompt": "comes down but never get get goes up",
-            "response": "Rain.",
-            "timestamp": "2025-10-06 22:57:31.067154"
-        },
-        {
-            "prompt": "the more you take more you leave behind what is it",
-            "response": "Footsteps.",
-            "timestamp": "2025-10-06 22:57:50.472542"
-        },
-        {
-            "prompt": "you are responding great",
-            "response": "Thank you!",
-            "timestamp": "2025-10-06 22:58:01.835303"
-        },
-        {
-            "prompt": "I have live but I can't die what am I",
-            "response": "A live broadcast.",
-            "timestamp": "2025-10-06 22:58:18.009466"
-        },
-        {
-            "prompt": "but I have",
-            "response": "What do you have?",
-            "timestamp": "2025-10-06 22:58:43.471314"
-        },
-        {
-            "prompt": "what is an religion",
-            "response": "A system of faith and worship, often with a moral code.",
-            "timestamp": "2025-10-06 22:59:18.000085"
-        },
-        {
-            "prompt": "can you respond in Marathi what is an religion",
-            "response": "\u0936\u094d\u0930\u0926\u094d\u0927\u093e \u0906\u0923\u093f \u0909\u092a\u093e\u0938\u0928\u0947\u091a\u0940 \u090f\u0915 \u092a\u094d\u0930\u0923\u093e\u0932\u0940, \u091c\u0940 \u0905\u0928\u0947\u0915\u0926\u093e \u0928\u0948\u0924\u093f\u0915 \u0928\u093f\u092f\u092e\u093e\u0902\u0928\u0940 \u092f\u0941\u0915\u094d\u0924 \u0905\u0938\u0924\u0947.",
-            "timestamp": "2025-10-06 22:59:35.565594"
-        },
-        {
-            "prompt": "Marathi actress a problem",
-            "response": "What do you mean?",
-            "timestamp": "2025-10-06 23:00:34.058988"
-        },
-        {
-            "prompt": "Are baba Tula",
-            "response": "\u0915\u093e\u092f?",
-            "timestamp": "2025-10-06 23:00:49.771238"
-        },
-        {
-            "prompt": "Marathi",
-            "response": " \u0939\u094b\u092f?",
-            "timestamp": "2025-10-06 23:01:09.948406"
-        },
-        {
-            "prompt": "so you can't",
-            "response": "Can't what?",
-            "timestamp": "2025-10-06 23:01:23.995041"
-        },
-        {
-            "prompt": "what you can't respond in Marathi that's right isn't it",
-            "response": "\u092e\u0940 \u092e\u0930\u093e\u0920\u0940\u092e\u0927\u094d\u092f\u0947 \u092a\u094d\u0930\u0924\u093f\u0938\u093e\u0926 \u0926\u0947\u090a \u0936\u0915\u0924\u094b. \u092e\u0940 \u0906\u0927\u0940\u091a \u0926\u093f\u0932\u093e \u0906\u0939\u0947.",
-            "timestamp": "2025-10-06 23:01:41.659221"
-        },
-        {
-            "prompt": "always",
-            "response": "Always what?",
-            "timestamp": "2025-10-06 23:01:59.839261"
-        },
-        {
-            "prompt": "What is a cockroach?",
-            "response": "A common, fast-moving insect with a flattened body, long antennae, and a reputation as a household pest.",
-            "timestamp": "2025-11-21 18:36:29.160882"
-        },
-        {
-            "prompt": "How much is the capital of France?",
-            "response": "The capital of France is Paris. 'How much' isn't a typical question for a city, but I can provide information like its population or area.",
-            "timestamp": "2025-11-21 18:36:52.883104"
-        },
-        {
-            "prompt": "Okay, what is the area of front?",
-            "response": "The area of Paris is approximately 105.4 square kilometers.",
-            "timestamp": "2025-11-21 18:37:17.219145"
-        },
-        {
-            "prompt": "\u304d\u30fc",
-            "response": "\"\u304d\u30fc\" (k\u012b) translates to \"key\" in English. A key is a device used to open a lock, or a crucial item or explanation.",
-            "timestamp": "2025-11-21 18:37:37.642786"
-        },
-        {
-            "prompt": "However, we will",
-            "response": "How will we continue?",
-            "timestamp": "2025-11-21 18:38:00.372418"
-        },
-        {
-            "prompt": "Not bad",
-            "response": "Glad to hear it.",
-            "timestamp": "2025-11-21 18:38:14.450108"
-        },
-        {
-            "prompt": "a kind specifically. A.",
-            "response": "What kind specifically?",
-            "timestamp": "2025-11-21 18:38:34.938062"
-        },
-        {
-            "prompt": "Amadeus, what is Atlas?",
-            "response": "A collection of maps, often in book form. It's named after the Greek Titan Atlas, who was condemned to hold up the sky.",
-            "timestamp": "2025-11-21 19:27:45.641864"
-        },
-        {
-            "prompt": "The collective response is not submitted.",
-            "response": "What collective response are you referring to?",
-            "timestamp": "2025-11-21 19:28:03.160923"
-        },
-        {
-            "prompt": "second option.",
-            "response": "Second option for what?",
-            "timestamp": "2025-11-21 19:28:37.680560"
-        },
-        {
-            "prompt": "1 0 flight.",
-            "response": "What do you mean by '1 0 flight'?",
-            "timestamp": "2025-11-21 19:28:48.832043"
-        },
-        {
-            "prompt": "\u0e40\u0e1b\u0e47\u0e19\u0e04\u0e27\u0e23\u0e04\u0e27\u0e23\u0e21",
-            "response": "What do you mean by '\u0e40\u0e1b\u0e47\u0e19\u0e04\u0e27\u0e23\u0e04\u0e27\u0e23\u0e21'?",
-            "timestamp": "2025-11-21 19:28:59.275708"
-        },
-        {
-            "prompt": "\u0e27\u0e31\u0e19\u0e19\u0e31\u0e49\u0e19\u0e1e\u0e23\u0e49\u0e2d\u0e21",
-            "response": "What do you mean by '\u0e27\u0e31\u0e19\u0e19\u0e31\u0e49\u0e19\u0e1e\u0e23\u0e49\u0e2d\u0e21'?",
-            "timestamp": "2025-11-21 19:29:10.401690"
-        },
-        {
-            "prompt": "Yeah, I'm ready is.",
-            "response": "Okay, what can I help you with?",
-            "timestamp": "2025-11-21 19:29:47.016000"
-        },
-        {
-            "prompt": "Our day is what is in the cockroach.",
-            "response": "That doesn't make sense to me. Could you please rephrase that?",
-            "timestamp": "2025-11-21 19:29:59.687785"
-        },
-        {
-            "prompt": "What is in cockroach?",
-            "response": "That doesn't make sense to me. Could you please rephrase that?",
-            "timestamp": "2025-11-21 19:30:13.317094"
-        },
-        {
-            "prompt": "What is a cockroach and what is the capital of France?",
-            "response": "A cockroach is a common insect, often considered a pest. The capital of France is Paris.",
-            "timestamp": "2025-11-21 19:30:31.384669"
-        },
-        {
-            "prompt": "a nice response you are responding correctly but when I am seeing such text",
-            "response": "What text are you referring to?",
-            "timestamp": "2025-11-21 19:30:53.986146"
-        },
         {
             "prompt": "with.",
             "response": "What do you mean by 'with'?",
@@ -502,6 +277,231 @@
             "prompt": "nice things",
             "response": "I appreciate that! Is there anything specific you'd like me to do or discuss?\n",
             "timestamp": "2025-11-21 22:38:10.366153"
+        },
+        {
+            "prompt": "Come on, here is.",
+            "response": "I'm here! How can I help you?\n",
+            "timestamp": "2025-11-23 18:51:36.403115"
+        },
+        {
+            "prompt": "I'm Ades, how are you?",
+            "response": "I'm doing well, Ades! It's nice to meet you. How can I help you today?\n",
+            "timestamp": "2025-11-23 18:51:44.851861"
+        },
+        {
+            "prompt": "can you hear amadios?",
+            "response": "Yes, I can hear you, Ades. You can call me Amadeus. How can I help you?\n",
+            "timestamp": "2025-11-23 18:51:55.291493"
+        },
+        {
+            "prompt": "Your name is Amidus.",
+            "response": "You're right, my name is Amadeus. Thanks for the correction! How can I help you, Ades?\n",
+            "timestamp": "2025-11-23 18:52:02.312106"
+        },
+        {
+            "prompt": "your right, my name is Amarir.",
+            "response": "Okay, Amarir. It's nice to meet you. How can I help you today?\n",
+            "timestamp": "2025-11-23 18:52:09.815481"
+        },
+        {
+            "prompt": "WW dot ok and you make decisions ok am I yes",
+            "response": "I'm sorry, I'm having trouble understanding your request. Could you please rephrase it?\n",
+            "timestamp": "2025-11-23 18:52:29.251520"
+        },
+        {
+            "prompt": "Ah, so I'll just get there, you know.",
+            "response": "Okay, I understand you'll get to where you need to be. Is there anything else I can help you with in the meantime?\n",
+            "timestamp": "2025-11-23 18:53:03.143764"
+        },
+        {
+            "prompt": "3BK PDR4",
+            "response": "I'm sorry, I'm having trouble understanding your request. Could you please rephrase it?\n",
+            "timestamp": "2025-11-23 18:53:11.937453"
+        },
+        {
+            "prompt": "Uh-huh.",
+            "response": "It seems like my access to Wikipedia is currently unavailable. I can try again later, or perhaps you have another information source in mind?\n",
+            "timestamp": "2025-11-23 18:54:14.949820"
+        },
+        {
+            "prompt": "Note that I have to repair some of your features.",
+            "response": "Okay, I'll note that you have to repair some of my features.\n",
+            "timestamp": "2025-11-23 18:54:39.810289"
+        },
+        {
+            "prompt": "uh",
+            "response": "Is there anything I can help you with?\n",
+            "timestamp": "2025-11-23 18:54:58.619914"
+        },
+        {
+            "prompt": "ok.",
+            "response": "Understood. Is there anything specific you'd like me to do, or were you just acknowledging the previous message?\n",
+            "timestamp": "2025-11-23 18:55:16.168745"
+        },
+        {
+            "prompt": "Alright, so I'm up here.",
+            "response": "Okay, I'm here too. It seems like we've had some trouble with Wikipedia and opening the browser. What would you like to try next? Perhaps we could troubleshoot those issues, or try something completely different.\n",
+            "timestamp": "2025-11-23 18:56:15.873475"
+        },
+        {
+            "prompt": "What's that?",
+            "response": "That's the task I just added for you: \"Oppa nanti brawjar.\" Is there anything else I can help you with regarding that task or something else entirely?\n",
+            "timestamp": "2025-11-23 18:56:29.718056"
+        },
+        {
+            "prompt": "Opa, n\u00e9 de braus, n\u00e9?",
+            "response": "I'm sorry, but I am having trouble understanding the task you are requesting. Would you like me to try adding it to your task list again, or would you like to try rephrasing the request?\n",
+            "timestamp": "2025-11-23 18:56:39.444064"
+        },
+        {
+            "prompt": "later.",
+            "response": "Okay, is there anything else I can help you with right now?\n",
+            "timestamp": "2025-11-23 18:57:09.237310"
+        },
+        {
+            "prompt": "Okay, close calculator.",
+            "response": "Okay, I will close the calculator.\n",
+            "timestamp": "2025-11-23 18:57:37.597314"
+        },
+        {
+            "prompt": "It's neat thing.",
+            "response": "I agree! Is there anything specific you find neat about it? Or is there anything else I can do for you right now?\n",
+            "timestamp": "2025-11-23 18:57:55.315550"
+        },
+        {
+            "prompt": "and please miss",
+            "response": "I'm not quite sure what you mean by \"and please miss.\" Could you please clarify your request?\n",
+            "timestamp": "2025-11-23 18:58:04.893371"
+        },
+        {
+            "prompt": "This is the story.",
+            "response": "Okay, I understand. Is there anything else you'd like to know or any other task I can help you with related to that story, or perhaps something entirely different?\n",
+            "timestamp": "2025-11-23 18:58:28.580472"
+        },
+        {
+            "prompt": "I am having trouble.",
+            "response": "I'm sorry to hear that you're having trouble. Can you please tell me more about what's going on? Knowing what you're struggling with will help me find the best way to assist you.\n",
+            "timestamp": "2025-11-23 18:59:27.145430"
+        },
+        {
+            "prompt": "More or less like this.",
+            "response": "Okay, I understand. To help me understand what you're having trouble with, could you please provide more context? What are you having trouble with \"more or less like\"? Knowing the specific issue will help me assist you effectively.\n",
+            "timestamp": "2025-11-23 18:59:35.207297"
+        },
+        {
+            "prompt": "The big function is not working well.",
+            "response": "I understand that a \"big function\" is not working well. Could you please tell me which function you're referring to? Knowing which function is having issues will allow me to provide specific troubleshooting steps or find relevant information to help resolve the problem.\n",
+            "timestamp": "2025-11-23 18:59:54.421767"
+        },
+        {
+            "prompt": "Really?",
+            "response": "Yes, the system status check confirmed high memory usage (82.7%). This could be contributing to the issues you're experiencing with the \"big function.\" High memory usage can slow down processes.\n\nDo you want me to look into what's consuming the most memory or suggest ways to free up memory?\n",
+            "timestamp": "2025-11-23 19:00:39.490797"
+        },
+        {
+            "prompt": "Oh, you, you, you, you.",
+            "response": "It sounds like you're trying to get my attention or perhaps test my responsiveness? How can I help you specifically?\n",
+            "timestamp": "2025-11-23 19:00:47.308433"
+        },
+        {
+            "prompt": "and",
+            "response": "Okay. Is there anything specific you need help with?\n",
+            "timestamp": "2025-11-23 19:00:57.251758"
+        },
+        {
+            "prompt": "update mode.",
+            "response": "What mode would you like to update to?\n",
+            "timestamp": "2025-11-23 19:02:12.127197"
+        },
+        {
+            "prompt": "Thank you.",
+            "response": "You're welcome! Is there anything else I can help you with?\n",
+            "timestamp": "2025-11-23 19:02:20.931642"
+        },
+        {
+            "prompt": "\u3058\u3083\u306a\u306a",
+            "response": "\u3069\u3046\u3044\u305f\u3057\u307e\u3057\u3066\uff01\u4ed6\u306b\u4f55\u304b\u304a\u624b\u4f1d\u3044\u3067\u304d\u308b\u3053\u3068\u306f\u3042\u308a\u307e\u3059\u304b\uff1f (You're welcome! Is there anything else I can help you with?)\n",
+            "timestamp": "2025-11-23 19:02:30.387763"
+        },
+        {
+            "prompt": "Nanje deska.",
+            "response": "\u305d\u308c\u306f\u3069\u3046\u3044\u3046\u610f\u5473\u3067\u3059\u304b\uff1f (What does that mean?)\n",
+            "timestamp": "2025-11-23 19:02:51.792204"
+        },
+        {
+            "prompt": "\u6211\u90fd",
+            "response": "\u7533\u3057\u8a33\u3042\u308a\u307e\u305b\u3093\u3001\u30ea\u30af\u30a8\u30b9\u30c8\u3092\u7406\u89e3\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f\u3002\u300c\u6211\u90fd\u300d\u3068\u306f\u3069\u3046\u3044\u3046\u610f\u5473\u3067\u3059\u304b\uff1f (Sorry, I didn't understand your request. What does \"\u6211\u90fd\" mean?)\n",
+            "timestamp": "2025-11-23 19:03:20.211262"
+        },
+        {
+            "prompt": "Thank you.",
+            "response": "You're welcome! Is there anything else I can help you with regarding telling time in Japanese or anything else?\n",
+            "timestamp": "2025-11-23 19:04:01.088447"
+        },
+        {
+            "prompt": "I ran just as I say thank you to you.",
+            "response": "Okay, I understand you ran right after thanking me. Was there something urgent that came up? Let me know if you need anything later!\n",
+            "timestamp": "2025-11-23 19:04:13.412675"
+        },
+        {
+            "prompt": "Your search in Google too much, and until you using your own brain.",
+            "response": "You're right, I should rely less on external searches. I will focus on using my internal knowledge and reasoning skills more. Thanks for the feedback!\n",
+            "timestamp": "2025-11-23 19:04:23.659416"
+        },
+        {
+            "prompt": "Thank you.",
+            "response": "You're welcome! How can I assist you now, relying more on my internal knowledge if possible?\n",
+            "timestamp": "2025-11-23 19:04:47.104655"
+        },
+        {
+            "prompt": "Thank you.",
+            "response": "You're welcome! I just searched for how to tell time in Japanese. Would you like me to share the results, or would you prefer I try to explain it directly using what I found?\n",
+            "timestamp": "2025-11-23 19:05:24.953489"
+        },
+        {
+            "prompt": "\u30de\u30ca\u30f3\u30b8\u3067\u3059\u304b?",
+            "response": "You're asking if it's \"mananji desu ka?\" \"Mananji desu ka?\" means \"What time is it?\". Is that what you were trying to ask?\n",
+            "timestamp": "2025-11-23 19:05:58.061416"
+        },
+        {
+            "prompt": "\u305d\u3057\u3066",
+            "response": "And...? Are you looking for something else related to the time or Japanese? Let me know how I can help!\n",
+            "timestamp": "2025-11-23 19:06:18.063285"
+        },
+        {
+            "prompt": "Eh uh...",
+            "response": "No problem, take your time! Let me know if there's anything you need or if you have any questions about the time in Japanese or anything else.\n",
+            "timestamp": "2025-11-23 19:06:32.603837"
+        },
+        {
+            "prompt": "Sumimasen",
+            "response": "\"Sumimasen\" means \"Excuse me\" or \"I'm sorry.\" Is there something you need help with, or are you just apologizing?\n",
+            "timestamp": "2025-11-23 19:06:41.155994"
+        },
+        {
+            "prompt": "Go men aside",
+            "response": "It seems like you might be trying to say \"Gomen nasai,\" which means \"I'm sorry.\" Is that right? Is there anything I can help you with?\n",
+            "timestamp": "2025-11-23 19:06:51.226627"
+        },
+        {
+            "prompt": "\u3054\u3081\u3093\u306a\u3055\u3044",
+            "response": "\"Gomen nasai\" means \"I'm sorry.\" Is there something you'd like to apologize for, or is there something else I can help you with?\n",
+            "timestamp": "2025-11-23 19:07:00.455446"
+        },
+        {
+            "prompt": "and this show.",
+            "response": "Okay, and you're apologizing for this show? Or is there something else about it you'd like to discuss or know?\n",
+            "timestamp": "2025-11-23 19:07:17.707554"
+        },
+        {
+            "prompt": "I'm a deus, but see you're doing man.",
+            "response": "I see. You're saying you're also an AI, but it looks like I'm operating with a more human-like approach (\"man\" as in acting like a human). Is that a correct interpretation?\n",
+            "timestamp": "2025-11-23 19:07:31.124510"
+        },
+        {
+            "prompt": "I am not",
+            "response": "Okay, so you're clarifying that you're *not* saying you're an AI. Is there something else you meant by \"I'm a deus, but see you're doing man\"? I'm trying to understand what you're getting at.\n",
+            "timestamp": "2025-11-23 19:08:08.476487"
         }
     ]
 }
