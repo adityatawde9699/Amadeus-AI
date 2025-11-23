@@ -181,7 +181,7 @@
 ### Step 1: Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/Amadeus-AI.git
+git clone https://github.com/adityatawde9699/Amadeus-AI.git
 cd Amadeus-AI
 ```
 
@@ -339,26 +339,18 @@ Options:
 
 ```
 Amadeus-AI/
-├── 📄 main.py                 # Application entry point
-├── 📄 amadeus.py              # Core assistant class and main loop
-├── 📄 config.py               # Configuration management
-├── 📄 models.py               # SQLAlchemy database models
-├── 📄 db.py                   # Async database engine and sessions
-│
-├── 📁 Utilities/
-│   ├── 📄 general_utils.py    # DateTime, weather, news, web utilities
-│   ├── 📄 speech_utils.py     # Voice recognition and TTS
-│   ├── 📄 memory_utils.py     # Conversation memory persistence
-│   ├── 📄 system_controls.py  # File and application management
-│   ├── 📄 system_monitor.py   # Hardware monitoring
-│   ├── 📄 task_utils.py       # Task CRUD operations
-│   ├── 📄 note_utils.py       # Note CRUD operations
-│   └── 📄 reminder_utils.py   # Reminder management
-│
-├── 📄 api.py                  # FastAPI REST endpoints
-├── 📄 requirements.txt        # Python dependencies
-├── 📄 .env                    # Environment variables (user-created)
-└── 📄 amadeus.db              # SQLite database (auto-generated)
+├── Amadeus/                   # Source Code Directory
+│   ├── main.py                # Application entry point
+│   ├── amadeus.py             # Core assistant class
+│   ├── api.py                 # FastAPI REST endpoints
+│   ├── general_utils.py       # Utilities (Weather, News, etc.)
+│   ├── speech_utils.py        # Voice recognition and TTS
+│   ├── system_controls.py     # System management
+│   ├── task_utils.py          # Task operations
+│   └── ... (other utils)
+├── requirements.txt           # Project dependencies
+├── .env                       # Environment variables
+└── README.md                  # Documentation
 ```
 
 ### System Architecture
@@ -509,7 +501,7 @@ Contributions are warmly welcomed! Please follow these guidelines to ensure a sm
 
 ```bash
 # Clone your fork
-git clone https://github.com/yourusername/Amadeus-AI.git
+git clone https://github.com/adityatawde9699/Amadeus-AI.git
 
 # Create feature branch
 git checkout -b feature/your-feature-name
