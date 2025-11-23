@@ -13,16 +13,11 @@
 
 <br/><br/>
 
-*Amadeus is an advanced, modular AI assistant that combines natural language understanding with powerful system integration capabilities. Designed for productivity enthusiasts and developers alike, it seamlessly bridges the gap between voice commands and actionable tasks.*
+*Amadeus is an advanced, modular AI assistant combining natural language understanding with powerful system integration. Designed for developers and productivity enthusiasts, it seamlessly bridges voice commands and actionable tasks.*
 
 <br/>
 
-[Features](#-features) •
-[Installation](#-installation) •
-[Usage](#-usage) •
-[Architecture](#-architecture) •
-[API Reference](#-api-reference) •
-[Contributing](#-contributing)
+[Features](#features) • [Installation](#installation) • [Usage](#usage) • [Architecture](#architecture) • [API](#api-reference) • [Contributing](#contributing)
 
 <br/>
 
@@ -32,30 +27,30 @@
 
 ## 📋 Overview
 
-**Amadeus** is a comprehensive AI assistant built with Python, leveraging Google's Gemini AI for intelligent conversation and task execution. Unlike traditional voice assistants, Amadeus maintains conversational context, learns from interactions, and provides a unified interface for managing your digital life.
+**Amadeus** is a comprehensive Python-based AI assistant leveraging Google's Gemini for intelligent conversation and task execution. Unlike traditional voice assistants, Amadeus maintains conversational context, learns from interactions, and provides a unified interface for digital productivity.
 
 <table>
 <tr>
 <td width="50%">
 
-### ✨ Why Amadeus?
+### ✨ Why Choose Amadeus?
 
-- **Context-Aware Conversations** — Maintains dialogue history for coherent, multi-turn interactions
-- **Modular Tool System** — Easily extensible architecture for adding new capabilities
-- **Cross-Platform Support** — Works on Windows, macOS, and Linux
-- **Privacy-First Design** — All data stored locally with SQLite
-- **Dual Interface** — Voice and text input modes available
+- **Context-Aware Conversations** — Multi-turn dialogue with full history retention
+- **Modular Architecture** — Easily extensible tool system for custom capabilities
+- **Cross-Platform** — Seamless support for Windows, macOS, and Linux
+- **Privacy-Centric** — All data persisted locally using SQLite
+- **Dual Input** — Voice and text modes for flexible interaction
 
 </td>
 <td width="50%">
 
-### 🎯 Ideal For
+### 🎯 Perfect For
 
-- Developers seeking a customizable AI assistant
-- Productivity enthusiasts managing tasks and notes
-- Users who prefer voice-driven workflows
-- Anyone wanting hands-free system control
-- Teams requiring a self-hosted assistant solution
+- Developers building customizable AI solutions
+- Productivity enthusiasts managing complex workflows
+- Voice-first users seeking hands-free control
+- Teams requiring self-hosted assistant infrastructure
+- Researchers exploring modular AI architectures
 
 </td>
 </tr>
@@ -68,36 +63,30 @@
 <table>
 <tr>
 <td align="center" width="33%">
-<br/>
 <h3>🧠 Conversational AI</h3>
-<p>Powered by <strong>Google Gemini 2.0</strong> for intelligent, context-aware responses with natural language understanding</p>
+<p>Powered by <strong>Google Gemini 2.0</strong> for context-aware responses with advanced natural language understanding</p>
 </td>
 <td align="center" width="33%">
-<br/>
 <h3>🎤 Voice Interface</h3>
-<p>Real-time speech recognition via <strong>Faster-Whisper</strong> with natural text-to-speech output using pyttsx3</p>
+<p>Real-time speech recognition via <strong>Faster-Whisper</strong> with natural text-to-speech synthesis</p>
 </td>
 <td align="center" width="33%">
-<br/>
 <h3>📊 System Monitor</h3>
-<p>Comprehensive system monitoring including CPU, RAM, GPU, disk usage, and temperature sensors</p>
+<p>Comprehensive monitoring for CPU, RAM, GPU, disk usage, and thermal sensors</p>
 </td>
 </tr>
 <tr>
 <td align="center" width="33%">
-<br/>
 <h3>✅ Task Management</h3>
-<p>Full-featured task system with creation, completion tracking, filtering, and intelligent summaries</p>
+<p>Full-featured task system with creation, tracking, filtering, and intelligent summaries</p>
 </td>
 <td align="center" width="33%">
-<br/>
 <h3>📝 Notes & Reminders</h3>
-<p>Persistent note-taking with tagging support and time-based reminders with natural language parsing</p>
+<p>Persistent note-taking with tag support and intelligent time-based reminder parsing</p>
 </td>
 <td align="center" width="33%">
-<br/>
 <h3>🌐 Information Hub</h3>
-<p>Real-time weather forecasts, news headlines, Wikipedia summaries, and web search integration</p>
+<p>Real-time weather, news aggregation, Wikipedia summaries, and web search integration</p>
 </td>
 </tr>
 </table>
@@ -106,46 +95,41 @@
 
 <details>
 <summary><strong>🖥️ System Control</strong></summary>
-<br/>
 
 | Feature | Description |
 |---------|-------------|
-| Application Launcher | Open any installed application by name |
-| File Search | Recursive file search across directories |
-| File Operations | Copy, move, delete files with voice confirmation |
-| Directory Management | Create folders and list directory contents |
-| Process Manager | View and terminate running processes |
-| System Status | Real-time CPU, memory, disk, and GPU monitoring |
+| Application Launcher | Open installed applications via voice command |
+| File Search & Management | Recursive search, copy, move, delete operations |
+| Directory Operations | Create folders and browse directory structures |
+| Process Management | Monitor and terminate running processes |
+| System Analytics | Real-time CPU, memory, disk, and GPU metrics |
 
 </details>
 
 <details>
 <summary><strong>📋 Productivity Tools</strong></summary>
-<br/>
 
 | Feature | Description |
 |---------|-------------|
-| Task Creation | Add tasks with natural language |
-| Task Filtering | View pending or completed tasks |
-| Task Completion | Mark tasks done by ID or content match |
-| Note Creation | Create notes with titles, content, and tags |
-| Note Search | Filter notes by tags |
-| Reminders | Set time-based reminders with natural language parsing |
-| Daily Briefing | Automatic summary of tasks, reminders, and weather |
+| Smart Task Creation | Add tasks using natural language |
+| Task Filtering | View pending or completed items |
+| Completion Tracking | Mark tasks done by ID or content matching |
+| Note Management | Create, tag, and organize notes |
+| Smart Reminders | Natural language time-based reminders |
+| Daily Briefing | Automated summary of tasks, reminders, weather |
 
 </details>
 
 <details>
 <summary><strong>🌍 Information Services</strong></summary>
-<br/>
 
 | Feature | Description |
 |---------|-------------|
-| Weather | Current conditions via OpenWeatherMap API |
-| News | Top headlines from NewsAPI by category |
-| Wikipedia | Article summaries and search |
-| Web Search | Google search via browser |
-| Jokes | Random programming and general humor |
+| Weather Integration | Real-time conditions via OpenWeatherMap API |
+| News Aggregation | Top headlines filtered by category |
+| Knowledge Retrieval | Article summaries via Wikipedia |
+| Web Search | Integrated Google search functionality |
+| Entertainment | Programming humor and general jokes |
 
 </details>
 
@@ -155,79 +139,50 @@
 
 ### Prerequisites
 
-<table>
-<tr>
-<td>
+| **Essential** | **Recommended** |
+|---|---|
+| Python 3.9+ | Virtual environment (venv) |
+| pip package manager | 4GB+ RAM |
+| Working microphone | SSD storage |
+| Internet connection | NVIDIA GPU (for faster inference) |
 
-**Required**
-- Python 3.9 or higher
-- pip (Python package manager)
-- Working microphone (for voice mode)
-- Internet connection
+### Quick Start
 
-</td>
-<td>
-
-**Recommended**
-- Virtual environment (venv)
-- 4GB+ RAM
-- SSD storage
-- NVIDIA GPU (optional, for faster Whisper)
-
-</td>
-</tr>
-</table>
-
-### Step 1: Clone the Repository
-
+**1. Clone Repository**
 ```bash
 git clone https://github.com/adityatawde9699/Amadeus-AI.git
 cd Amadeus-AI
 ```
 
-### Step 2: Create Virtual Environment
-
+**2. Set Up Environment**
 ```bash
-# Create environment
 python -m venv venv
-
-# Activate (Windows)
-venv\Scripts\activate
-
-# Activate (macOS/Linux)
-source venv/bin/activate
+source venv/bin/activate  # macOS/Linux
+# or
+venv\Scripts\activate  # Windows
 ```
 
-### Step 3: Install Dependencies
-
+**3. Install Dependencies**
 ```bash
 pip install -r requirements.txt
 ```
 
-### Step 4: Configure Environment Variables
+**4. Configure API Keys**
 
-Create a `.env` file in the project root:
-
+Create `.env` in project root:
 ```env
-# Required
-GEMINI_API_KEY=your_gemini_api_key_here
-
-# Optional (for extended features)
-NEWS_API_KEY=your_newsapi_key_here
-WEATHER_API_KEY=your_openweathermap_key_here
-
-# Configuration
+GEMINI_API_KEY=your_key_here
+NEWS_API_KEY=your_key_here
+WEATHER_API_KEY=your_key_here
 VOICE_ENABLED=true
-AMADEUS_DB_FILE=amadeus.db
 ```
 
 <details>
-<summary><strong>📌 How to Obtain API Keys</strong></summary>
-<br/>
+<summary><strong>📌 Obtaining API Keys</strong></summary>
 
-| Service | URL | Free Tier |
-|---------|-----|-----------|
-| Google Gemini | [ai.google.dev](https://ai.google.dev/) | Yes |
+| Service | Link | Free Tier |
+|---------|------|-----------|
+| Google Gemini | [ai.google.dev](https://ai.google.dev/) | ✅ Available |
 | OpenWeatherMap | [openweathermap.org/api](https://openweathermap.org/api) | 1,000 calls/day |
 | NewsAPI | [newsapi.org](https://newsapi.org/) | 100 requests/day |
 
@@ -237,185 +192,86 @@ AMADEUS_DB_FILE=amadeus.db
 
 ## 🎮 Usage
 
-### Starting Amadeus
+### Running Amadeus
 
-<table>
-<tr>
-<td width="50%">
+| Mode | Command | Description |
+|------|---------|-------------|
+| **Voice** | `python Amadeus/main.py` | Full voice interaction |
+| **Debug** | `python Amadeus/main.py --debug` | Text-only mode |
+| **Briefing** | `python Amadeus/main.py --brief` | Daily summary only |
 
-**Voice Mode** (Default)
-```bash
-python main.py
-```
-Speak naturally after the "Listening..." prompt.
+### Command Examples
 
-</td>
-<td width="50%">
-
-**Debug/Text Mode**
-```bash
-python main.py --debug
-```
-Type commands directly in the terminal.
-
-</td>
-</tr>
-</table>
-
-### Command Line Options
-
-```bash
-python main.py [OPTIONS]
-
-Options:
-  --debug, -d       Run in text-only mode (no voice)
-  --no-voice        Disable voice output but run normally
-  --brief, -b       Show daily briefing and exit
-  --log-level       Set logging level (DEBUG, INFO, WARNING, ERROR)
-```
-
-### Example Commands
-
-<table>
-<tr>
-<th>Category</th>
-<th>Example Commands</th>
-</tr>
-<tr>
-<td><strong>Time & Date</strong></td>
-<td>
-<code>"What time is it?"</code><br/>
-<code>"What's today's date?"</code><br/>
-<code>"What day is it?"</code>
-</td>
-</tr>
-<tr>
-<td><strong>Tasks</strong></td>
-<td>
-<code>"Add task: buy groceries"</code><br/>
-<code>"Show my pending tasks"</code><br/>
-<code>"Complete the groceries task"</code>
-</td>
-</tr>
-<tr>
-<td><strong>Notes</strong></td>
-<td>
-<code>"Create a note titled Meeting Notes"</code><br/>
-<code>"List all my notes"</code><br/>
-<code>"Show notes tagged with work"</code>
-</td>
-</tr>
-<tr>
-<td><strong>Reminders</strong></td>
-<td>
-<code>"Remind me to call Mom tomorrow at 5pm"</code><br/>
-<code>"Set a reminder for the meeting in 2 hours"</code><br/>
-<code>"Show my reminders"</code>
-</td>
-</tr>
-<tr>
-<td><strong>System</strong></td>
-<td>
-<code>"Open Chrome"</code><br/>
-<code>"What's my system status?"</code><br/>
-<code>"Search for document.pdf"</code>
-</td>
-</tr>
-<tr>
-<td><strong>Information</strong></td>
-<td>
-<code>"What's the weather in Mumbai?"</code><br/>
-<code>"Get the latest tech news"</code><br/>
-<code>"Tell me about quantum computing"</code>
-</td>
-</tr>
-</table>
+| Category | Examples |
+|----------|----------|
+| **Time & Date** | "What time is it?" • "Today's date?" |
+| **Tasks** | "Add task: buy groceries" • "Show pending tasks" |
+| **Notes** | "Create note: Meeting Notes" • "List my notes" |
+| **Reminders** | "Remind me to call at 5pm" • "Show reminders" |
+| **System** | "Open Chrome" • "System status?" • "Find document.pdf" |
+| **Information** | "Weather in Mumbai?" • "Latest tech news" • "Quantum computing" |
 
 ---
 
 ## 🏗️ Architecture
 
-### Project Structure
+### Project Layout
 
 ```
 Amadeus-AI/
-├── Amadeus/                   # Source Code Directory
-│   ├── main.py                # Application entry point
-│   ├── amadeus.py             # Core assistant class
-│   ├── api.py                 # FastAPI REST endpoints
-│   ├── general_utils.py       # Utilities (Weather, News, etc.)
-│   ├── speech_utils.py        # Voice recognition and TTS
-│   ├── system_controls.py     # System management
+├── Amadeus/
+│   ├── main.py                # Entry point
+│   ├── amadeus.py             # Core assistant logic
+│   ├── api.py                 # FastAPI REST server
+│   ├── speech_utils.py        # Voice I/O handling
 │   ├── task_utils.py          # Task operations
-│   └── ... (other utils)
-├── requirements.txt           # Project dependencies
-├── .env                       # Environment variables
-└── README.md                  # Documentation
+│   ├── system_controls.py     # OS integration
+│   └── general_utils.py       # External APIs
+├── requirements.txt
+├── .env
+└── README.md
 ```
 
 ### System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         User Interface                          │
-│                   (Voice Input / Text Input)                    │
-└──────────────────────────────┬──────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                        Amadeus Core                             │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌────────────────┐  │
-│  │  Conversation   │  │  Tool Selection │  │    Tool        │  │
-│  │    Manager      │◄─┤   (Gemini AI)   │─►│   Executor     │  │
-│  └─────────────────┘  └─────────────────┘  └────────────────┘  │
-└──────────────────────────────┬──────────────────────────────────┘
-                               │
-          ┌────────────────────┼────────────────────┐
-          ▼                    ▼                    ▼
-┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
-│  System Tools    │  │ Productivity     │  │ Information      │
-│  • App Launcher  │  │ • Tasks          │  │ • Weather API    │
-│  • File Search   │  │ • Notes          │  │ • News API       │
-│  • System Monitor│  │ • Reminders      │  │ • Wikipedia      │
-└──────────────────┘  └────────┬─────────┘  └──────────────────┘
-                               │
-                               ▼
-                    ┌──────────────────┐
-                    │  SQLite Database │
-                    │   (Async I/O)    │
-                    └──────────────────┘
+User Input (Voice/Text)
+  ↓
+   Amadeus Core
+   ├→ Conversation Manager
+   ├→ Tool Selector (Gemini AI)
+   └→ Tool Executor
+  ↓
+   ┌────┬────┬────────┐
+   ↓    ↓    ↓        ↓
+ Tasks Notes System Info Services
+   ↓
+ SQLite Database
 ```
 
 ### Database Schema
 
 ```sql
--- Tasks Table
 CREATE TABLE tasks (
-    id          INTEGER PRIMARY KEY,
-    content     TEXT NOT NULL,
-    status      VARCHAR(32) DEFAULT 'pending',
-    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
-    completed_at DATETIME
+    id           INTEGER PRIMARY KEY,
+    content      TEXT NOT NULL,
+    status       VARCHAR(32) DEFAULT 'pending',
+    created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- Notes Table
 CREATE TABLE notes (
-    id          INTEGER PRIMARY KEY,
-    title       VARCHAR(256) NOT NULL,
-    content     TEXT NOT NULL,
-    tags        VARCHAR(512) DEFAULT '',
-    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    id           INTEGER PRIMARY KEY,
+    title        VARCHAR(256) NOT NULL,
+    content      TEXT NOT NULL,
+    tags         VARCHAR(512),
+    created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- Reminders Table
 CREATE TABLE reminders (
-    id          INTEGER PRIMARY KEY,
-    title       VARCHAR(256) NOT NULL,
-    time        VARCHAR(64) NOT NULL,
-    description TEXT DEFAULT '',
-    status      VARCHAR(32) DEFAULT 'active',
-    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    id           INTEGER PRIMARY KEY,
+    title        VARCHAR(256) NOT NULL,
+    time         VARCHAR(64) NOT NULL,
+    status       VARCHAR(32) DEFAULT 'active'
 );
 ```
 
@@ -423,56 +279,50 @@ CREATE TABLE reminders (
 
 ## 🔌 API Reference
 
-Amadeus includes a REST API built with FastAPI for programmatic access.
-
-### Starting the API Server
-
+Start the REST API server:
 ```bash
-uvicorn api:app --reload --port 8000
+uvicorn Amadeus.api:app --reload --port 8000
 ```
 
-### Endpoints
-
 <details>
-<summary><strong>Tasks API</strong></summary>
+<summary><strong>Tasks Endpoints</strong></summary>
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/tasks` | Create a new task |
-| `GET` | `/tasks` | List all tasks |
-| `POST` | `/tasks/{id}/complete` | Mark task complete |
-| `DELETE` | `/tasks/{id}` | Delete a task |
+| Method | Route | Purpose |
+|--------|-------|---------|
+| POST | `/tasks` | Create task |
+| GET | `/tasks` | List all tasks |
+| POST | `/tasks/{id}/complete` | Complete task |
+| DELETE | `/tasks/{id}` | Delete task |
 
-**Example Request:**
 ```bash
 curl -X POST http://localhost:8000/tasks \
   -H "Content-Type: application/json" \
-  -d '{"content": "Review pull requests"}'
+  -d '{"content": "Review PRs"}'
 ```
 
 </details>
 
 <details>
-<summary><strong>Notes API</strong></summary>
+<summary><strong>Notes Endpoints</strong></summary>
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/notes` | Create a new note |
-| `GET` | `/notes` | List all notes |
-| `GET` | `/notes/{id}` | Get note by ID |
-| `PUT` | `/notes/{id}` | Update a note |
-| `DELETE` | `/notes/{id}` | Delete a note |
+| Method | Route | Purpose |
+|--------|-------|---------|
+| POST | `/notes` | Create note |
+| GET | `/notes` | List notes |
+| GET | `/notes/{id}` | Get note |
+| PUT | `/notes/{id}` | Update note |
+| DELETE | `/notes/{id}` | Delete note |
 
 </details>
 
 <details>
-<summary><strong>Reminders API</strong></summary>
+<summary><strong>Reminders Endpoints</strong></summary>
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/reminders` | Create a reminder |
-| `GET` | `/reminders` | List active reminders |
-| `DELETE` | `/reminders/{id}` | Delete a reminder |
+| Method | Route | Purpose |
+|--------|-------|---------|
+| POST | `/reminders` | Create reminder |
+| GET | `/reminders` | List active |
+| DELETE | `/reminders/{id}` | Delete reminder |
 
 </details>
 
@@ -480,101 +330,65 @@ curl -X POST http://localhost:8000/tasks \
 
 ## 🛠️ Configuration
 
-### Environment Variables
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `GEMINI_API_KEY` | ✅ | — | Google Gemini API key |
-| `NEWS_API_KEY` | ❌ | — | NewsAPI.org key |
-| `WEATHER_API_KEY` | ❌ | — | OpenWeatherMap key |
-| `VOICE_ENABLED` | ❌ | `true` | Enable/disable voice |
-| `AMADEUS_DB_FILE` | ❌ | `amadeus.db` | Database file path |
-| `GEMINI_MODEL` | ❌ | `gemini-2.0-flash` | Gemini model version |
+| Variable | Required | Default | Purpose |
+|----------|----------|---------|---------|
+| `GEMINI_API_KEY` | ✅ | — | Gemini API authentication |
+| `NEWS_API_KEY` | ❌ | — | News aggregation service |
+| `WEATHER_API_KEY` | ❌ | — | Weather data provider |
+| `VOICE_ENABLED` | ❌ | `true` | Toggle voice features |
+| `AMADEUS_DB_FILE` | ❌ | `amadeus.db` | Database location |
 
 ---
 
 ## 🤝 Contributing
 
-Contributions are warmly welcomed! Please follow these guidelines to ensure a smooth collaboration process.
-
-### Development Setup
+### Getting Started
 
 ```bash
-# Clone your fork
 git clone https://github.com/adityatawde9699/Amadeus-AI.git
-
-# Create feature branch
-git checkout -b feature/your-feature-name
-
-# Install dev dependencies
-pip install -r requirements-dev.txt
-
-# Run tests
+git checkout -b feature/your-feature
+pip install -r requirements.txt
 pytest tests/
 ```
 
-### Contribution Guidelines
+### Guidelines
 
-1. **Fork** the repository
-2. **Create** a feature branch (`feature/amazing-feature`)
-3. **Commit** changes with clear messages
-4. **Test** your changes thoroughly
-5. **Submit** a pull request
+1. Fork the repository
+2. Create feature branch (`feature/amazing-feature`)
+3. Commit with clear messages
+4. Test thoroughly
+5. Submit pull request
 
 ### Code Standards
 
-- Follow PEP 8 style guidelines
-- Add type hints to all functions
-- Write docstrings for public methods
-- Include unit tests for new features
+- Follow PEP 8 guidelines
+- Include type hints
+- Add docstrings for public methods
+- Write unit tests for features
 
 ---
 
 ## 📜 License
 
-This project is licensed under the **Apache License 2.0** — see the [LICENSE](LICENSE) file for details.
+Licensed under **Apache License 2.0** — see [LICENSE](LICENSE) for details.
 
 ---
 
 ## 🙏 Acknowledgments
 
-<table>
-<tr>
-<td align="center">
-<a href="https://ai.google.dev/">
-<strong>Google Gemini</strong>
-</a>
-<br/>AI Language Model
-</td>
-<td align="center">
-<a href="https://github.com/guillaumekln/faster-whisper">
-<strong>Faster-Whisper</strong>
-</a>
-<br/>Speech Recognition
-</td>
-<td align="center">
-<a href="https://www.sqlalchemy.org/">
-<strong>SQLAlchemy</strong>
-</a>
-<br/>Database ORM
-</td>
-<td align="center">
-<a href="https://fastapi.tiangolo.com/">
-<strong>FastAPI</strong>
-</a>
-<br/>REST API Framework
-</td>
-</tr>
-</table>
+| Project | Role |
+|---------|------|
+| [Google Gemini](https://ai.google.dev/) | AI Language Model |
+| [Faster-Whisper](https://github.com/guillaumekln/faster-whisper) | Speech Recognition |
+| [SQLAlchemy](https://www.sqlalchemy.org/) | Database ORM |
+| [FastAPI](https://fastapi.tiangolo.com/) | REST API Framework |
 
 ---
 
 <div align="center">
 
-**Built with ❤️ by the Amadeus Team**
+**Crafted with ❤️ by Aditya S. Tawde**
 
-<br/>
-
-<a href="#-amadeus-ai">⬆️ Back to Top</a>
+[⬆️ Back to Top](#-amadeus-ai)
 
 </div>
