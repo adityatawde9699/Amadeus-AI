@@ -16,9 +16,12 @@ import random
 
 load_dotenv()
 
-# API Keys
-NEWS_API_KEY = os.getenv("NEWS_API_KEY", "")
-WEATHER_API_KEY = os.getenv("WEATHER_API_KEY", "")  # OpenWeatherMap API key
+# Import config for API keys and settings
+import config
+
+# API Keys (from config)
+NEWS_API_KEY = config.NEWS_API_KEY
+WEATHER_API_KEY = config.WEATHER_API_KEY
 
 
 # ============== GREETING & TIME UTILITIES ==============
@@ -94,7 +97,7 @@ async def get_weather_async(location: str = "India") -> str:
     if not WEATHER_API_KEY:
         return "Weather service unavailable. Please configure WEATHER_API_KEY."
     
-    base_url = "http://api.openweathermap.org/data/2.5/weather"
+    base_url = config.WEATHER_API_BASE_URL
     params = {
         "q": location,
         "appid": WEATHER_API_KEY,
@@ -103,7 +106,7 @@ async def get_weather_async(location: str = "India") -> str:
     
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(base_url, params=params, timeout=aiohttp.ClientTimeout(total=10)) as response:
+            async with session.get(base_url, params=params, timeout=aiohttp.ClientTimeout(total=config.WEATHER_API_TIMEOUT)) as response:
                 if response.status == 404:
                     return f"Sorry, I couldn't find weather data for '{location}'."
                 elif response.status != 200:
@@ -143,9 +146,9 @@ async def get_weather_async(location: str = "India") -> str:
 # ============== NEWS UTILITIES ==============
 
 async def get_news_async(
-    category: str = "general",
-    country: str = "in",
-    count: int = 5
+    category: Optional[str] = None,
+    country: Optional[str] = None,
+    count: Optional[int] = None
 ) -> str:
     """
     Fetches top news headlines using NewsAPI.
@@ -160,6 +163,11 @@ async def get_news_async(
     """
     if not NEWS_API_KEY:
         return "News service unavailable. Please configure NEWS_API_KEY."
+    
+    # Use defaults from config if not provided
+    category = category or config.NEWS_DEFAULT_CATEGORY
+    country = country or config.NEWS_DEFAULT_COUNTRY
+    count = count or config.NEWS_DEFAULT_COUNT
     
     base_url = "https://newsapi.org/v2/top-headlines"
     params = {
@@ -242,7 +250,7 @@ def open_website(query: str) -> str:
 
 # ============== WIKIPEDIA UTILITIES ==============
 
-async def wikipedia_search_async(query: str, sentences: int = 3) -> str:
+async def wikipedia_search_async(query: str, sentences: Optional[int] = None) -> str:
     """
     Searches Wikipedia and returns a summary.
     
@@ -253,8 +261,12 @@ async def wikipedia_search_async(query: str, sentences: int = 3) -> str:
     Returns:
         Wikipedia summary or error message
     """
+    # Use default from config if not provided
+    if sentences is None:
+        sentences = config.WIKIPEDIA_DEFAULT_SENTENCES
+    
     # Using Wikipedia's REST API
-    base_url = "https://en.wikipedia.org/api/rest_v1/page/summary"
+    base_url = config.WIKIPEDIA_API_BASE_URL
     search_url = f"{base_url}/{urllib.parse.quote(query)}"
     
     headers = {
@@ -263,7 +275,7 @@ async def wikipedia_search_async(query: str, sentences: int = 3) -> str:
     
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(search_url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
+            async with session.get(search_url, headers=headers, timeout=aiohttp.ClientTimeout(total=config.WIKIPEDIA_API_TIMEOUT)) as response:
                 if response.status == 404:
                     # Try search API instead
                     return await _wikipedia_search_fallback(query, session)
@@ -304,7 +316,7 @@ async def _wikipedia_search_fallback(query: str, session: aiohttp.ClientSession)
     }
     
     try:
-        async with session.get(search_api, params=params, timeout=aiohttp.ClientTimeout(total=10)) as response:
+        async with session.get(search_api, params=params, timeout=aiohttp.ClientTimeout(total=config.WIKIPEDIA_API_TIMEOUT)) as response:
             data = await response.json()
             results = data.get("query", {}).get("search", [])
             

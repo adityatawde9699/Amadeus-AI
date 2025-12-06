@@ -2,7 +2,11 @@ import psutil
 import platform
 import datetime
 import time
+import logging
 from speech_utils import speak
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Check if GPUtil is available more safely
 def is_gputil_available():
@@ -12,26 +16,24 @@ def is_gputil_available():
     except ImportError:
         return False
     except Exception as e:
-        print(f"Error checking GPUtil availability: {e}")
+        logger.debug(f"Error checking GPUtil availability: {e}")
         return False
 
 GPUTIL_AVAILABLE = is_gputil_available()
 
-# Default threshold values (can be customized)
-DEFAULT_THRESHOLDS = {
-    "cpu": 85,  # CPU usage percentage
-    "memory": 80,  # Memory usage percentage
-    "disk": 90,  # Disk usage percentage
-    "temperature": 80  # Temperature in Celsius
-}
+# Import config for thresholds
+import config
+
+# Default threshold values from config
+DEFAULT_THRESHOLDS = config.get_system_thresholds()
 
 def get_cpu_usage():
     """Get CPU usage percentage."""
     try:
-        cpu_percent = psutil.cpu_percent(interval=1)
+        cpu_percent = psutil.cpu_percent(interval=config.SYSTEM_MONITOR_CPU_CHECK_INTERVAL)
         return cpu_percent
     except Exception as e:
-        print(f"Error getting CPU usage: {e}")
+        logger.error(f"Error getting CPU usage: {e}", exc_info=True)
         return None
 
 def get_memory_usage():
@@ -49,7 +51,7 @@ def get_memory_usage():
             "percent": percent
         }
     except Exception as e:
-        print(f"Error getting memory usage: {e}")
+        logger.error(f"Error getting memory usage: {e}", exc_info=True)
         return None
 
 def get_disk_usage(path="/"):
@@ -69,7 +71,7 @@ def get_disk_usage(path="/"):
             "percent": percent
         }
     except Exception as e:
-        print(f"Error getting disk usage: {e}")
+        logger.error(f"Error getting disk usage: {e}", exc_info=True)
         return None
 
 def get_system_uptime():
@@ -86,7 +88,7 @@ def get_system_uptime():
             "boot_time": boot_time_str
         }
     except Exception as e:
-        print(f"Error getting system uptime: {e}")
+        logger.error(f"Error getting system uptime: {e}", exc_info=True)
         return None
 
 def get_running_processes(count=10):
@@ -104,7 +106,7 @@ def get_running_processes(count=10):
         
         return top_processes
     except Exception as e:
-        print(f"Error getting running processes: {e}")
+        logger.error(f"Error getting running processes: {e}", exc_info=True)
         return None
 
 def get_network_info():
@@ -126,7 +128,7 @@ def get_network_info():
             "dropout": network_stats.dropout
         }
     except Exception as e:
-        print(f"Error getting network info: {e}")
+        logger.error(f"Error getting network info: {e}", exc_info=True)
         return None
 
 def get_battery_info():
@@ -165,7 +167,7 @@ def get_battery_info():
             "time_left": time_left if not power_plugged else "N/A"
         }
     except Exception as e:
-        print(f"Error getting battery info: {e}")
+        logger.error(f"Error getting battery info: {e}", exc_info=True)
         return "Error getting battery information"
 
 # NEW FEATURE: GPU Stats (with improved error handling)
@@ -196,7 +198,7 @@ def get_gpu_stats():
             
         return gpu_stats
     except Exception as e:
-        print(f"Error getting GPU stats: {e}")
+        logger.error(f"Error getting GPU stats: {e}", exc_info=True)
         return f"Error getting GPU information: {e}"
 
 # Alternative GPU info function using nvidia-smi for NVIDIA GPUs
@@ -246,7 +248,7 @@ def get_nvidia_gpu_stats():
     except FileNotFoundError:
         return "nvidia-smi command not found. NVIDIA driver may not be installed."
     except Exception as e:
-        print(f"Error getting NVIDIA GPU stats: {e}")
+        logger.error(f"Error getting NVIDIA GPU stats: {e}", exc_info=True)
         return f"Error getting NVIDIA GPU information: {e}"
 
 # Function to get GPU stats from any available source
@@ -298,7 +300,7 @@ def get_temperature_sensors():
                 
         return formatted_temps
     except Exception as e:
-        print(f"Error getting temperature data: {e}")
+        logger.error(f"Error getting temperature data: {e}", exc_info=True)
         return f"Error getting temperature information: {e}"
 
 # NEW FEATURE: System Alerts
@@ -405,7 +407,7 @@ def get_full_system_report():
         
         return report
     except Exception as e:
-        print(f"Error generating system report: {e}")
+        logger.error(f"Error generating system report: {e}", exc_info=True)
         return None
 
 def generate_system_summary():
@@ -447,7 +449,7 @@ def generate_system_summary():
                 
         return summary
     except Exception as e:
-        print(f"Error generating system summary: {e}")
+        logger.error(f"Error generating system summary: {e}", exc_info=True)
         return "Sorry, I couldn't generate a complete system summary at this time."
 
 def print_system_info():
@@ -509,7 +511,7 @@ def print_system_info():
         
         return True
     except Exception as e:
-        print(f"Error printing system information: {e}")
+        logger.error(f"Error printing system information: {e}", exc_info=True)
         return False
 
 # Example function to monitor system continuously
@@ -522,22 +524,21 @@ def monitor_system(interval=60, thresholds=DEFAULT_THRESHOLDS, speak_alerts=True
         thresholds (dict): Dictionary of threshold values
         speak_alerts (bool): Whether to speak alerts using text-to-speech
     """
-    print(f"Starting system monitoring (Press Ctrl+C to stop)")
-    print(f"Alert thresholds: CPU: {thresholds.get('cpu')}%, Memory: {thresholds.get('memory')}%, Disk: {thresholds.get('disk')}%, Temperature: {thresholds.get('temperature')}°C")
+    logger.info(f"Starting system monitoring (interval: {interval}s)")
+    logger.info(f"Alert thresholds: CPU: {thresholds.get('cpu')}%, Memory: {thresholds.get('memory')}%, Disk: {thresholds.get('disk')}%, Temperature: {thresholds.get('temperature')}°C")
     
     try:
         while True:
             alerts = check_system_alerts(thresholds, speak_alerts)
             
             if alerts:
-                print("\n===== SYSTEM ALERTS =====")
+                logger.warning(f"System alerts detected: {len(alerts)}")
                 for alert in alerts:
-                    print(f"[{alert['type']}] {alert['message']}")
-                print("==========================\n")
+                    logger.warning(f"[{alert['type']}] {alert['message']}")
             
             time.sleep(interval)
     except KeyboardInterrupt:
-        print("\nSystem monitoring stopped.")
+        logger.info("System monitoring stopped by user")
         
 # If run directly, print system information
 if __name__ == "__main__":

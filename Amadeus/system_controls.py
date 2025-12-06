@@ -72,6 +72,7 @@ def import_dataframe_reader():
 def copy_file(source_path: str | Path, destination_path: str | Path) -> bool:
     """
     Copy a file from source to destination with metadata preservation.
+    Includes security validation and permission checks.
     
     Args:
         source_path: Path to source file
@@ -81,18 +82,44 @@ def copy_file(source_path: str | Path, destination_path: str | Path) -> bool:
         bool: True if successful, False otherwise
     """
     try:
-        source_path = Path(source_path).resolve()
-        destination_path = Path(destination_path).resolve()
+        # Import security utilities
+        from security import validate_file_path, check_file_permissions, audit_file_operation, is_safe_path, get_safe_base_directory
+        
+        # Validate and normalize paths
+        source_path = validate_file_path(str(source_path), allow_absolute=True)
+        destination_path = validate_file_path(str(destination_path), allow_absolute=True)
+        
+        # Check if paths are within safe base directory
+        base_dir = get_safe_base_directory()
+        if not is_safe_path(source_path, base_dir) or not is_safe_path(destination_path, base_dir):
+            logger.error(f"File path outside safe base directory: {base_dir}")
+            audit_file_operation("copy", str(source_path), success=False)
+            return False
         
         if not source_path.is_file():
             logger.error(f"Source file does not exist: {source_path}")
+            audit_file_operation("copy", str(source_path), success=False)
             return False
         
         if source_path == destination_path:
             logger.error("Source and destination paths are identical")
             return False
-
+        
+        # Check permissions
+        can_read, reason = check_file_permissions(source_path, "read")
+        if not can_read:
+            logger.error(f"Cannot read source file: {reason}")
+            audit_file_operation("copy", str(source_path), success=False)
+            return False
+        
         destination_dir = destination_path.parent
+        from security import check_directory_permissions
+        can_write, reason = check_directory_permissions(destination_dir, "write")
+        if not can_write:
+            logger.error(f"Cannot write to destination directory: {reason}")
+            audit_file_operation("copy", str(destination_path), success=False)
+            return False
+        
         destination_dir.mkdir(parents=True, exist_ok=True)
 
         # Use atomic operation with temp file
@@ -101,20 +128,17 @@ def copy_file(source_path: str | Path, destination_path: str | Path) -> bool:
         temp_dest.replace(destination_path)
         
         logger.info(f"File copied: {source_path} → {destination_path}")
-        print(f"✓ File copied successfully to {destination_path}")
+        audit_file_operation("copy", str(source_path), success=True)
         return True
         
-    except PermissionError:
-        logger.error(f"Permission denied copying file: {source_path}")
-        print("✗ Permission denied. Check file permissions.")
+    except PermissionError as e:
+        logger.error(f"Permission denied copying file: {source_path}: {e}")
         return False
     except IOError as e:
-        logger.error(f"IO error while copying: {e}")
-        print(f"✗ IO error: {e}")
+        logger.error(f"IO error while copying {source_path}: {e}")
         return False
     except Exception as e:
-        logger.error(f"Unexpected error copying file: {e}")
-        print(f"✗ Error: {e}")
+        logger.error(f"Unexpected error copying file {source_path}: {e}", exc_info=True)
         return False
 
 def move_file(source_path: str | Path, destination_path: str | Path) -> bool:
@@ -145,21 +169,19 @@ def move_file(source_path: str | Path, destination_path: str | Path) -> bool:
 
         shutil.move(str(source_path), str(destination_path))
         logger.info(f"File moved: {source_path} → {destination_path}")
-        print(f"✓ File moved successfully to {destination_path}")
         return True
         
-    except PermissionError:
-        logger.error(f"Permission denied moving file: {source_path}")
-        print("✗ Permission denied. Check file permissions.")
+    except PermissionError as e:
+        logger.error(f"Permission denied moving file: {source_path}: {e}")
         return False
     except Exception as e:
-        logger.error(f"Error moving file: {e}")
-        print(f"✗ Error: {e}")
+        logger.error(f"Error moving file {source_path}: {e}", exc_info=True)
         return False
 
 def delete_file(file_path: str | Path, skip_confirmation: bool = False) -> bool:
     """
     Delete a file with optional voice confirmation.
+    Includes security validation and permission checks.
     
     Args:
         file_path: Path to file to delete
@@ -169,19 +191,37 @@ def delete_file(file_path: str | Path, skip_confirmation: bool = False) -> bool:
         bool: True if successful, False otherwise
     """
     try:
-        file_to_delete = Path(file_path).resolve()
+        # Import security utilities
+        from security import validate_file_path, check_file_permissions, audit_file_operation, is_safe_path, get_safe_base_directory
+        
+        # Validate and normalize path
+        file_to_delete = validate_file_path(str(file_path), allow_absolute=True)
+        
+        # Check if path is within safe base directory
+        base_dir = get_safe_base_directory()
+        if not is_safe_path(file_to_delete, base_dir):
+            logger.error(f"File path outside safe base directory: {base_dir}")
+            audit_file_operation("delete", str(file_path), success=False)
+            return False
         
         if not file_to_delete.is_file():
             logger.error(f"File does not exist: {file_path}")
-            print(f"✗ File not found: {file_path}")
+            audit_file_operation("delete", str(file_path), success=False)
+            return False
+        
+        # Check delete permission
+        can_delete, reason = check_file_permissions(file_to_delete, "delete")
+        if not can_delete:
+            logger.error(f"Cannot delete file: {reason}")
+            audit_file_operation("delete", str(file_path), success=False)
             return False
         
         if not skip_confirmation:
-            print(f"Are you sure you want to permanently delete: {file_to_delete.name}?")
+            logger.info(f"Requesting confirmation to delete: {file_to_delete.name}")
             confirmation = recognize_speech()
             
             if not confirmation or 'yes' not in confirmation.lower():
-                print("File deletion cancelled.")
+                logger.info("File deletion cancelled by user")
                 return False
         
         # Create backup in temp directory before deletion
@@ -192,16 +232,14 @@ def delete_file(file_path: str | Path, skip_confirmation: bool = False) -> bool:
         
         os.remove(file_to_delete)
         logger.info(f"File deleted: {file_to_delete} (backup: {backup_path})")
-        print(f"✓ File deleted: {file_to_delete.name}")
+        audit_file_operation("delete", str(file_path), success=True)
         return True
         
-    except PermissionError:
-        logger.error(f"Permission denied deleting file: {file_path}")
-        print("✗ Permission denied. Check file permissions.")
+    except PermissionError as e:
+        logger.error(f"Permission denied deleting file: {file_path}: {e}")
         return False
     except Exception as e:
-        logger.error(f"Error deleting file: {e}")
-        print(f"✗ Error: {e}")
+        logger.error(f"Error deleting file {file_path}: {e}", exc_info=True)
         return False
 
 def create_folder(folder_name: str | Path) -> bool:
@@ -220,25 +258,20 @@ def create_folder(folder_name: str | Path) -> bool:
         if folder_path.exists():
             if folder_path.is_dir():
                 logger.warning(f"Folder already exists: {folder_path}")
-                print(f"ℹ Folder already exists: {folder_path}")
                 return False
             else:
                 logger.error(f"Path exists but is not a directory: {folder_path}")
-                print(f"✗ Path exists but is not a directory: {folder_path}")
                 return False
         
         folder_path.mkdir(parents=True, exist_ok=True)
         logger.info(f"Folder created: {folder_path}")
-        print(f"✓ Folder created: {folder_path}")
         return True
         
-    except PermissionError:
-        logger.error(f"Permission denied creating folder: {folder_name}")
-        print("✗ Permission denied. Check write permissions.")
+    except PermissionError as e:
+        logger.error(f"Permission denied creating folder: {folder_name}: {e}")
         return False
     except Exception as e:
-        logger.error(f"Error creating folder: {e}")
-        print(f"✗ Error: {e}")
+        logger.error(f"Error creating folder {folder_name}: {e}", exc_info=True)
         return False
 
 def create_directory(directory_path: str | Path) -> bool:
@@ -260,49 +293,37 @@ def list_directory(directory_path: str | Path = '.') -> bool:
         
         if not directory_path.exists():
             logger.error(f"Directory does not exist: {directory_path}")
-            print(f"✗ Directory not found: {directory_path}")
             return False
         
         if not directory_path.is_dir():
             logger.error(f"Path is not a directory: {directory_path}")
-            print(f"✗ Not a directory: {directory_path}")
             return False
         
         items = list(directory_path.iterdir())
         files = sorted([item for item in items if item.is_file()])
         dirs = sorted([item for item in items if item.is_dir()])
         
-        print(f"\n📂 Directory: {directory_path}")
-        print(f"   Files: {len(files)} | Subdirectories: {len(dirs)}\n")
-        
+        logger.info(f"Directory listing: {directory_path} - {len(files)} files, {len(dirs)} subdirectories")
+        # Log directory contents for debugging
         if dirs:
-            print("📁 Subdirectories:")
-            for d in dirs:
-                print(f"   └─ {d.name}/")
-        
+            logger.debug(f"Subdirectories: {[d.name for d in dirs]}")
         if files:
-            print("📄 Files:")
-            for f in sorted(files):
-                size_kb = f.stat().st_size / 1024
-                print(f"   └─ {f.name} ({size_kb:.1f} KB)")
+            logger.debug(f"Files: {[f.name for f in files[:10]]}")  # Log first 10 files
         
-        print()
         return True
         
-    except PermissionError:
-        logger.error(f"Permission denied listing directory: {directory_path}")
-        print("✗ Permission denied.")
+    except PermissionError as e:
+        logger.error(f"Permission denied listing directory: {directory_path}: {e}")
         return False
     except Exception as e:
-        logger.error(f"Error listing directory: {e}")
-        print(f"✗ Error: {e}")
+        logger.error(f"Error listing directory {directory_path}: {e}", exc_info=True)
         return False
 
 # ============================================================================
 # FILE SEARCH AND READ
 # ============================================================================
 
-def search_file(file_name: str, search_directory: Optional[str | Path] = None, max_results: int = 10) -> Optional[str]:
+def search_file(file_name: str, search_directory: Optional[str | Path] = None, max_results: Optional[int] = None) -> Optional[str]:
     """
     Search for files using glob patterns with timeout.
     
@@ -315,15 +336,17 @@ def search_file(file_name: str, search_directory: Optional[str | Path] = None, m
         str: Path to first found file, or None if not found
     """
     try:
+        import config
+        if max_results is None:
+            max_results = config.FILE_SEARCH_MAX_RESULTS
+        
         search_directory = Path(search_directory or Path.home()).resolve()
         
         if not search_directory.exists():
             logger.error(f"Search directory does not exist: {search_directory}")
-            print(f"✗ Directory not found: {search_directory}")
             return None
         
         logger.info(f"Searching for '{file_name}' in {search_directory}")
-        print(f"🔍 Searching for '{file_name}'...")
         
         # Build search pattern
         pattern = f"**/*{file_name}*"
@@ -339,22 +362,18 @@ def search_file(file_name: str, search_directory: Optional[str | Path] = None, m
             logger.warning(f"Permission denied accessing some directories")
         
         if found_files:
-            logger.info(f"Found {len(found_files)} file(s)")
-            print(f"✓ Found {len(found_files)} matching file(s):\n")
-            for i, file_path in enumerate(found_files, 1):
-                print(f"   {i}. {file_path}")
+            logger.info(f"Found {len(found_files)} file(s) matching '{file_name}'")
+            logger.debug(f"Found files: {[str(f) for f in found_files[:5]]}")  # Log first 5
             return str(found_files[0])
         else:
             logger.warning(f"File not found: {file_name}")
-            print(f"✗ No files found matching: {file_name}")
             return None
             
     except Exception as e:
-        logger.error(f"Error searching for file: {e}")
-        print(f"✗ Error: {e}")
+        logger.error(f"Error searching for file '{file_name}': {e}", exc_info=True)
         return None
 
-def read_file(file_path: str | Path, max_chars: int = 5000) -> Optional[str]:
+def read_file(file_path: str | Path, max_chars: Optional[int] = None) -> Optional[str]:
     """
     Read various file types and return content.
     
@@ -366,18 +385,20 @@ def read_file(file_path: str | Path, max_chars: int = 5000) -> Optional[str]:
         str: File content or None if error
     """
     try:
+        import config
+        if max_chars is None:
+            max_chars = config.FILE_READ_MAX_CHARS
+        
         file_path = Path(file_path).resolve()
         
         if not file_path.is_file():
             logger.error(f"File does not exist: {file_path}")
-            print(f"✗ File not found: {file_path}")
             return None
         
         file_extension = file_path.suffix.lower()
         content = ""
         
         logger.info(f"Reading file: {file_path}")
-        print(f"📖 Reading: {file_path.name}\n")
         
         # Text files
         if file_extension == ".txt":
@@ -403,8 +424,7 @@ def read_file(file_path: str | Path, max_chars: int = 5000) -> Optional[str]:
                         break
                 content = "\n\n".join(pages_content)[:max_chars]
             except Exception as e:
-                logger.error(f"Error reading PDF: {e}")
-                print(f"✗ Error reading PDF: {e}")
+                logger.error(f"Error reading PDF {file_path}: {e}", exc_info=True)
                 return None
         
         # DOCX files
@@ -426,7 +446,7 @@ def read_file(file_path: str | Path, max_chars: int = 5000) -> Optional[str]:
             if not Image or not pytesseract:
                 return None
             try:
-                print("⏳ Performing OCR on image...")
+                logger.info(f"Performing OCR on image: {file_path}")
                 img = Image.open(file_path)
                 content = pytesseract.image_to_string(img)
                 if not content.strip():
@@ -453,22 +473,18 @@ def read_file(file_path: str | Path, max_chars: int = 5000) -> Optional[str]:
         
         else:
             logger.error(f"Unsupported file type: {file_extension}")
-            print(f"✗ Unsupported file format: {file_extension}")
             return None
         
-        # Display content
-        print("─" * 60)
+        # Log content summary
         display_length = min(len(content), 1500)
-        print(content[:display_length])
+        logger.debug(f"File content length: {len(content)} chars, displaying {display_length}")
         if display_length < len(content):
-            print(f"\n... (content truncated - {len(content) - display_length} chars hidden)")
-        print("─" * 60 + "\n")
+            logger.debug(f"Content truncated: {len(content) - display_length} chars hidden")
         
         return content
         
     except Exception as e:
-        logger.error(f"Error reading file: {e}")
-        print(f"✗ Error: {e}")
+        logger.error(f"Error reading file {file_path}: {e}", exc_info=True)
         return None
 
 # ============================================================================
@@ -606,7 +622,6 @@ def get_app_name(command: str) -> Optional[str]:
         
         if not app_dict:
             logger.error(f"Unsupported OS: {platform.system()}")
-            print("✗ Unsupported operating system.")
             return None
         
         command_lower = command.lower()
@@ -621,7 +636,6 @@ def get_app_name(command: str) -> Optional[str]:
                 return value
         
         logger.warning(f"Application not found: {command}")
-        print(f"✗ Application '{command}' not found in known applications.")
         return None
         
     except Exception as e:
@@ -659,7 +673,7 @@ def find_app_process(app_name: str) -> Optional[str]:
         logger.error(f"Error finding app process: {e}")
         return None
 
-def open_program(app_name: str, timeout: int = 15) -> bool:
+def open_program(app_name: str, timeout: Optional[int] = None) -> bool:
     """
     Open an application with verification.
     
@@ -671,13 +685,16 @@ def open_program(app_name: str, timeout: int = 15) -> bool:
         bool: True if successful, False otherwise
     """
     try:
+        import config
+        if timeout is None:
+            timeout = config.APP_LAUNCH_TIMEOUT
+        
         app_exec = get_app_name(app_name)
         if not app_exec:
-            print(f"✗ Cannot find application: {app_name}")
+            logger.warning(f"Cannot find application: {app_name}")
             return False
         
         logger.info(f"Opening application: {app_name} ({app_exec})")
-        print(f"🚀 Opening {app_name}...")
         
         # Get process list before
         try:
@@ -697,11 +714,10 @@ def open_program(app_name: str, timeout: int = 15) -> bool:
             elif platform.system() == "Linux":
                 subprocess.Popen(app_exec, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             else:
-                print("✗ Unsupported operating system.")
+                logger.error(f"Unsupported operating system: {platform.system()}")
                 return False
         except Exception as e:
-            logger.error(f"Error launching app: {e}")
-            print(f"✗ Error launching: {e}")
+            logger.error(f"Error launching app {app_name}: {e}", exc_info=True)
             return False
         
         # Wait and verify
@@ -712,21 +728,18 @@ def open_program(app_name: str, timeout: int = 15) -> bool:
                 processes_after = {p.info['name'] for p in psutil.process_iter(['name'])}
                 if processes_after - processes_before:
                     logger.info(f"Application launched successfully: {app_name}")
-                    print(f"✓ {app_name} launched successfully!")
                     return True
-            except:
+            except Exception:
                 pass
             
             if elapsed % 3 == 0 and elapsed > 0:
-                print(f"⏳ Waiting for {app_name} ({timeout - elapsed}s)...")
+                logger.debug(f"Waiting for {app_name} ({timeout - elapsed}s remaining)...")
         
-        logger.warning(f"App may not have launched: {app_name}")
-        print(f"⚠ {app_name} may not have launched correctly.")
+        logger.warning(f"App may not have launched: {app_name} (timeout reached)")
         return True  # Return True anyway as app might be starting
         
     except Exception as e:
-        logger.error(f"Error opening program: {e}")
-        print(f"✗ Error: {e}")
+        logger.error(f"Error opening program {app_name}: {e}", exc_info=True)
         return False
 
 def terminate_program(process_name: str) -> int:
@@ -752,15 +765,14 @@ def terminate_program(process_name: str) -> int:
                 pass
         
         if count > 0:
-            print(f"✓ Terminated {count} process(es) matching '{process_name}'")
+            logger.info(f"Terminated {count} process(es) matching '{process_name}'")
         else:
-            print(f"✗ No processes found matching '{process_name}'")
+            logger.warning(f"No processes found matching '{process_name}'")
         
         return count
         
     except Exception as e:
-        logger.error(f"Error terminating program: {e}")
-        print(f"✗ Error: {e}")
+        logger.error(f"Error terminating program '{process_name}': {e}", exc_info=True)
         return 0
 
 def manage_process(process: Dict) -> str:
