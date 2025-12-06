@@ -1,7 +1,7 @@
 from typing import Optional, List, Dict
 from db import get_async_session, init_db_async
 import models
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import select, update, delete
 
 
@@ -20,23 +20,34 @@ async def create_note(title: str, content: str, tags: Optional[List[str]] = None
 
 
 async def list_notes(tag: Optional[str] = None) -> List[Dict]:
+    """List notes with optimized query using indexes."""
     async with get_async_session() as db:
-        stmt = select(models.Note)
+        # Select only needed columns for better performance
+        stmt = select(
+            models.Note.id,
+            models.Note.title,
+            models.Note.tags,
+            models.Note.created_at
+        )
         if tag:
+            # Use indexed tags column with LIKE (index helps with prefix searches)
             stmt = stmt.where(models.Note.tags.ilike(f"%{tag}%"))
+        # Use indexed created_at for sorting
         stmt = stmt.order_by(models.Note.created_at.desc())
+        
         res = await db.execute(stmt)
-        notes = res.scalars().all()
-        result = []
-        for n in notes:
-            tags_val = getattr(n, 'tags', None)
-            created_at = getattr(n, 'created_at', None)
-            result.append({
-                "id": getattr(n, 'id', None),
-                "title": getattr(n, 'title', None),
-                "tags": tags_val.split(',') if tags_val else [],
-                "created_at": created_at.isoformat() if created_at is not None else None,
-            })
+        notes = res.all()
+        
+        # Convert to dict format efficiently
+        result = [
+            {
+                "id": note.id,
+                "title": note.title,
+                "tags": note.tags.split(',') if note.tags else [],
+                "created_at": note.created_at.isoformat() if note.created_at else None,
+            }
+            for note in notes
+        ]
         return result
 
 
@@ -67,7 +78,8 @@ async def update_note(note_id: int, title: Optional[str] = None, content: Option
         if content is not None:
             vals['content'] = content
         if vals:
-            vals['updated_at'] = datetime.utcnow()
+            # Use timezone-aware datetime
+            vals['updated_at'] = datetime.now(timezone.utc)
             await db.execute(update(models.Note).where(models.Note.id == note_id).values(**vals))
             await db.commit()
         return {"status": "success", "message": "Note updated successfully"}

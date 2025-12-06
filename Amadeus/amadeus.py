@@ -4,12 +4,13 @@ import sys
 import json
 import asyncio
 import logging
+import psutil
 from datetime import datetime
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Dict, List, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
 from dotenv import load_dotenv
-from functools import wraps
+from functools import wraps, partial
 import inspect
 
 if sys.platform.startswith('win'):
@@ -37,15 +38,63 @@ if sys.platform.startswith('win'):
 import google.generativeai as genai
 
 # Local imports
-from general_utils import *
-from system_controls import *
-from system_monitor import *
-from task_utils import *
-from note_utils import *
+from general_utils import (
+    get_greeting,
+    get_datetime_info,
+    get_weather_async,
+    get_news_async,
+    wikipedia_search_async,
+    open_website,
+    tell_joke,
+    calculate,
+    convert_temperature,
+    convert_length,
+    set_timer_async,
+)
+from system_controls import (
+    open_program,
+    search_file,
+    read_file,
+    copy_file,
+    move_file,
+    delete_file,
+    create_folder,
+    list_directory,
+    terminate_program,
+)
+from system_monitor import (
+    get_cpu_usage,
+    get_memory_usage,
+    get_disk_usage,
+    get_battery_info,
+    get_network_info,
+    get_system_uptime,
+    get_running_processes,
+    get_any_gpu_stats,
+    get_temperature_sensors,
+    check_system_alerts,
+    generate_system_summary,
+)
+from task_utils import (
+    add_task,
+    list_tasks,
+    complete_task,
+    delete_task,
+    get_task_summary,
+)
+from note_utils import (
+    create_note,
+    list_notes,
+    get_note,
+    update_note,
+    delete_note,
+    get_notes_summary,
+)
 from reminder_utils import ReminderManager
 from speech_utils import speak, recognize_speech
 from memory_utils import load_memory, save_memory, update_memory
 from db import init_db_async
+import config
 
 # Configure logging
 logging.basicConfig(
@@ -97,10 +146,10 @@ class ConversationMessage:
 class ConversationManager:
     """Manages conversation history with context window optimization."""
     
-    def __init__(self, max_messages: int = 20, max_tokens_estimate: int = 4000):
+    def __init__(self, max_messages: Optional[int] = None, max_tokens_estimate: Optional[int] = None):
         self.messages: list[ConversationMessage] = []
-        self.max_messages = max_messages
-        self.max_tokens_estimate = max_tokens_estimate
+        self.max_messages = max_messages or config.CONVERSATION_MAX_MESSAGES
+        self.max_tokens_estimate = max_tokens_estimate or config.CONVERSATION_MAX_TOKENS_ESTIMATE
     
     def add(self, role: str, content: str, tool_used: Optional[str] = None, **metadata):
         """Add a message to the conversation history."""
@@ -118,8 +167,10 @@ class ConversationManager:
             important = [m for m in self.messages[2:-10] if m.tool_used]
             self.messages = self.messages[:2] + important[-3:] + self.messages[-10:]
     
-    def get_formatted_history(self, last_n: int = 10) -> str:
+    def get_formatted_history(self, last_n: Optional[int] = None) -> str:
         """Get formatted conversation history for the AI prompt."""
+        if last_n is None:
+            last_n = config.CONVERSATION_HISTORY_LAST_N
         recent = self.messages[-last_n:] if len(self.messages) > last_n else self.messages
         formatted = []
         for msg in recent:
@@ -152,11 +203,11 @@ class ConversationManager:
 class ToolExecutor:
     """Handles safe execution of tools with error handling and retries."""
     
-    def __init__(self, max_retries: int = 2):
-        self.max_retries = max_retries
+    def __init__(self, max_retries: Optional[int] = None):
+        self.max_retries = max_retries or config.TOOL_MAX_RETRIES
         self.execution_history: list[dict] = []
     
-    async def execute(self, tool: Tool, args: dict) -> tuple[bool, Any]:
+    async def execute(self, tool: Tool, args: Dict[str, Any]) -> Tuple[bool, Any]:
         """Execute a tool with proper error handling and async support."""
         for attempt in range(self.max_retries + 1):
             try:
@@ -170,8 +221,9 @@ class ToolExecutor:
                     result = await tool.function(**validated_args)
                 else:
                     # Run sync functions in executor to not block
+                    # Use functools.partial to properly capture arguments
                     loop = asyncio.get_event_loop()
-                    result = await loop.run_in_executor(None, lambda: tool.function(**validated_args))
+                    result = await loop.run_in_executor(None, partial(tool.function, **validated_args))
                 
                 # Log successful execution
                 self.execution_history.append({
@@ -193,11 +245,11 @@ class ToolExecutor:
                         'error': str(e), 'timestamp': datetime.now().isoformat()
                     })
                     return False, f"Error executing {tool.name}: {e}"
-                await asyncio.sleep(0.5)  # Brief delay before retry
+                await asyncio.sleep(config.TOOL_RETRY_DELAY)  # Brief delay before retry
         
         return False, "Max retries exceeded"
     
-    def _validate_args(self, tool: Tool, args: dict) -> dict:
+    def _validate_args(self, tool: Tool, args: Dict[str, Any]) -> Dict[str, Any]:
         """Validate and clean arguments for a tool."""
         sig = inspect.signature(tool.function)
         valid_params = set(sig.parameters.keys())
@@ -228,12 +280,7 @@ class Amadeus:
         self.reminder_manager = ReminderManager()
         
         # Identity and behavior configuration
-        self.config = {
-            'name': 'Amadeus',
-            'personality': 'helpful, concise, and friendly',
-            'default_location': 'India',
-            'timezone': 'Asia/Kolkata'
-        }
+        self.config = config.get_assistant_config()
         
         self.identity_prompt = self._build_identity_prompt()
         
@@ -242,6 +289,8 @@ class Amadeus:
         self.tools = self._register_tools()
         load_memory()
         
+        # Log configuration summary
+        config.log_config_summary()
         logger.info(f"Amadeus initialized with {len(self.tools)} tools")
     def _build_identity_prompt(self) -> str:
         """Build a comprehensive identity prompt with advanced context awareness."""
@@ -309,39 +358,130 @@ class Amadeus:
 
     def _load_api_keys(self):
         """Load and validate API keys with enhanced error handling."""
-        load_dotenv()
+        if not config.GEMINI_API_KEY:
+            raise ValueError("GEMINI_API_KEY not found in .env file or environment variables")
         
-        required_keys = ["GEMINI_API_KEY"]
-        optional_keys = ["NEWS_API_KEY", "WEATHER_API_KEY"]
+        genai.configure(api_key=config.GEMINI_API_KEY) # type: ignore
         
-        missing_required = []
-        for key in required_keys:
-            if not os.getenv(key):
-                missing_required.append(key)
+        if config.NEWS_API_KEY:
+            logger.info("Optional API key 'NEWS_API_KEY' configured")
+        else:
+            logger.warning("Optional API key 'NEWS_API_KEY' not configured")
         
-        if missing_required:
-            raise ValueError(f"Missing required API keys: {', '.join(missing_required)}")
-        
-        for key in optional_keys:
-            if os.getenv(key):
-                logger.info(f"Optional API key '{key}' configured")
-            else:
-                logger.warning(f"Optional API key '{key}' not configured")
+        if config.WEATHER_API_KEY:
+            logger.info("Optional API key 'WEATHER_API_KEY' configured")
+        else:
+            logger.warning("Optional API key 'WEATHER_API_KEY' not configured")
         
         logger.info("API keys validated successfully")
-        gemini_key = os.getenv("GEMINI_API_KEY")
-        if not gemini_key:
-            raise ValueError("GEMINI_API_KEY not found in .env file")
         
-        genai.configure(api_key=gemini_key) # type: ignore
-        
-        # Use a more capable model with better JSON output
-        self.model = genai.GenerativeModel( 'gemini-2.0-flash') #type: ignore
+        # Use configured model
+        self.model = genai.GenerativeModel(config.GEMINI_MODEL) #type: ignore
         logger.info("Gemini API configured successfully")
     
     def _register_tools(self) -> dict[str, Tool]:
         """Register all available tools with enhanced metadata."""
         tools = {}
+        
+        # Helper wrapper functions for better string output
+        def wrap_bool_result(func, success_msg: str, fail_msg: str = "Operation failed."):
+            """Wrap boolean-returning functions to return user-friendly strings."""
+            def wrapper(*args, **kwargs):
+                result = func(*args, **kwargs)
+                if result:
+                    return success_msg if success_msg else "Operation completed successfully."
+                return fail_msg
+            return wrapper
+        
+        def format_memory_usage():
+            """Format memory usage as string."""
+            mem = get_memory_usage()
+            if mem:
+                return f"Memory: {mem['used_gb']} GB / {mem['total_gb']} GB ({mem['percent']:.1f}% used)"
+            return "Memory information unavailable."
+        
+        def format_disk_usage(path: str = "/"):
+            """Format disk usage as string."""
+            disk = get_disk_usage(path)
+            if disk:
+                return f"Disk: {disk['used_gb']} GB / {disk['total_gb']} GB ({disk['percent']:.1f}% used, {disk['free_gb']} GB free)"
+            return "Disk information unavailable."
+        
+        def format_cpu_usage():
+            """Format CPU usage as string."""
+            cpu = get_cpu_usage()
+            if cpu is not None:
+                return f"CPU usage: {cpu:.1f}%"
+            return "CPU information unavailable."
+        
+        def format_battery_info():
+            """Format battery info as string."""
+            battery = get_battery_info()
+            if isinstance(battery, dict):
+                return f"Battery: {battery['percent']}% - {battery['status']}" + (f" ({battery['time_left']})" if battery.get('time_left') != 'N/A' else "")
+            return str(battery) if battery else "Battery information unavailable."
+        
+        def format_network_info():
+            """Format network info as string."""
+            net = get_network_info()
+            if net:
+                return f"Network: Sent {net['bytes_sent_mb']:.1f} MB, Received {net['bytes_recv_mb']:.1f} MB"
+            return "Network information unavailable."
+        
+        def format_system_uptime():
+            """Format system uptime as string."""
+            uptime = get_system_uptime()
+            if uptime:
+                return f"System uptime: {uptime['uptime_str']} (since {uptime['boot_time']})"
+            return "Uptime information unavailable."
+        
+        def format_running_processes(count: int = 10):
+            """Format running processes as string."""
+            processes = get_running_processes(count)
+            if processes:
+                result = f"Top {len(processes)} processes by memory:\n"
+                for i, proc in enumerate(processes[:config.DISPLAY_PROCESSES_VOICE_COUNT], 1):
+                    result += f"{i}. {proc['name']} (PID: {proc['pid']}, Memory: {proc['memory_percent']:.1f}%)\n"
+                return result.strip()
+            return "No process information available."
+        
+        def format_gpu_stats():
+            """Format GPU stats as string."""
+            gpu = get_any_gpu_stats()
+            if isinstance(gpu, list) and gpu:
+                result = f"GPU Information:\n"
+                for g in gpu:
+                    result += f"{g['name']}: {g['load']:.1f}% load, {g['memory_percent']:.1f}% memory, {g['temperature']}°C\n"
+                return result.strip()
+            return str(gpu) if gpu else "GPU information unavailable."
+        
+        def format_temperature_sensors():
+            """Format temperature sensors as string."""
+            temps = get_temperature_sensors()
+            if isinstance(temps, dict) and temps:
+                result = "Temperature Sensors:\n"
+                for chip, sensors in list(temps.items())[:config.DISPLAY_TEMPERATURE_SENSORS_LIMIT]:
+                    for sensor in sensors[:2]:  # Show 2 sensors per chip
+                        result += f"{chip} {sensor['label']}: {sensor['current']}°C\n"
+                return result.strip()
+            return str(temps) if temps else "Temperature information unavailable."
+        
+        def format_system_alerts():
+            """Format system alerts as string."""
+            alerts = check_system_alerts(speak_alerts=False)
+            if alerts:
+                result = f"System Alerts ({len(alerts)}):\n"
+                for alert in alerts[:config.DISPLAY_ALERTS_LIMIT]:
+                    result += f"- {alert['message']}\n"
+                return result.strip()
+            return "No system alerts."
+        
+        def format_terminate_program(process_name: str) -> str:
+            """Format terminate program result."""
+            count = terminate_program(process_name)
+            if count > 0:
+                return f"Terminated {count} process(es) matching '{process_name}'"
+            return f"No processes found matching '{process_name}'"
         
         # System Tools
         system_tools = [
@@ -360,10 +500,60 @@ class Amadeus:
             Tool("read_file", read_file,
                 "Reads content from a file (PDF, DOCX, TXT, Images). Args: file_path (str)",
                  ToolCategory.SYSTEM, {'file_path': 'str'}),
-             # --- NEW: Open Websites ---
             Tool("open_website", open_website,
                  "Opens a website or performs a Google search. Args: query (str - url or search term)",
                  ToolCategory.SYSTEM, {'query': 'str'}),
+            # File Management Tools
+            Tool("copy_file", wrap_bool_result(copy_file, "File copied successfully."),
+                 "Copies a file. Args: source_path (str), destination_path (str)",
+                 ToolCategory.SYSTEM, {'source_path': 'str', 'destination_path': 'str'}),
+            Tool("move_file", wrap_bool_result(move_file, "File moved successfully."),
+                 "Moves a file. Args: source_path (str), destination_path (str)",
+                 ToolCategory.SYSTEM, {'source_path': 'str', 'destination_path': 'str'}),
+            Tool("delete_file", wrap_bool_result(delete_file, "File deleted successfully.", "File deletion failed or was cancelled."),
+                 "Deletes a file. Args: file_path (str)",
+                 ToolCategory.SYSTEM, {'file_path': 'str'}, requires_confirmation=True),
+            Tool("create_folder", wrap_bool_result(create_folder, "Folder created successfully."),
+                 "Creates a folder. Args: folder_name (str)",
+                 ToolCategory.SYSTEM, {'folder_name': 'str'}),
+            Tool("list_directory", wrap_bool_result(list_directory, "Directory listed successfully."),
+                 "Lists directory contents. Args: directory_path (str, optional, default: current directory)",
+                 ToolCategory.SYSTEM, {'directory_path': 'str'}),
+            # System Control Tools
+            Tool("terminate_program", format_terminate_program,
+                 "Terminates a running program. Args: process_name (str)",
+                 ToolCategory.SYSTEM, {'process_name': 'str'}, requires_confirmation=True),
+            # System Monitoring Tools
+            Tool("get_cpu_usage", format_cpu_usage,
+                 "Gets current CPU usage percentage",
+                 ToolCategory.SYSTEM),
+            Tool("get_memory_usage", format_memory_usage,
+                 "Gets current memory (RAM) usage details",
+                 ToolCategory.SYSTEM),
+            Tool("get_disk_usage", format_disk_usage,
+                 "Gets disk usage. Args: path (str, optional, default: '/')",
+                 ToolCategory.SYSTEM, {'path': 'str'}),
+            Tool("get_battery_info", format_battery_info,
+                 "Gets battery information if available",
+                 ToolCategory.SYSTEM),
+            Tool("get_network_info", format_network_info,
+                 "Gets network interface statistics",
+                 ToolCategory.SYSTEM),
+            Tool("get_system_uptime", format_system_uptime,
+                 "Gets system uptime information",
+                 ToolCategory.SYSTEM),
+            Tool("get_running_processes", format_running_processes,
+                 "Gets top running processes by memory usage. Args: count (int, optional, default: 10)",
+                 ToolCategory.SYSTEM, {'count': 'int'}),
+            Tool("get_gpu_stats", format_gpu_stats,
+                 "Gets GPU statistics if available",
+                 ToolCategory.SYSTEM),
+            Tool("get_temperature_sensors", format_temperature_sensors,
+                 "Gets temperature sensor data if available",
+                 ToolCategory.SYSTEM),
+            Tool("check_system_alerts", format_system_alerts,
+                 "Checks for system alerts (high CPU, memory, disk, temperature)",
+                 ToolCategory.SYSTEM),
         ]
         
         # Information Tools
@@ -377,6 +567,16 @@ class Amadeus:
           Tool("wikipedia_search", wikipedia_search_async, 
          "Searches Wikipedia for a summary. Args: query (str)",
             ToolCategory.INFORMATION, {'query': 'str'}),
+          # Utility Tools
+          Tool("calculate", calculate,
+               "Performs mathematical calculations. Args: expression (str, e.g., '2+2', '10*5')",
+               ToolCategory.INFORMATION, {'expression': 'str'}),
+          Tool("convert_temperature", convert_temperature,
+               "Converts temperature between units. Args: value (float), from_unit (str: celsius/fahrenheit/kelvin), to_unit (str: celsius/fahrenheit/kelvin)",
+               ToolCategory.INFORMATION, {'value': 'float', 'from_unit': 'str', 'to_unit': 'str'}),
+          Tool("convert_length", convert_length,
+               "Converts length between units. Args: value (float), from_unit (str: mm/cm/m/km/in/ft/yd/mi), to_unit (str: mm/cm/m/km/in/ft/yd/mi)",
+               ToolCategory.INFORMATION, {'value': 'float', 'from_unit': 'str', 'to_unit': 'str'}),
         ]
 
         # Communication / Fun Tools
@@ -439,6 +639,10 @@ class Amadeus:
             Tool("delete_reminder", self.reminder_manager.delete_reminder,
                  "Deletes a reminder. Args: reminder_id (int)",
                  ToolCategory.PRODUCTIVITY, {'reminder_id': 'int'}),
+            # Timer Tool
+            Tool("set_timer", set_timer_async,
+                 "Sets a timer. Args: duration_seconds (int), message (str, optional, default: 'Timer finished!')",
+                 ToolCategory.PRODUCTIVITY, {'duration_seconds': 'int'}),
         ]
         
         # Register all tools
@@ -464,7 +668,7 @@ class Amadeus:
         
         return "\n\n".join(sections)
     
-    async def _select_tool(self, command: str) -> tuple[Optional[str], dict]:
+    async def _select_tool(self, command: str) -> Tuple[Optional[str], Dict[str, Any]]:
         """Use AI to select the appropriate tool for a command."""
         tool_descriptions = self._get_tool_descriptions()
         
@@ -660,7 +864,7 @@ User: {prompt}
         
         # Tasks - with better error handling and formatting
         try:
-            task_summary = get_task_summary()
+            task_summary = await get_task_summary()
             if task_summary and isinstance(task_summary, str) and task_summary.strip():
                 parts.append(task_summary)
             else:
@@ -685,7 +889,7 @@ User: {prompt}
         # Weather - with validation and error recovery
         try:
            
-            weather = await get_weather_async(self.config.get('default_location', 'India'))
+            weather = await get_weather_async(self.config.get('default_location', config.DEFAULT_LOCATION))
             if weather and isinstance(weather, str):
                 if "Sorry" not in weather and "error" not in weather.lower():
                     parts.append(weather)
@@ -716,8 +920,8 @@ User: {prompt}
         
         self._last_spoken = text
         
-        # Print first so we see output even if voice fails
-        print(f"[{self.config['name']}]: {text}")
+        # Log first so we see output even if voice fails
+        logger.info(f"[{self.config['name']}]: {text}")
 
         if self.voice_enabled:
             try:
@@ -737,11 +941,11 @@ User: {prompt}
                 return None
         else:
             try:
-                print("\n🎤 Listening...")
+                logger.debug("Listening for speech input...")
                 # DIRECT AWAIT - No asyncio.run()
                 result = await asyncio.wait_for(
                     asyncio.to_thread(recognize_speech), 
-                    timeout=10.0
+                    timeout=config.SPEECH_LISTEN_TIMEOUT
                 )
                 return result.strip() if result else None
             except asyncio.TimeoutError:
@@ -765,7 +969,7 @@ User: {prompt}
         
         exit_commands = {'exit', 'goodbye', 'quit', 'bye', 'stop', 'sleep'}
         consecutive_failures = 0
-        max_failures = 3
+        max_failures = config.MAX_CONSECUTIVE_FAILURES
         
         while self.running:
             try:
@@ -791,7 +995,7 @@ User: {prompt}
                 try:
                     response = await asyncio.wait_for(
                         self.process_command(command),
-                        timeout=30.0
+                        timeout=config.COMMAND_PROCESSING_TIMEOUT
                     )
                     self._speak(response) # Sync call
                 except asyncio.TimeoutError:
@@ -817,7 +1021,6 @@ User: {prompt}
             self._speak("Shutting down...")
         except Exception as e:
             logger.critical(f"Fatal error: {e}", exc_info=True)
-            print(f"Fatal error: {e}")
         finally:
             self.shutdown()
 
@@ -829,7 +1032,6 @@ User: {prompt}
             self.reminder_manager.stop_monitoring()
             save_memory()
             logger.info("Amadeus shutdown complete")
-            print("✓ Amadeus shutdown complete.")
         except Exception as e:
             logger.error(f"Shutdown error: {e}", exc_info=True)
 
