@@ -270,7 +270,7 @@ async def wikipedia_search_async(query: str, sentences: Optional[int] = None) ->
     search_url = f"{base_url}/{urllib.parse.quote(query)}"
     
     headers = {
-        "User-Agent": "Amadeus-AI-Assistant/1.0"
+        "User-Agent": "AmadeusAI/1.0 (https://github.com/adityatawde9699/Amadeus-AI; adityatawde9699@gmail.com)"
     }
     
     try:

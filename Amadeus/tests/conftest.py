@@ -19,14 +19,7 @@ API_KEY = "test-api-key"
 # Setting this before imports to avoid validation errors during import
 os.environ["API_KEY"] = API_KEY
 
-try:
-    # Attempt to import the decoupled API app instance
-    from api import app
-except ImportError:
-    # Fallback or mock if direct import fails due to complex dependencies
-    print("WARNING: Could not import 'app' from 'api'. Creating a mock app for testing.")
-    from fastapi import FastAPI
-    app = FastAPI()
+from api import app
 
 @pytest.fixture(scope="module")
 def client() -> Generator:

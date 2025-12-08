@@ -192,4 +192,3 @@ The current schema includes:
 - **reminders**: Reminders with status, time, created_at (indexed)
 
 All tables have proper indexes for common query patterns.
-
