@@ -1,7 +1,0 @@
-ImportError while loading conftest 'C:\Users\ASUS\Downloads\vs code\.vscode\python\Amadeus-AI\Amadeus\tests\conftest.py'.
-Amadeus\tests\conftest.py:10: in <module>
-    from Amadeus.main import app
-Amadeus\main.py:4: in <module>
-    from amadeus import Amadeus # Import our new class
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-E   ModuleNotFoundError: No module named 'amadeus'
