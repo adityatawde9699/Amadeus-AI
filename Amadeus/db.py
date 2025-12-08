@@ -31,12 +31,16 @@ ASYNC_DB_URL = config.DB_URL.replace('sqlite:///', 'sqlite+aiosqlite:///')
 # For SQLite, use StaticPool for better connection management
 # For production databases (PostgreSQL, MySQL), use QueuePool
 if 'sqlite' in ASYNC_DB_URL.lower():
+    # Use StaticPool for in-memory databases, NullPool for file-based to allow concurrency
+    is_memory = ':memory:' in ASYNC_DB_URL.lower()
+    pool_type = StaticPool if is_memory else NullPool
+    
     # SQLite connection pool configuration
     engine = create_async_engine(
         ASYNC_DB_URL,
         echo=DB_ECHO,
         future=True,
-        poolclass=StaticPool,  # Static pool for SQLite
+        poolclass=pool_type,
         pool_pre_ping=True,  # Verify connections before using
         connect_args={
             "check_same_thread": False,  # Allow multi-threaded access
@@ -90,17 +94,26 @@ def set_sqlite_pragma(dbapi_conn, connection_record):
 # DATABASE INITIALIZATION
 # ============================================================================
 
+_db_initialized = False
+
 async def init_db_async():
     """
     Create DB tables asynchronously with proper index creation.
     Import models inside to avoid circular imports.
+    Idempotent: Safe to call multiple times.
     """
+    global _db_initialized
+    if _db_initialized:
+        return
+
     # Import models so they are registered on Base
     import models  # noqa: F401
     
     logger.info("Initializing database...")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    
+    _db_initialized = True
     logger.info("Database initialized successfully")
 
 

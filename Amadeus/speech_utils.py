@@ -1,56 +1,92 @@
 import sys
 from typing import Optional
-import speech_recognition as sr
-import pyttsx3
-from faster_whisper import WhisperModel 
 import os
 import tempfile
 from dotenv import load_dotenv
 
-load_dotenv()
-
 # Import config
 import config
 
-# --- TTS SETUP ---
-engine = pyttsx3.init()
-voices = engine.getProperty('voices')
-# Try to find a decent English voice
+load_dotenv()
+
+# Global flag to track if audio dependencies are available
+AUDIO_DEPS_AVAILABLE = False
+MISSING_DEPS_ERROR = ""
+
 try:
-    engine.setProperty('voice', voices[config.TTS_VOICE_INDEX].id)  # type: ignore
-except IndexError:
-    engine.setProperty('voice', voices[0].id) # type: ignore
-engine.setProperty('rate', config.TTS_RATE)
+    import speech_recognition as sr
+    import pyttsx3
+    from faster_whisper import WhisperModel
+    AUDIO_DEPS_AVAILABLE = True
+except ImportError as e:
+    AUDIO_DEPS_AVAILABLE = False
+    MISSING_DEPS_ERROR = str(e)
+    # Don't print warning yet, wait until usage or config check
+
+# --- TTS SETUP ---
+engine = None
+if AUDIO_DEPS_AVAILABLE:
+    try:
+        engine = pyttsx3.init()
+        voices = engine.getProperty('voices')
+        # Try to find a decent English voice
+        try:
+            engine.setProperty('voice', voices[config.TTS_VOICE_INDEX].id)  # type: ignore
+        except IndexError:
+            if voices:
+                engine.setProperty('voice', voices[0].id) # type: ignore
+        engine.setProperty('rate', config.TTS_RATE)
+    except Exception as e:
+        print(f"Warning: Failed to initialize TTS engine: {e}")
+        engine = None
 
 # --- WHISPER SETUP (CPU OPTIMIZED) ---
-print(f"Loading Faster-Whisper model ({config.WHISPER_MODEL})...")
-model = WhisperModel(
-    config.WHISPER_MODEL, 
-    device=config.WHISPER_DEVICE, 
-    compute_type=config.WHISPER_COMPUTE_TYPE
-)
-print("Model loaded.")
+model = None
+if AUDIO_DEPS_AVAILABLE:
+    try:
+        print(f"Loading Faster-Whisper model ({config.WHISPER_MODEL})...")
+        model = WhisperModel(
+            config.WHISPER_MODEL, 
+            device=config.WHISPER_DEVICE, 
+            compute_type=config.WHISPER_COMPUTE_TYPE
+        )
+        print("Model loaded.")
+    except Exception as e:
+        print(f"Warning: Failed to load Whisper model: {e}")
+        model = None
 
-VOICE_ENABLED = config.VOICE_ENABLED
+VOICE_ENABLED = config.VOICE_ENABLED and AUDIO_DEPS_AVAILABLE and (model is not None)
 
 def speak(text: str):
     """Converts text to speech locally."""
-    if VOICE_ENABLED:
-        # Clean text of emojis before sending to TTS engine to prevent crashes
-        clean_text = text.encode('ascii', 'ignore').decode('ascii')
-        print(f"Amadeus: {text}")
-        engine.say(clean_text)
-        engine.runAndWait()
+    if VOICE_ENABLED and engine:
+        try:
+            # Clean text of emojis before sending to TTS engine to prevent crashes
+            clean_text = text.encode('ascii', 'ignore').decode('ascii')
+            print(f"Amadeus: {text}")
+            engine.say(clean_text)
+            engine.runAndWait()
+        except Exception as e:
+            print(f"TTS Error: {e}")
+            print(f"Amadeus: {text}")
     else:
         print(f"[Voice Disabled] Amadeus: {text}")
 
 def recognize_speech(timeout: Optional[int] = None, phrase_time_limit: Optional[int] = None) -> str:
     """Listens to mic and transcribes using Faster-Whisper."""
+    if not VOICE_ENABLED:
+        if not AUDIO_DEPS_AVAILABLE:
+            print(f"Voice features unavailable. Missing dependency: {MISSING_DEPS_ERROR}")
+        return ""
+
     if timeout is None:
         timeout = config.SPEECH_RECOGNITION_TIMEOUT
     if phrase_time_limit is None:
         phrase_time_limit = config.SPEECH_PHRASE_TIME_LIMIT
     
+    if not model or not sr: # Check if modules are actually loaded
+         return ""
+
     recognizer = sr.Recognizer()
     
     # Lower threshold makes it less sensitive to background hum

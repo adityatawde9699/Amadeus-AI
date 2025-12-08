@@ -96,6 +96,7 @@ from memory_utils import load_memory, save_memory, update_memory
 from db import init_db_async
 import config
 
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -482,6 +483,12 @@ class Amadeus:
             if count > 0:
                 return f"Terminated {count} process(es) matching '{process_name}'"
             return f"No processes found matching '{process_name}'"
+
+        def format_open_program(app_name: str) -> str:
+            """Helper to make open_program return a string."""
+            if open_program(app_name):
+                return f"Opening {app_name}..."
+            return f"Failed to open {app_name}."
         
         # System Tools
         system_tools = [
@@ -491,7 +498,7 @@ class Amadeus:
             Tool("system_status", generate_system_summary,
                  "Provides system status (CPU, memory, disk)",
                  ToolCategory.SYSTEM),
-            Tool("open_program", open_program,
+            Tool("open_program", format_open_program,
                  "Opens an application. Args: app_name (str)",
                  ToolCategory.SYSTEM, {'app_name': 'str'}),
             Tool("search_file", search_file,
