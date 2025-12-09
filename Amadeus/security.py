@@ -301,4 +301,3 @@ def get_safe_base_directory() -> Path:
     """
     base_dir = os.getenv('AMADEUS_SAFE_BASE_DIR', str(Path.cwd()))
     return Path(base_dir).resolve()
-

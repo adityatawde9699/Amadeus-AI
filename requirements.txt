@@ -1,0 +1,31 @@
+# Minimal requirements derived from imports in the `Amadeus/` package.
+# Removed many unused or heavy build-time-only packages (e.g. numba, torch,
+# openai-whisper git dependency, and various google/apiclient packages not used).
+
+# Web / API
+fastapi==0.118.0
+uvicorn==0.37.0
+
+# Database
+SQLAlchemy==2.0.43
+greenlet
+aiosqlite
+# Validation / config
+pydantic==2.11.9
+python-dotenv==1.1.1
+typing_extensions==4.15.0
+
+# Utilities / system
+psutil==7.1.0
+
+# Speech / TTS / ASR
+SpeechRecognition==3.14.3
+pyttsx3==2.99
+faster-whisper
+
+# Image / OCR
+Pillow==12.0.0
+pytesseract
+
+# Generative AI
+google-generativeai==0.8.5
