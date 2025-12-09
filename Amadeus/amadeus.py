@@ -964,9 +964,6 @@ User: {prompt}
 
     async def _main_loop(self):
         """Enhanced main loop with better state management."""
-        logger.info("Initializing database...")
-        await init_db_async()
-        
         # Show daily brief on startup
         try:
             brief = await self.generate_daily_brief()
@@ -1016,6 +1013,13 @@ User: {prompt}
     def start(self):
         """Start with enhanced initialization and error recovery."""
         self.running = True
+        
+        # CRITICAL: Initialize database BEFORE starting any background services
+        # This prevents race conditions where reminder monitoring tries to query tables that don't exist yet
+        logger.info("Initializing database...")
+        asyncio.run(init_db_async())
+        
+        # NOW it's safe to start reminder monitoring (database tables exist)
         self.reminder_manager.start_monitoring()
         
         greeting = f"{get_greeting()}! {self.config['name']} is online and ready."
