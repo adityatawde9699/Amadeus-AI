@@ -171,4 +171,3 @@ async def execute_optimized_query(query, session: AsyncSession):
     # For SQLite, we can add query hints
     result = await session.execute(query)
     return result
-

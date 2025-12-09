@@ -299,4 +299,3 @@ class HealthResponse(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.now, description="Check timestamp")
     database: str = Field(..., description="Database connection status")
     services: Dict[str, str] = Field(default_factory=dict, description="Service statuses")
-

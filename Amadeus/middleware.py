@@ -172,4 +172,3 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
                     "status_code": 500
                 }
             )
-

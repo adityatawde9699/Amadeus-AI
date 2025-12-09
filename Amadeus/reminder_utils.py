@@ -260,4 +260,3 @@ class ReminderManager:
         loop = cast(asyncio.AbstractEventLoop, self._loop)
         fut = asyncio.run_coroutine_threadsafe(coro, loop)
         return fut.result()
-
