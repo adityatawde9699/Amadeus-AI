@@ -144,6 +144,32 @@ WIKIPEDIA_DEFAULT_SENTENCES = int(os.getenv('WIKIPEDIA_DEFAULT_SENTENCES', '3'))
 WIKIPEDIA_API_TIMEOUT = int(os.getenv('WIKIPEDIA_API_TIMEOUT', '10'))  # seconds
 
 # ============================================================================
+# CALENDAR SETTINGS
+# ============================================================================
+
+CALENDAR_DEFAULT_EVENT_DURATION = int(os.getenv('CALENDAR_DEFAULT_EVENT_DURATION', '60'))  # minutes
+CALENDAR_REMINDER_BEFORE_MINUTES = int(os.getenv('CALENDAR_REMINDER_BEFORE_MINUTES', '15'))
+CALENDAR_MAX_EVENTS_DISPLAY = int(os.getenv('CALENDAR_MAX_EVENTS_DISPLAY', '10'))
+CALENDAR_DAYS_AHEAD_DEFAULT = int(os.getenv('CALENDAR_DAYS_AHEAD_DEFAULT', '7'))
+
+# ============================================================================
+# POMODORO SETTINGS
+# ============================================================================
+
+POMODORO_DEFAULT_DURATION = int(os.getenv('POMODORO_DEFAULT_DURATION', '25'))  # minutes
+POMODORO_SHORT_BREAK = int(os.getenv('POMODORO_SHORT_BREAK', '5'))  # minutes
+POMODORO_LONG_BREAK = int(os.getenv('POMODORO_LONG_BREAK', '15'))  # minutes
+POMODORO_SESSIONS_BEFORE_LONG_BREAK = int(os.getenv('POMODORO_SESSIONS_BEFORE_LONG_BREAK', '4'))
+
+# ============================================================================
+# STABILITY SETTINGS  
+# ============================================================================
+
+DB_MAX_RETRIES = int(os.getenv('DB_MAX_RETRIES', '3'))
+DB_RETRY_DELAY = float(os.getenv('DB_RETRY_DELAY', '0.5'))  # seconds
+API_GRACEFUL_DEGRADATION = os.getenv('API_GRACEFUL_DEGRADATION', 'true').lower() in ('1', 'true', 'yes')
+
+# ============================================================================
 # DISPLAY SETTINGS
 # ============================================================================
 
