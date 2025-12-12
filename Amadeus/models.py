@@ -51,3 +51,27 @@ class Reminder(Base):
         Index('idx_reminder_status_created', 'status', 'created_at'),  # For active reminders queries
         Index('idx_reminder_status_time', 'status', 'time'),  # For due reminders check
     )
+
+
+class CalendarEvent(Base):
+    """Calendar event model for scheduling and agenda management."""
+    __tablename__ = 'calendar_events'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(256), nullable=False)
+    description = Column(Text, default='')
+    start_time = Column(DateTime(timezone=True), nullable=False, index=True)
+    end_time = Column(DateTime(timezone=True), nullable=False, index=True)
+    location = Column(String(256), default='')
+    all_day = Column(Boolean, default=False)
+    recurrence = Column(String(64), default='')  # none, daily, weekly, monthly, yearly
+    status = Column(String(32), default='active', index=True)  # active, cancelled, completed
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    # Composite indexes for common query patterns
+    __table_args__ = (
+        Index('idx_event_start_status', 'start_time', 'status'),  # For active events by time
+        Index('idx_event_date_range', 'start_time', 'end_time'),  # For conflict detection
+        Index('idx_event_status_created', 'status', 'created_at'),  # For listing events
+    )

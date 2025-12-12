@@ -29,3 +29,9 @@ pytesseract
 
 # Generative AI
 google-generativeai==0.8.5
+
+# Natural language parsing
+dateparser
+
+# Database migrations
+alembic

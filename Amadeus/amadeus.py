@@ -91,6 +91,23 @@ from note_utils import (
     get_notes_summary,
 )
 from reminder_utils import ReminderManager
+from calendar_utils import (
+    add_event,
+    list_events,
+    get_event,
+    update_event,
+    delete_event,
+    get_today_agenda,
+    get_upcoming_events,
+    get_calendar_summary,
+)
+from pomodoro_utils import (
+    start_pomodoro,
+    stop_pomodoro,
+    get_pomodoro_status,
+    get_pomodoro_stats,
+    start_break,
+)
 from speech_utils import speak, recognize_speech
 from memory_utils import load_memory, save_memory, update_memory
 from db import init_db_async
@@ -652,9 +669,46 @@ class Amadeus:
                  ToolCategory.PRODUCTIVITY, {'duration_seconds': 'int'}),
         ]
         
+        # Calendar Tools
+        calendar_tools = [
+            Tool("add_event", add_event,
+                 "Adds a calendar event. Args: title (str), start_time (str like 'tomorrow at 2pm'), end_time (optional), description (optional), location (optional)",
+                 ToolCategory.PRODUCTIVITY, {'title': 'str', 'start_time': 'str'}),
+            Tool("list_events", list_events,
+                 "Lists calendar events. Optional: date (str like 'tomorrow', 'next week'), days_ahead (int)",
+                 ToolCategory.PRODUCTIVITY),
+            Tool("get_today_agenda", get_today_agenda,
+                 "Gets today's schedule with all events",
+                 ToolCategory.PRODUCTIVITY),
+            Tool("get_upcoming_events", get_upcoming_events,
+                 "Gets events in the next N hours. Args: hours (int, default: 24)",
+                 ToolCategory.PRODUCTIVITY, {'hours': 'int'}),
+            Tool("delete_event", delete_event,
+                 "Deletes/cancels a calendar event. Args: identifier (ID or event title to search)",
+                 ToolCategory.PRODUCTIVITY, {'identifier': 'str'}, requires_confirmation=True),
+        ]
+        
+        # Pomodoro Tools
+        pomodoro_tools = [
+            Tool("start_pomodoro", start_pomodoro,
+                 "Starts a Pomodoro focus session. Args: task_name (str, optional), duration_minutes (int, optional, default: 25)",
+                 ToolCategory.PRODUCTIVITY, {'task_name': 'str'}),
+            Tool("stop_pomodoro", stop_pomodoro,
+                 "Stops/cancels the current Pomodoro session",
+                 ToolCategory.PRODUCTIVITY),
+            Tool("get_pomodoro_status", get_pomodoro_status,
+                 "Gets the status of the current Pomodoro session including time remaining",
+                 ToolCategory.PRODUCTIVITY),
+            Tool("get_pomodoro_stats", get_pomodoro_stats,
+                 "Gets Pomodoro productivity statistics for today",
+                 ToolCategory.PRODUCTIVITY),
+            Tool("start_break", start_break,
+                 "Starts a break timer. Args: break_type (str: 'short' or 'long')",
+                 ToolCategory.PRODUCTIVITY, {'break_type': 'str'}),
+        ]
+        
         # Register all tools
-        # Added comm_tools to this list
-        for tool_list in [system_tools, info_tools, comm_tools, task_tools, note_tools, reminder_tools]:
+        for tool_list in [system_tools, info_tools, comm_tools, task_tools, note_tools, reminder_tools, calendar_tools, pomodoro_tools]:
             for tool in tool_list:
                 tools[tool.name] = tool
         
@@ -892,6 +946,14 @@ User: {prompt}
         except Exception as e:
             logger.warning(f"Could not get reminders: {e}", exc_info=False)
             parts.append("Reminders: Unable to retrieve.")
+        
+        # Calendar - show today's events
+        try:
+            calendar_summary = await get_calendar_summary()
+            if calendar_summary and isinstance(calendar_summary, str):
+                parts.append(calendar_summary)
+        except Exception as e:
+            logger.warning(f"Could not get calendar summary: {e}", exc_info=False)
         
         # Weather - with validation and error recovery
         try:
