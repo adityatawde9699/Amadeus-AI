@@ -199,6 +199,7 @@ VOICE_ENABLED=true
 | **Voice** | `python Amadeus/main.py` | Full voice interaction |
 | **Debug** | `python Amadeus/main.py --debug` | Text-only mode |
 | **Briefing** | `python Amadeus/main.py --brief` | Daily summary only |
+| **Dashboard** | `streamlit run Amadeus/dashboard.py` | Visual dashboard interface |
 
 ### Command Examples
 

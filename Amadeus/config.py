@@ -60,7 +60,7 @@ SPEECH_MIN_AUDIO_LENGTH = int(os.getenv('SPEECH_MIN_AUDIO_LENGTH', '32000'))  # 
 # ============================================================================
 
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
-GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-2.0-flash')
+GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')
 
 # ============================================================================
 # ASSISTANT IDENTITY CONFIGURATION
