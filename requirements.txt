@@ -35,3 +35,9 @@ dateparser
 
 # Database migrations
 alembic
+
+# Dashboard UI
+streamlit>=1.30.0
+streamlit-lottie>=0.0.5
+streamlit-mic-recorder>=0.0.8
+requests>=2.31.0

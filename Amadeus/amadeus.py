@@ -379,7 +379,7 @@ class Amadeus:
         if not config.GEMINI_API_KEY:
             raise ValueError("GEMINI_API_KEY not found in .env file or environment variables")
         
-        genai.configure(api_key=config.GEMINI_API_KEY) # type: ignore
+        genai.configure(api_key=config.GEMINI_API_KEY) 
         
         if config.NEWS_API_KEY:
             logger.info("Optional API key 'NEWS_API_KEY' configured")
@@ -394,7 +394,7 @@ class Amadeus:
         logger.info("API keys validated successfully")
         
         # Use configured model
-        self.model = genai.GenerativeModel(config.GEMINI_MODEL) #type: ignore
+        self.model = genai.GenerativeModel(config.GEMINI_MODEL) 
         logger.info("Gemini API configured successfully")
     
     def _register_tools(self) -> dict[str, Tool]:
