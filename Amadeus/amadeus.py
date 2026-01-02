@@ -74,6 +74,7 @@ from system_monitor import (
     get_temperature_sensors,
     check_system_alerts,
     generate_system_summary,
+    get_full_system_report,
 )
 from task_utils import (
     add_task,
@@ -507,208 +508,265 @@ class Amadeus:
                 return f"Opening {app_name}..."
             return f"Failed to open {app_name}."
         
-        # System Tools
+        # --- 1. SYSTEM TOOLS (Hardware, OS, Files) ---
         system_tools = [
             Tool("get_datetime_info", get_datetime_info,
-                 "Gets current date, time, or day. Args: query (str)",
-                 ToolCategory.SYSTEM, {'query': 'str'}),
-            Tool("system_status", generate_system_summary,
-                 "Provides system status (CPU, memory, disk)",
-                 ToolCategory.SYSTEM),
-            Tool("open_program", format_open_program,
-                 "Opens an application. Args: app_name (str)",
-                 ToolCategory.SYSTEM, {'app_name': 'str'}),
-            Tool("search_file", search_file,
-                 "Searches for files. Args: file_name (str), search_directory (optional)",
-                 ToolCategory.SYSTEM, {'file_name': 'str'}),
-            Tool("read_file", read_file,
-                "Reads content from a file (PDF, DOCX, TXT, Images). Args: file_path (str)",
-                 ToolCategory.SYSTEM, {'file_path': 'str'}),
-            Tool("open_website", open_website,
-                 "Opens a website or performs a Google search. Args: query (str - url or search term)",
-                 ToolCategory.SYSTEM, {'query': 'str'}),
-            # File Management Tools
-            Tool("copy_file", wrap_bool_result(copy_file, "File copied successfully."),
-                 "Copies a file. Args: source_path (str), destination_path (str)",
-                 ToolCategory.SYSTEM, {'source_path': 'str', 'destination_path': 'str'}),
-            Tool("move_file", wrap_bool_result(move_file, "File moved successfully."),
-                 "Moves a file. Args: source_path (str), destination_path (str)",
-                 ToolCategory.SYSTEM, {'source_path': 'str', 'destination_path': 'str'}),
-            Tool("delete_file", wrap_bool_result(delete_file, "File deleted successfully.", "File deletion failed or was cancelled."),
-                 "Deletes a file. Args: file_path (str)",
-                 ToolCategory.SYSTEM, {'file_path': 'str'}, requires_confirmation=True),
-            Tool("create_folder", wrap_bool_result(create_folder, "Folder created successfully."),
-                 "Creates a folder. Args: folder_name (str)",
-                 ToolCategory.SYSTEM, {'folder_name': 'str'}),
-            Tool("list_directory", wrap_bool_result(list_directory, "Directory listed successfully."),
-                 "Lists directory contents. Args: directory_path (str, optional, default: current directory)",
-                 ToolCategory.SYSTEM, {'directory_path': 'str'}),
-            # System Control Tools
-            Tool("terminate_program", format_terminate_program,
-                 "Terminates a running program. Args: process_name (str)",
-                 ToolCategory.SYSTEM, {'process_name': 'str'}, requires_confirmation=True),
-            # System Monitoring Tools
-            Tool("get_cpu_usage", format_cpu_usage,
-                 "Gets current CPU usage percentage",
-                 ToolCategory.SYSTEM),
-            Tool("get_memory_usage", format_memory_usage,
-                 "Gets current memory (RAM) usage details",
-                 ToolCategory.SYSTEM),
-            Tool("get_disk_usage", format_disk_usage,
-                 "Gets disk usage. Args: path (str, optional, default: '/')",
-                 ToolCategory.SYSTEM, {'path': 'str'}),
-            Tool("get_battery_info", format_battery_info,
-                 "Gets battery information if available",
-                 ToolCategory.SYSTEM),
-            Tool("get_network_info", format_network_info,
-                 "Gets network interface statistics",
-                 ToolCategory.SYSTEM),
-            Tool("get_system_uptime", format_system_uptime,
-                 "Gets system uptime information",
-                 ToolCategory.SYSTEM),
-            Tool("get_running_processes", format_running_processes,
-                 "Gets top running processes by memory usage. Args: count (int, optional, default: 10)",
-                 ToolCategory.SYSTEM, {'count': 'int'}),
-            Tool("get_gpu_stats", format_gpu_stats,
-                 "Gets GPU statistics if available",
-                 ToolCategory.SYSTEM),
-            Tool("get_temperature_sensors", format_temperature_sensors,
-                 "Gets temperature sensor data if available",
-                 ToolCategory.SYSTEM),
-            Tool("check_system_alerts", format_system_alerts,
-                 "Checks for system alerts (high CPU, memory, disk, temperature)",
-                 ToolCategory.SYSTEM),
-        ]
-        
-        # Information Tools
-        info_tools = [
-          Tool("get_news", get_news_async,  
-         "Fetches top news headlines from India",
-            ToolCategory.INFORMATION),
-          Tool("get_weather", get_weather_async,
-         "Gets weather for a location. Args: location (str, default: India)",
-            ToolCategory.INFORMATION, {'location': 'str'}),
-          Tool("wikipedia_search", wikipedia_search_async, 
-         "Searches Wikipedia for a summary. Args: query (str)",
-            ToolCategory.INFORMATION, {'query': 'str'}),
-          # Utility Tools
-          Tool("calculate", calculate,
-               "Performs mathematical calculations. Args: expression (str, e.g., '2+2', '10*5')",
-               ToolCategory.INFORMATION, {'expression': 'str'}),
-          Tool("convert_temperature", convert_temperature,
-               "Converts temperature between units. Args: value (float), from_unit (str: celsius/fahrenheit/kelvin), to_unit (str: celsius/fahrenheit/kelvin)",
-               ToolCategory.INFORMATION, {'value': 'float', 'from_unit': 'str', 'to_unit': 'str'}),
-          Tool("convert_length", convert_length,
-               "Converts length between units. Args: value (float), from_unit (str: mm/cm/m/km/in/ft/yd/mi), to_unit (str: mm/cm/m/km/in/ft/yd/mi)",
-               ToolCategory.INFORMATION, {'value': 'float', 'from_unit': 'str', 'to_unit': 'str'}),
+     "Return ONLY current time/date/day. Trigger: 'what time', 'current date', 'today's date', 'what day is it'. EXCLUDE: 'agenda', 'schedule', 'events' → use calendar tools.",
+     ToolCategory.SYSTEM, {'query': 'str'}),
+
+Tool("system_status", generate_system_summary,
+     "General system summary: CPU+RAM+Disk+Network+GPU in one overview. Trigger on: 'system status', 'performance report', 'overall usage'.",
+     ToolCategory.SYSTEM),
+
+Tool("open_program", format_open_program,
+     "Launch DESKTOP APPS (Chrome/VSCode/Word/Notepad). Trigger: 'open app', 'start ___', 'launch ___'. EXCLUDE: 'open note', 'open file', 'open website' → use respective tools.",
+     ToolCategory.SYSTEM, {'app_name': 'str'}),
+
+Tool("search_file", search_file,
+     "FIND files by name on disk (returns PATH only). Trigger: 'find file', 'where is file', 'locate ___'. EXCLUDE: 'read file', 'show content' → use read_file.",
+     ToolCategory.SYSTEM, {'file_name': 'str'}),
+
+Tool("read_file", read_file,
+     "Open and DISPLAY file contents (.txt/.pdf/.docx/.json/csv). Trigger: 'read file', 'show file content', 'open file text'.",
+     ToolCategory.SYSTEM, {'file_path': 'str'}),
+
+Tool("open_website", open_website,
+     "Open URL in browser OR Google search. Trigger: 'open website', 'go to ___', 'search on google for'. EXCLUDE: 'what is ___', 'who is ___' → use wikipedia_search.",
+     ToolCategory.SYSTEM, {'query': 'str'}),
+
+Tool("copy_file", wrap_bool_result(copy_file,"File copied successfully."),
+     "Duplicate a file from source to destination. Trigger: 'copy file', 'make backup copy'.",
+     ToolCategory.SYSTEM, {'source_path': 'str','destination_path':'str'}),
+
+Tool("move_file", wrap_bool_result(move_file,"File moved successfully."),
+     "Move/relocate file to another folder. Trigger: 'move file', 'transfer file', 'relocate'.",
+     ToolCategory.SYSTEM, {'source_path':'str','destination_path':'str'}),
+
+Tool("delete_file", wrap_bool_result(delete_file,"File deleted successfully.","File deletion failed."),
+     "Delete a FILE permanently. Trigger: 'delete file', 'remove file'. Not notes.",
+     ToolCategory.SYSTEM, {'file_path':'str'}, requires_confirmation=True),
+
+Tool("create_folder", wrap_bool_result(create_folder,"Folder created successfully."),
+     "Create folder/directory. Trigger: 'make folder', 'create directory'.",
+     ToolCategory.SYSTEM, {'folder_name':'str'}),
+
+Tool("list_directory", wrap_bool_result(list_directory,"Directory listed."),
+     "List files/folders in a directory. Returns FILE NAMES + SIZES. Trigger: 'what's in folder', 'list files in ___', 'show directory contents'.",
+     ToolCategory.SYSTEM, {'directory_path':'str'}),
+
+Tool("terminate_program", format_terminate_program,
+     "Kill/stop running application by name. Trigger: 'close app', 'terminate program', 'kill process'.",
+     ToolCategory.SYSTEM, {'process_name':'str'}, requires_confirmation=True),
+
+Tool("get_cpu_usage", format_cpu_usage,
+     "CPU usage ONLY. Trigger: 'cpu percent', 'processor load'.",
+     ToolCategory.SYSTEM),
+
+Tool("get_memory_usage", format_memory_usage,
+     "RAM usage ONLY. Trigger: 'ram usage', 'memory consumed', 'how much ram used'.",
+     ToolCategory.SYSTEM),
+
+Tool("get_disk_usage", format_disk_usage,
+     "Disk storage usage ONLY. Trigger: 'disk space', 'storage used/free'.",
+     ToolCategory.SYSTEM, {'path':'str'}),
+
+Tool("get_battery_info", format_battery_info,
+     "Battery level/status ONLY. Trigger: 'battery percent', 'charging or not', 'battery time'.",
+     ToolCategory.SYSTEM),
+
+Tool("get_network_info", format_network_info,
+     "Network send/receive data ONLY. Trigger: 'internet usage', 'network stats'.",
+     ToolCategory.SYSTEM),
+
+Tool("get_system_uptime", format_system_uptime,
+     "How long system is running. Trigger: 'uptime', 'since when pc on'.",
+     ToolCategory.SYSTEM),
+
+Tool("get_running_processes", format_running_processes,
+     "List active processes using memory. Trigger: 'what apps running', 'which program using ram'.",
+     ToolCategory.SYSTEM, {'count':'int'}),
+
+Tool("get_gpu_stats", format_gpu_stats,
+     "GPU usage/memory/temperature. Trigger: 'gpu load', 'graphics card stats'.",
+     ToolCategory.SYSTEM),
+
+Tool("get_temperature_sensors", format_temperature_sensors,
+     "Hardware temperature sensors: CPU/GPU only. Trigger: 'device temperature', 'heat levels'.",
+     ToolCategory.SYSTEM),
+
+Tool("check_system_alerts", format_system_alerts,
+     "Reports performance alerts: overheating, high CPU/RAM/disk. Trigger: 'issues', 'alerts', 'is system healthy?'.",
+     ToolCategory.SYSTEM),
+
+Tool("get_full_system_report", get_full_system_report,
+     "Comprehensive detailed system report (all metrics). Trigger: 'full system report', 'detailed diagnostics', 'complete status'.",
+     ToolCategory.SYSTEM),
         ]
 
-        # Communication / Fun Tools
-        comm_tools = [
-            # --- NEW: Jokes ---
-            Tool("tell_joke", tell_joke,
-                 "Tells a random joke.",
-                 ToolCategory.COMMUNICATION),
+        # --- 2. INFORMATION TOOLS (Web, Math, News) ---
+        info_tools = [
+          Tool("get_news", get_news_async,
+     "Fetch CURRENT news headlines. Trigger: 'news today', 'latest headlines', 'tech news', 'sports news'. Categories: general, business, technology, sports, health, science, entertainment.",
+     ToolCategory.INFORMATION),
+
+Tool("get_weather", get_weather_async,
+     "Get CURRENT weather + forecast. Trigger: 'weather in ___', 'is it raining', 'temperature in ___', 'will it rain'. Default: India if no location.",
+     ToolCategory.INFORMATION, {'location':'str'}),
+
+Tool("wikipedia_search", wikipedia_search_async,
+     "Get Wikipedia summary for CONCEPTS/PEOPLE/HISTORY. Trigger: 'who is ___', 'what is ___', 'explain ___', 'history of ___'. EXCLUDE: 'latest news', 'current events' → use get_news.",
+     ToolCategory.INFORMATION, {'query':'str'}),
+
+Tool("calculate", calculate,
+     "Evaluate math expressions. Supports: +, -, *, /, **, %, sqrt, sin, cos, log. Trigger: '5+5', 'square root of 16', 'percentage of ___', 'solve ___'.",
+     ToolCategory.INFORMATION, {'expression':'str'}),
+
+Tool("convert_temperature", convert_temperature,
+     "Convert temperature units. Trigger: 'convert C to F'.",
+     ToolCategory.INFORMATION, {'value':'float','from_unit':'str','to_unit':'str'}),
+
+Tool("convert_length", convert_length,
+     "Convert length units. Trigger: 'mm to cm', 'm to ft', 'km to miles'.",
+     ToolCategory.INFORMATION, {'value':'float','from_unit':'str','to_unit':'str'}),
+
         ]
-        
-        # Task Management Tools
-        task_tools = [
-            Tool("add_task", add_task,
-                 "Adds a new task. Args: task_content (str)",
-                 ToolCategory.PRODUCTIVITY, {'task_content': 'str'}),
-            Tool("list_tasks", list_tasks,
-                 "Lists tasks. Optional: status_filter ('pending'/'completed')",
-                 ToolCategory.PRODUCTIVITY),
-            Tool("complete_task", complete_task,
-                 "Marks task complete. Args: identifier (ID or content)",
-                 ToolCategory.PRODUCTIVITY, {'identifier': 'str'}),
-            Tool("delete_task", delete_task,
-                 "Deletes a task. Args: identifier (ID or content)",
-                 ToolCategory.PRODUCTIVITY, {'identifier': 'str'}, requires_confirmation=True),
-            Tool("get_task_summary", get_task_summary,
-                 "Gets summary of all tasks",
-                 ToolCategory.PRODUCTIVITY),
-        ]
-        
-        # Note Tools
+
         note_tools = [
             Tool("create_note", create_note,
-                 "Creates a note. Args: title, content, tags (optional list)",
-                 ToolCategory.PRODUCTIVITY, {'title': 'str', 'content': 'str'}),
-            Tool("list_notes", list_notes,
-                 "Lists notes. Optional: tag filter",
-                 ToolCategory.PRODUCTIVITY),
-            Tool("get_note", get_note,
-                 "Gets full note content. Args: note_id (int)",
-                 ToolCategory.PRODUCTIVITY, {'note_id': 'int'}),
-            Tool("update_note", update_note,
-                 "Updates a note. Args: note_id, title/content/tags (optional)",
-                 ToolCategory.PRODUCTIVITY, {'note_id': 'int'}),
-            Tool("delete_note", delete_note,
-                 "Deletes a note. Args: note_id (int)",
-                 ToolCategory.PRODUCTIVITY, {'note_id': 'int'}, requires_confirmation=True),
-            Tool("get_notes_summary", get_notes_summary,
-                 "Gets summary of all notes",
-                 ToolCategory.PRODUCTIVITY),
+     "Create a QUICK NOTE (stored in database, not file). Trigger: 'take note', 'save note about'. EXCLUDE: 'create file', 'write file' → use file operations.",
+     ToolCategory.PRODUCTIVITY, {'title':'str','content':'str'}),
+
+Tool("list_notes", list_notes,
+     "Show all saved NOTES. Trigger: 'show notes', 'list notes'.",
+     ToolCategory.PRODUCTIVITY),
+
+Tool("get_note", get_note,
+     "Read a note by ID. Trigger: 'open note', 'read note 1'. Not files.",
+     ToolCategory.PRODUCTIVITY, {'note_id':'int'}),
+
+Tool("update_note", update_note,
+     "Edit note title/content. Trigger: 'edit note', 'update note'.",
+     ToolCategory.PRODUCTIVITY, {'note_id':'int'}),
+
+Tool("delete_note", delete_note,
+     "Delete a NOTE permanently. Trigger: 'delete note', 'remove note'.",
+     ToolCategory.PRODUCTIVITY, {'note_id':'int'}, requires_confirmation=True),
+
+Tool("get_notes_summary", get_notes_summary,
+     "Count and summary of notes. Trigger: 'notes summary', 'notes overview'.",
+     ToolCategory.PRODUCTIVITY),
+
+Tool("search_notes", list_notes,
+     "Search/filter notes by tag. Trigger: 'find notes tagged ___', 'notes about ___', 'search notes for'.",
+     ToolCategory.PRODUCTIVITY, {'tag':'str'}),
+
         ]
-        
-        # Reminder Tools
+
+        communication_tools = [
+            Tool("tell_joke", tell_joke,
+     "Return a joke. Trigger: 'tell joke', 'make me laugh'.",
+     ToolCategory.COMMUNICATION),
+     
+
+        ]
+
+        task_tools = [
+            Tool("add_task", add_task,
+     "Create a TODO in task list (NO TIME attached). Trigger: 'add task', 'todo: ___', 'I need to ___'. EXCLUDE: 'remind me at/in/tomorrow' → use add_reminder.",
+     ToolCategory.PRODUCTIVITY, {'task_content':'str'}),
+
+Tool("list_tasks", list_tasks,
+     "Show all tasks (pending/completed). Trigger: 'show todos', 'list tasks', 'tasks left'.",
+     ToolCategory.PRODUCTIVITY),
+
+Tool("complete_task", complete_task,
+     "Mark task completed. Trigger: 'mark done', 'task finished', 'complete task X'.",
+     ToolCategory.PRODUCTIVITY, {'identifier':'str'}),
+
+Tool("delete_task", delete_task,
+     "Delete a task permanently. Trigger: 'remove task', 'delete todo X'.",
+     ToolCategory.PRODUCTIVITY, {'identifier':'str'}, requires_confirmation=True),
+
+Tool("get_task_summary", get_task_summary,
+     "Task summary counts (pending vs completed). Trigger: 'task summary', 'todo overview'.",
+     ToolCategory.PRODUCTIVITY),
+
+        ]
         reminder_tools = [
-            Tool("add_reminder", self.reminder_manager.add_reminder,
-                 "Sets a reminder. Args: title, time_str (e.g., 'tomorrow at 5pm'), description (optional)",
-                 ToolCategory.PRODUCTIVITY, {'title': 'str', 'time_str': 'str'}),
-            Tool("list_reminders", self.reminder_manager.list_reminders,
-                 "Lists all active reminders",
-                 ToolCategory.PRODUCTIVITY),
-            Tool("delete_reminder", self.reminder_manager.delete_reminder,
-                 "Deletes a reminder. Args: reminder_id (int)",
-                 ToolCategory.PRODUCTIVITY, {'reminder_id': 'int'}),
-            # Timer Tool
-            Tool("set_timer", set_timer_async,
-                 "Sets a timer. Args: duration_seconds (int), message (str, optional, default: 'Timer finished!')",
-                 ToolCategory.PRODUCTIVITY, {'duration_seconds': 'int'}),
+           Tool("add_reminder", self.reminder_manager.add_reminder,
+     "Set time-based ALERT (will notify you). Trigger: 'remind me at 5pm', 'remind me in 10 mins', 'alert me when'. EXCLUDE: 'schedule meeting' → use add_event.",
+     ToolCategory.PRODUCTIVITY, {'title':'str','time_str':'str'}),
+
+Tool("list_reminders", self.reminder_manager.list_reminders,
+     "Show active reminders. Trigger: 'show reminders', 'what should I remember'.",
+     ToolCategory.PRODUCTIVITY),
+
+Tool("delete_reminder", self.reminder_manager.delete_reminder,
+     "Delete reminder by ID. Trigger: 'remove reminder'.",
+     ToolCategory.PRODUCTIVITY, {'reminder_id':'int'}),
+
+Tool("set_timer", set_timer_async,
+     "Countdown timer (immediate start). Trigger: 'set timer for 5 mins', 'countdown ___'. EXCLUDE: 'remind me later' → use add_reminder.",
+     ToolCategory.PRODUCTIVITY, {'duration_seconds':'int'}),
+
         ]
         
-        # Calendar Tools
         calendar_tools = [
             Tool("add_event", add_event,
-                 "Adds a calendar event. Args: title (str), start_time (str like 'tomorrow at 2pm'), end_time (optional), description (optional), location (optional)",
-                 ToolCategory.PRODUCTIVITY, {'title': 'str', 'start_time': 'str'}),
-            Tool("list_events", list_events,
-                 "Lists calendar events. Optional: date (str like 'tomorrow', 'next week'), days_ahead (int)",
-                 ToolCategory.PRODUCTIVITY),
-            Tool("get_today_agenda", get_today_agenda,
-                 "Gets today's schedule with all events",
-                 ToolCategory.PRODUCTIVITY),
-            Tool("get_upcoming_events", get_upcoming_events,
-                 "Gets events in the next N hours. Args: hours (int, default: 24)",
-                 ToolCategory.PRODUCTIVITY, {'hours': 'int'}),
-            Tool("delete_event", delete_event,
-                 "Deletes/cancels a calendar event. Args: identifier (ID or event title to search)",
-                 ToolCategory.PRODUCTIVITY, {'identifier': 'str'}, requires_confirmation=True),
+     "Add CALENDAR event with start/end time. Trigger: 'schedule ___', 'book meeting', 'add appointment'. EXCLUDE: 'remind me' → use add_reminder.",
+     ToolCategory.PRODUCTIVITY, {'title':'str','start_time':'str'}),
+
+Tool("list_events", list_events,
+     "List calendar events. Trigger: 'show calendar events', 'events this week'.",
+     ToolCategory.PRODUCTIVITY),
+
+Tool("get_today_agenda", get_today_agenda,
+     "TODAY'S calendar events ONLY. Trigger: 'what's on today', 'today's schedule', 'my agenda'. EXCLUDE: 'current time' → use get_datetime_info.",
+     ToolCategory.PRODUCTIVITY),
+
+Tool("get_upcoming_events", get_upcoming_events,
+     "Show NEXT upcoming events. Trigger: 'what's coming up', 'upcoming meetings'.",
+     ToolCategory.PRODUCTIVITY, {'hours':'int'}),
+
+Tool("delete_event", delete_event,
+     "Delete calendar event. Trigger: 'cancel event', 'remove event'.",
+     ToolCategory.PRODUCTIVITY, {'identifier':'str'}, requires_confirmation=True),
+
+Tool("update_event", update_event,
+     "Modify calendar event details (title/time/location). Trigger: 'reschedule meeting', 'change event time', 'update appointment'.",
+     ToolCategory.PRODUCTIVITY, {'event_id':'int','title':'str','start_time':'str','end_time':'str','location':'str'}),
+
+Tool("get_event", get_event,
+     "Get specific calendar event details by ID. Trigger: 'event details', 'info about event #X'.",
+     ToolCategory.PRODUCTIVITY, {'event_id':'int'}),
+
         ]
         
-        # Pomodoro Tools
         pomodoro_tools = [
-            Tool("start_pomodoro", start_pomodoro,
-                 "Starts a Pomodoro focus session. Args: task_name (str, optional), duration_minutes (int, optional, default: 25)",
-                 ToolCategory.PRODUCTIVITY, {'task_name': 'str'}),
-            Tool("stop_pomodoro", stop_pomodoro,
-                 "Stops/cancels the current Pomodoro session",
-                 ToolCategory.PRODUCTIVITY),
-            Tool("get_pomodoro_status", get_pomodoro_status,
-                 "Gets the status of the current Pomodoro session including time remaining",
-                 ToolCategory.PRODUCTIVITY),
-            Tool("get_pomodoro_stats", get_pomodoro_stats,
-                 "Gets Pomodoro productivity statistics for today",
-                 ToolCategory.PRODUCTIVITY),
-            Tool("start_break", start_break,
-                 "Starts a break timer. Args: break_type (str: 'short' or 'long')",
-                 ToolCategory.PRODUCTIVITY, {'break_type': 'str'}),
+           Tool("start_pomodoro", start_pomodoro,
+     "Start work session timer. Trigger: 'start focus', 'begin pomodoro', '25 min work'.",
+     ToolCategory.PRODUCTIVITY, {'task_name':'str'}),
+
+Tool("stop_pomodoro", stop_pomodoro,
+     "Stop current pomodoro session. Trigger: 'stop pomodoro', 'cancel focus'.",
+     ToolCategory.PRODUCTIVITY),
+
+Tool("get_pomodoro_status", get_pomodoro_status,
+     "Current session remaining time. Trigger: 'pomodoro progress', 'time left in session'.",
+     ToolCategory.PRODUCTIVITY),
+
+Tool("get_pomodoro_stats", get_pomodoro_stats,
+     "Completed pomodoros history summary. Trigger: 'focus stats', 'how many sessions done'.",
+     ToolCategory.PRODUCTIVITY),
+
+Tool("start_break", start_break,
+     "Start break timer. Trigger: 'take a break', 'start rest', 'begin short/long break'.",
+     ToolCategory.PRODUCTIVITY, {'break_type':'str'}),
+
         ]
         
         # Register all tools
-        for tool_list in [system_tools, info_tools, comm_tools, task_tools, note_tools, reminder_tools, calendar_tools, pomodoro_tools]:
+        for tool_list in [system_tools, info_tools, communication_tools, task_tools, note_tools, reminder_tools, calendar_tools, pomodoro_tools]:
             for tool in tool_list:
                 tools[tool.name] = tool
         
