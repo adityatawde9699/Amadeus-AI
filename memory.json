@@ -1,5 +1,5 @@
 {
-    "last_used_feature": "can you save this as a note",
+    "last_used_feature": "hey",
     "user_name": "",
     "frequent_queries": [],
     "conversations": [
@@ -42,6 +42,11 @@
             "prompt": "can you save this as a note",
             "response": "Certainly! I can save that as a note for you. I'm using a tool from my Productivity category to do this.\n\n**Using tool**: `save_note` with content: \"User is updating Amadeus's tool selection system. Replacing the current Gemini-2.5-flash model for tool selection with an ML model to save on API calls.\"",
             "timestamp": "2025-12-26 19:52:36.098010"
+        },
+        {
+            "prompt": "hey",
+            "response": "Hi there! How can I help you today?",
+            "timestamp": "2026-01-03 02:06:39.580681"
         }
     ]
 }
