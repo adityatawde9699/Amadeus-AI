@@ -12,6 +12,13 @@ from dotenv import load_dotenv
 # Load .env at import time so other modules can rely on environment vars
 load_dotenv()
 
+# ============================================================================
+# ENVIRONMENT SETTINGS
+# ============================================================================
+
+ENV = os.getenv('AMADEUS_ENV', 'development').lower()
+IS_PRODUCTION = ENV == 'production'
+
 logger = logging.getLogger(__name__)
 
 # ============================================================================
@@ -33,6 +40,15 @@ DB_MAX_OVERFLOW = int(os.getenv('DB_MAX_OVERFLOW', '10'))  # Max connections bey
 DB_POOL_TIMEOUT = int(os.getenv('DB_POOL_TIMEOUT', '30'))  # Seconds to wait for connection
 DB_POOL_RECYCLE = int(os.getenv('DB_POOL_RECYCLE', '3600'))  # Seconds before recycling connection
 DB_ECHO = os.getenv('DB_ECHO', 'false').lower() in ('1', 'true', 'yes')  # SQL logging
+
+# ============================================================================
+# ML MODEL CONFIGURATION (NEW)
+# ============================================================================
+
+# Paths to the uploaded joblib files
+TOOL_CLASSIFIER_PATH = os.getenv('TOOL_CLASSIFIER_PATH', str(BASE_DIR / 'Model' / 'amadeus_tool_classifier.joblib'))
+TOOL_VECTORIZER_PATH = os.getenv('TOOL_VECTORIZER_PATH', str(BASE_DIR / 'Model' / 'amadeus_vectorizer.joblib'))
+TOOL_PREDICTION_CONFIDENCE_THRESHOLD = float(os.getenv('TOOL_PREDICTION_CONFIDENCE_THRESHOLD', '0.0')) # LinearSVC uses distance, not prob, so thresholding is tricky. Keeping for future use.
 
 # ============================================================================
 # APPLICATION SETTINGS
@@ -196,6 +212,10 @@ def validate_config() -> Dict[str, Any]:
     if not GEMINI_API_KEY:
         errors.append("GEMINI_API_KEY is required but not set")
     
+    # Check for ML models
+    if not os.path.exists(TOOL_CLASSIFIER_PATH) or not os.path.exists(TOOL_VECTORIZER_PATH):
+        warnings.append(f"ML models not found at {BASE_DIR}. Intelligent tool selection will be disabled.")
+    
     # Validate numeric ranges
     if TTS_RATE < 50 or TTS_RATE > 300:
         warnings.append(f"TTS_RATE ({TTS_RATE}) is outside recommended range (50-300)")
@@ -285,6 +305,7 @@ def log_config_summary():
     logger.info(f"Location: {DEFAULT_LOCATION}, Timezone: {TIMEZONE}")
     logger.info(f"Voice Enabled: {VOICE_ENABLED}")
     logger.info(f"Gemini Model: {GEMINI_MODEL}")
+    logger.info(f"ML Models: {'Available' if os.path.exists(TOOL_CLASSIFIER_PATH) else 'Missing'}")
     logger.info(f"Conversation: max_messages={CONVERSATION_MAX_MESSAGES}, max_tokens={CONVERSATION_MAX_TOKENS_ESTIMATE}")
     logger.info(f"Tool Execution: max_retries={TOOL_MAX_RETRIES}, retry_delay={TOOL_RETRY_DELAY}s")
     logger.info(f"Timeouts: command={COMMAND_PROCESSING_TIMEOUT}s, speech={SPEECH_LISTEN_TIMEOUT}s")
@@ -307,9 +328,11 @@ def log_config_summary():
         logger.info("Configuration is valid")
 
 
-# Auto-validate on import (can be disabled if needed)
 if os.getenv('SKIP_CONFIG_VALIDATION', 'false').lower() not in ('1', 'true', 'yes'):
     validation_result = validate_config()
     if not validation_result['valid']:
-        logger.error("Configuration validation failed. Please fix the errors above.")
-        # Don't raise exception, just log - allows for graceful degradation
+        logger.error(f"Configuration validation failed: {validation_result['errors']}")
+        if IS_PRODUCTION:
+             raise RuntimeError(f"Critical configuration errors in PRODUCTION:\n" + "\n".join(validation_result['errors']))
+        else:
+             logger.warning("Configuration errors detected (non-fatal in development).")

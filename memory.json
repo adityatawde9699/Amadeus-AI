@@ -1,5 +1,5 @@
 {
-    "last_used_feature": "hey",
+    "last_used_feature": "write a python code to print a fiboci series  to 10",
     "user_name": "",
     "frequent_queries": [],
     "conversations": [
@@ -47,6 +47,16 @@
             "prompt": "hey",
             "response": "Hi there! How can I help you today?",
             "timestamp": "2026-01-03 02:06:39.580681"
+        },
+        {
+            "prompt": "hi",
+            "response": "Hello there! How can I help you today?",
+            "timestamp": "2026-01-03 19:28:52.467720"
+        },
+        {
+            "prompt": "write a python code to print a fiboci series  to 10",
+            "response": "```python\ndef fibonacci_series(n):\n    a, b = 0, 1\n    count = 0\n    series = []\n    while count < n:\n        series.append(a)\n        a, b = b, a + b\n        count += 1\n    return series\n\n# Print the Fibonacci series up to 10 terms\nprint(fibonacci_series(10))\n```\n\nThis code defines a function `fibonacci_series` that generates the first `n` numbers in the Fibonacci sequence and then prints the series for `n=10`.",
+            "timestamp": "2026-01-03 19:37:37.261308"
         }
     ]
 }
