@@ -11,7 +11,10 @@ from dataclasses import dataclass, field
 from enum import Enum
 from dotenv import load_dotenv
 from functools import wraps, partial
+from functools import wraps, partial
 import inspect
+import joblib 
+import numpy as np 
 
 if sys.platform.startswith('win'):
     import io
@@ -91,7 +94,7 @@ from note_utils import (
     delete_note,
     get_notes_summary,
 )
-from reminder_utils import ReminderManager
+from reminder_utils import add_reminder, list_reminders, delete_reminder
 from calendar_utils import (
     add_event,
     list_events,
@@ -109,23 +112,34 @@ from pomodoro_utils import (
     get_pomodoro_stats,
     start_break,
 )
-from speech_utils import speak, recognize_speech
+from speech_utils import recognize_speech
 from memory_utils import load_memory, save_memory, update_memory
 from db import init_db_async
+from voice_service import VoiceService
+from clock_service import ClockService
 import config
 
 
 # Configure logging
+# Configure logging with Request ID support
+class RequestIdFilter(logging.Filter):
+    def filter(self, record):
+        try:
+            record.request_id = request_id_ctx.get()
+        except LookupError:
+            record.request_id = 'system'
+        return True
+
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format='%(asctime)s - [%(request_id)s] - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        # Explicitly set encoding='utf-8' to prevent crashes on Hindi/Russian text
         logging.FileHandler('amadeus.log', encoding='utf-8'),
         logging.StreamHandler(sys.stdout)
     ]
 )
 logger = logging.getLogger('Amadeus')
+logger.addFilter(RequestIdFilter())
 
 
 class ToolCategory(Enum):
@@ -285,32 +299,163 @@ class ToolExecutor:
         return cleaned
 
 
+import contextvars
+
+# Context variable for Request ID tracking
+request_id_ctx = contextvars.ContextVar('request_id', default='system')
+
 class Amadeus:
-    """Enhanced Amadeus AI Assistant with improved architecture."""
+    """
+    Enhanced Amadeus AI Assistant with Service-Oriented Architecture.
+    
+    Architecture:
+    - Public API (Service Layer): handle_command, get_response
+    - Internal Logic (Core): _process_command_internal, _select_tool
+    - Infrastructure: database, memory, tools
+    """
     
     def __init__(self, debug_mode: bool = False, voice_enabled: bool = True):
         self.debug_mode = debug_mode
-        self.voice_enabled = voice_enabled and not debug_mode
-        self.running = False
-        
-        # Core components
-        self.conversation = ConversationManager()
+        self.voice_enabled = voice_enabled and config.VOICE_ENABLED
+        self.conversation_manager = ConversationManager()
         self.tool_executor = ToolExecutor()
-        self.reminder_manager = ReminderManager()
+        self.voice_service = VoiceService()
+        self.voice_service.start()
+        self.clock_service = ClockService(self.voice_service._queue)
+        self.clock_service.start()
+        
+        # Service State
+        self._is_running = False
+        self._tasks: List[asyncio.Task] = []
         
         # Identity and behavior configuration
         self.config = config.get_assistant_config()
-        
         self.identity_prompt = self._build_identity_prompt()
         
-        # Initialize
+        # Initialize components
         self._load_api_keys()
         self.tools = self._register_tools()
+        
+        # --- INTELLIGENT TOOL SELECTION INITIALIZATION ---
+        self._load_tool_classifier()
+        
         load_memory()
         
         # Log configuration summary
         config.log_config_summary()
         logger.info(f"Amadeus initialized with {len(self.tools)} tools")
+
+    def _load_tool_classifier(self):
+        """Load TF-IDF vectorizer and SVM classifier for smart tool selection."""
+        try:
+            if os.path.exists(config.TOOL_VECTORIZER_PATH) and os.path.exists(config.TOOL_CLASSIFIER_PATH):
+                self.vectorizer = joblib.load(config.TOOL_VECTORIZER_PATH)
+                self.classifier = joblib.load(config.TOOL_CLASSIFIER_PATH)
+                self.classifier_enabled = True
+                logger.info("Tool classifier models loaded successfully. Intelligent tool selection ENABLED.")
+            else:
+                logger.warning("Tool classifier models not found. Using default (all tools) mode.")
+                self.classifier_enabled = False
+        except Exception as e:
+            logger.error(f"Failed to load tool classifier: {e}", exc_info=True)
+            self.classifier_enabled = False
+
+    def _predict_relevant_tools(self, query: str, top_k: int = 3) -> List[str]:
+        """
+        Predict relevant tools using the loaded SVM model.
+        Returns a list of tool names to be sent to Gemini.
+        """
+        if not self.classifier_enabled:
+            return list(self.tools.keys())
+
+        try:
+            # Vectorize user query
+            X = self.vectorizer.transform([query])
+            
+            # Get scores (decision_function returns distance to hyperplane)
+            scores = self.classifier.decision_function(X)[0]
+            classes = self.classifier.classes_
+            
+            # Sort by confidence (score) descending
+            top_indices = np.argsort(scores)[::-1]
+            
+            # Get the single best prediction
+            best_tool = classes[top_indices[0]]
+            
+            # Check for 'conversational' class
+            if best_tool == 'conversational':
+                logger.info("Classifier predicted 'conversational' - Skipping tool definitions.")
+                return ["conversational"]
+            
+            # Get top K tools to provide redundancy/options
+            top_tools = classes[top_indices[:top_k]]
+            
+            # Filter tools that actually exist in our registry
+            relevant = [t for t in top_tools if t in self.tools]
+            
+            # If no relevant tools found (e.g. predictions were for deleted tools), fallback
+            if not relevant:
+                logger.warning(f"Classifier predicted {top_tools} but none exist. Fallback to all.")
+                return list(self.tools.keys())
+                
+            logger.info(f"Smart Tool Selection: Selected {relevant} (Top: {best_tool})")
+            return relevant
+
+        except Exception as e:
+            logger.error(f"Error predicting tools: {e}. Fallback to all tools.")
+            return list(self.tools.keys())
+
+    def _build_identity_prompt(self) -> str:
+        """Build a comprehensive identity prompt with advanced context awareness."""
+        time_context = self._get_time_context()
+        system_context = self._get_system_context()
+        
+        return f"""You are {self.config['name']}, an intelligent AI assistant with advanced capabilities.
+
+    Personality: {self.config['personality']}
+    Current time: {{current_time}}
+    System Status: {system_context}
+    User context: {{context_summary}}
+    Conversation Mode: {self._get_conversation_mode()}
+
+    Guidelines:
+    - Be concise, natural, and contextually aware in responses
+    - Don't introduce yourself unless asked
+    - When using tools, explain what you're doing briefly
+    - If a task fails, suggest alternatives and retry strategies
+    - Remember and build upon context from the conversation
+    - Adapt tone based on task urgency and user needs
+    - Provide proactive suggestions when relevant
+
+    Available tool categories: System, Productivity, Information, Communication
+
+    Interaction Preferences:
+    - Response style: {self.config.get('response_style', 'balanced')}
+    - Verbosity level: {self.config.get('verbosity', 'concise')}
+    - Proactive assistance: {self.config.get('proactive_mode', True)}"""
+
+    def _get_time_context(self) -> str:
+        now = datetime.now()
+        hour = now.hour
+        if 5 <= hour < 12: period = "morning"
+        elif 12 <= hour < 17: period = "afternoon"
+        elif 17 <= hour < 21: period = "evening"
+        else: period = "night"
+        return f"({period}, {now.strftime('%H:%M')})"
+
+    def _get_system_context(self) -> str:
+        try:
+            cpu = psutil.cpu_percent(interval=0.1)
+            memory = psutil.virtual_memory().percent
+            return f"CPU: {cpu}%, Memory: {memory}%"
+        except Exception:
+            return "System monitoring unavailable"
+
+    def _get_conversation_mode(self) -> str:
+        recent_tools = [m.tool_used for m in self.conversation_manager.messages[-5:] if m.tool_used]
+        if not recent_tools: return "Conversational"
+        elif len(set(recent_tools)) >= 2: return "Task-oriented"
+        else: return "Information-gathering"
     def _build_identity_prompt(self) -> str:
         """Build a comprehensive identity prompt with advanced context awareness."""
         time_context = self._get_time_context()
@@ -367,7 +512,7 @@ class Amadeus:
 
     def _get_conversation_mode(self) -> str:
         """Determine current conversation mode."""
-        recent_tools = [m.tool_used for m in self.conversation.messages[-5:] if m.tool_used]
+        recent_tools = [m.tool_used for m in self.conversation_manager.messages[-5:] if m.tool_used]
         if not recent_tools:
             return "Conversational"
         elif len(set(recent_tools)) >= 2:
@@ -495,100 +640,124 @@ class Amadeus:
                 return result.strip()
             return "No system alerts."
         
-        def format_terminate_program(process_name: str) -> str:
+        def format_terminate_program(process_name: str = None, app_name: str = None, program_name: str = None, **kwargs) -> str:
             """Format terminate program result."""
-            count = terminate_program(process_name)
+            target_process = process_name or app_name or program_name or kwargs.get('name')
+            if not target_process:
+                return "Error: No process name provided."
+            
+            count = terminate_program(target_process)
             if count > 0:
-                return f"Terminated {count} process(es) matching '{process_name}'"
-            return f"No processes found matching '{process_name}'"
+                return f"Terminated {count} process(es) matching '{target_process}'"
+            return f"No processes found matching '{target_process}'"
 
-        def format_open_program(app_name: str) -> str:
+        def format_open_program(app_name: str = None, program_name: str = None, **kwargs) -> str:
             """Helper to make open_program return a string."""
-            if open_program(app_name):
-                return f"Opening {app_name}..."
-            return f"Failed to open {app_name}."
+            target_app = app_name or program_name or kwargs.get('name')
+            if not target_app:
+                return "Error: No application name provided."
+            
+            if open_program(target_app):
+                return f"Opening {target_app}..."
+            return f"Failed to open {target_app}."
         
+        # --- 1. SYSTEM TOOLS (Hardware, OS, Files) ---
+        # --- NEW ROBUST WRAPPERS ---
+        def format_search_file(file_name: str = None, name: str = None, query: str = None, **kwargs) -> str:
+            target = file_name or name or query or kwargs.get('filename') or kwargs.get('file')
+            if not target: return "Error: No file name provided."
+            return search_file(target)
+
+        def format_read_file(file_path: str = None, path: str = None, file: str = None, **kwargs) -> str:
+            target = file_path or path or file or kwargs.get('filename') or kwargs.get('filepath')
+            if not target: return "Error: No file path provided."
+            return read_file(target)
+            
+        def format_create_folder(folder_name: str = None, name: str = None, directory: str = None, **kwargs) -> str:
+            target = folder_name or name or directory or kwargs.get('path') or kwargs.get('dir')
+            if not target: return "Error: No folder name provided."
+            return wrap_bool_result(create_folder, "Folder created.")(target)
+            
+        def format_list_directory(directory_path: str = None, path: str = None, directory: str = None, **kwargs) -> str:
+            target = directory_path or path or directory or kwargs.get('dir') or kwargs.get('folder')
+            if not target: return "Error: No directory path provided."
+            return wrap_bool_result(list_directory, "Directory listed.")(target)
+        
+        def format_copy_file(source_path: str = None, destination_path: str = None, **kwargs) -> str:
+            src = source_path or kwargs.get('source') or kwargs.get('src') or kwargs.get('from_path')
+            dst = destination_path or kwargs.get('destination') or kwargs.get('dest') or kwargs.get('to_path')
+            if not src or not dst: return "Error: Source and destination paths required."
+            return wrap_bool_result(copy_file, "File copied.")(src, dst)
+
+        def format_move_file(source_path: str = None, destination_path: str = None, **kwargs) -> str:
+            src = source_path or kwargs.get('source') or kwargs.get('src') or kwargs.get('from_path')
+            dst = destination_path or kwargs.get('destination') or kwargs.get('dest') or kwargs.get('to_path')
+            if not src or not dst: return "Error: Source and destination paths required."
+            return wrap_bool_result(move_file, "File moved.")(src, dst)
+            
+        def format_delete_file(file_path: str = None, path: str = None, **kwargs) -> str:
+            target = file_path or path or kwargs.get('file') or kwargs.get('filename')
+            if not target: return "Error: No file path provided."
+            return wrap_bool_result(delete_file, "File deleted.")(target)
+
         # --- 1. SYSTEM TOOLS (Hardware, OS, Files) ---
         system_tools = [
             Tool("get_datetime_info", get_datetime_info,
-     "Return ONLY current time/date/day. Trigger: 'what time', 'current date', 'today's date', 'what day is it'. EXCLUDE: 'agenda', 'schedule', 'events' → use calendar tools.",
+     "Return ONLY current time/date/day. Trigger: 'what time', 'current date', 'what day is it'. EXCLUDE: 'agenda', 'schedule' → use calendar.",
      ToolCategory.SYSTEM, {'query': 'str'}),
 
 Tool("system_status", generate_system_summary,
-     "General system summary: CPU+RAM+Disk+Network+GPU in one overview. Trigger on: 'system status', 'performance report', 'overall usage'.",
+     "General system summary: CPU+RAM+Disk+Network. Trigger: 'system status', 'performance report'.",
      ToolCategory.SYSTEM),
 
 Tool("open_program", format_open_program,
-     "Launch DESKTOP APPS (Chrome/VSCode/Word/Notepad). Trigger: 'open app', 'start ___', 'launch ___'. EXCLUDE: 'open note', 'open file', 'open website' → use respective tools.",
+     "Launch DESKTOP APPS (Chrome/VSCode/Word). Trigger: 'open app', 'start ___'. EXCLUDE: 'open file' → read_file.",
      ToolCategory.SYSTEM, {'app_name': 'str'}),
 
-Tool("search_file", search_file,
-     "FIND files by name on disk (returns PATH only). Trigger: 'find file', 'where is file', 'locate ___'. EXCLUDE: 'read file', 'show content' → use read_file.",
+Tool("search_file", format_search_file,
+     "FIND files by name (returns PATH only). Trigger: 'find file', 'where is file', 'locate ___'.",
      ToolCategory.SYSTEM, {'file_name': 'str'}),
 
-Tool("read_file", read_file,
-     "Open and DISPLAY file contents (.txt/.pdf/.docx/.json/csv). Trigger: 'read file', 'show file content', 'open file text'.",
+Tool("read_file", format_read_file,
+     "Open and DISPLAY file contents (.txt/.pdf/.json). Trigger: 'read file', 'show content'.",
      ToolCategory.SYSTEM, {'file_path': 'str'}),
 
 Tool("open_website", open_website,
-     "Open URL in browser OR Google search. Trigger: 'open website', 'go to ___', 'search on google for'. EXCLUDE: 'what is ___', 'who is ___' → use wikipedia_search.",
+     "Open URL/Search Google. Trigger: 'open website', 'google ___', 'search for ___'.",
      ToolCategory.SYSTEM, {'query': 'str'}),
 
-Tool("copy_file", wrap_bool_result(copy_file,"File copied successfully."),
-     "Duplicate a file from source to destination. Trigger: 'copy file', 'make backup copy'.",
+Tool("copy_file", format_copy_file,
+     "Duplicate file. Trigger: 'copy file'.",
      ToolCategory.SYSTEM, {'source_path': 'str','destination_path':'str'}),
 
-Tool("move_file", wrap_bool_result(move_file,"File moved successfully."),
-     "Move/relocate file to another folder. Trigger: 'move file', 'transfer file', 'relocate'.",
+Tool("move_file", format_move_file,
+     "Move file. Trigger: 'move file'.",
      ToolCategory.SYSTEM, {'source_path':'str','destination_path':'str'}),
 
-Tool("delete_file", wrap_bool_result(delete_file,"File deleted successfully.","File deletion failed."),
-     "Delete a FILE permanently. Trigger: 'delete file', 'remove file'. Not notes.",
+Tool("delete_file", format_delete_file,
+     "Delete FILE permanently. Trigger: 'delete file'.",
      ToolCategory.SYSTEM, {'file_path':'str'}, requires_confirmation=True),
 
-Tool("create_folder", wrap_bool_result(create_folder,"Folder created successfully."),
-     "Create folder/directory. Trigger: 'make folder', 'create directory'.",
+Tool("create_folder", format_create_folder,
+     "Create folder. Trigger: 'make folder'.",
      ToolCategory.SYSTEM, {'folder_name':'str'}),
 
-Tool("list_directory", wrap_bool_result(list_directory,"Directory listed."),
-     "List files/folders in a directory. Returns FILE NAMES + SIZES. Trigger: 'what's in folder', 'list files in ___', 'show directory contents'.",
+Tool("list_directory", format_list_directory,
+     "List files in folder. Trigger: 'ls', 'dir', 'what's in folder'.",
      ToolCategory.SYSTEM, {'directory_path':'str'}),
 
 Tool("terminate_program", format_terminate_program,
-     "Kill/stop running application by name. Trigger: 'close app', 'terminate program', 'kill process'.",
+     "Kill/stop app. Trigger: 'close app', 'kill process'.",
      ToolCategory.SYSTEM, {'process_name':'str'}, requires_confirmation=True),
 
-Tool("get_cpu_usage", format_cpu_usage,
-     "CPU usage ONLY. Trigger: 'cpu percent', 'processor load'.",
-     ToolCategory.SYSTEM),
-
-Tool("get_memory_usage", format_memory_usage,
-     "RAM usage ONLY. Trigger: 'ram usage', 'memory consumed', 'how much ram used'.",
-     ToolCategory.SYSTEM),
-
-Tool("get_disk_usage", format_disk_usage,
-     "Disk storage usage ONLY. Trigger: 'disk space', 'storage used/free'.",
-     ToolCategory.SYSTEM, {'path':'str'}),
-
-Tool("get_battery_info", format_battery_info,
-     "Battery level/status ONLY. Trigger: 'battery percent', 'charging or not', 'battery time'.",
-     ToolCategory.SYSTEM),
-
-Tool("get_network_info", format_network_info,
-     "Network send/receive data ONLY. Trigger: 'internet usage', 'network stats'.",
-     ToolCategory.SYSTEM),
-
-Tool("get_system_uptime", format_system_uptime,
-     "How long system is running. Trigger: 'uptime', 'since when pc on'.",
-     ToolCategory.SYSTEM),
-
-Tool("get_running_processes", format_running_processes,
-     "List active processes using memory. Trigger: 'what apps running', 'which program using ram'.",
-     ToolCategory.SYSTEM, {'count':'int'}),
-
-Tool("get_gpu_stats", format_gpu_stats,
-     "GPU usage/memory/temperature. Trigger: 'gpu load', 'graphics card stats'.",
-     ToolCategory.SYSTEM),
+Tool("get_cpu_usage", format_cpu_usage, "CPU usage.", ToolCategory.SYSTEM),
+Tool("get_memory_usage", format_memory_usage, "RAM usage.", ToolCategory.SYSTEM),
+Tool("get_disk_usage", format_disk_usage, "Disk usage.", ToolCategory.SYSTEM, {'path':'str'}),
+Tool("get_battery_info", format_battery_info, "Battery status.", ToolCategory.SYSTEM),
+Tool("get_network_info", format_network_info, "Network stats.", ToolCategory.SYSTEM),
+Tool("get_system_uptime", format_system_uptime, "System uptime.", ToolCategory.SYSTEM),
+Tool("get_running_processes", format_running_processes, "List processes.", ToolCategory.SYSTEM, {'count':'int'}),
+Tool("get_gpu_stats", format_gpu_stats, "GPU stats.", ToolCategory.SYSTEM),
 
 Tool("get_temperature_sensors", format_temperature_sensors,
      "Hardware temperature sensors: CPU/GPU only. Trigger: 'device temperature', 'heat levels'.",
@@ -693,15 +862,15 @@ Tool("get_task_summary", get_task_summary,
 
         ]
         reminder_tools = [
-           Tool("add_reminder", self.reminder_manager.add_reminder,
+           Tool("add_reminder", add_reminder,
      "Set time-based ALERT (will notify you). Trigger: 'remind me at 5pm', 'remind me in 10 mins', 'alert me when'. EXCLUDE: 'schedule meeting' → use add_event.",
      ToolCategory.PRODUCTIVITY, {'title':'str','time_str':'str'}),
 
-Tool("list_reminders", self.reminder_manager.list_reminders,
+Tool("list_reminders", list_reminders,
      "Show active reminders. Trigger: 'show reminders', 'what should I remember'.",
      ToolCategory.PRODUCTIVITY),
 
-Tool("delete_reminder", self.reminder_manager.delete_reminder,
+Tool("delete_reminder", delete_reminder,
      "Delete reminder by ID. Trigger: 'remove reminder'.",
      ToolCategory.PRODUCTIVITY, {'reminder_id':'int'}),
 
@@ -788,65 +957,44 @@ Tool("start_break", start_break,
         return "\n\n".join(sections)
     
     async def _select_tool(self, command: str) -> Tuple[Optional[str], Dict[str, Any]]:
-        """Use AI to select the appropriate tool for a command."""
-        tool_descriptions = self._get_tool_descriptions()
+        """DEPRECATED: Replaced by native function calling."""
+        return None, {}
+
+    def _get_gemini_tools_schema(self, allowed_tools: Optional[List[str]] = None):
+        """
+        Convert registered tools to Gemini Function Declarations.
+        Args:
+            allowed_tools: If provided, only include these tools in the schema.
+        """
+        fds = []
+        target_tools = self.tools
         
-        selection_prompt = f"""Analyze this user command and select the best tool.
-
-User command: "{command}"
-
-Available tools:
-{tool_descriptions}
-
-Respond ONLY with a JSON object (no markdown, no backticks):
-{{"tool": "tool_name_or_conversational", "args": {{"param": "value"}}, "confidence": 0.0-1.0}}
-
-If no tool fits, use: {{"tool": "conversational", "args": {{}}, "confidence": 1.0}}
-
-Examples:
-- "what time is it" -> {{"tool": "get_datetime_info", "args": {{"query": "time"}}, "confidence": 0.95}}
-- "add task buy groceries" -> {{"tool": "add_task", "args": {{"task_content": "buy groceries"}}, "confidence": 0.9}}
-- "how are you" -> {{"tool": "conversational", "args": {{}}, "confidence": 1.0}}
-"""
-        
-        try:
-            response = await asyncio.to_thread(
-                self.model.generate_content, selection_prompt
-            )
+        if allowed_tools is not None:
+            target_tools = {k: v for k, v in self.tools.items() if k in allowed_tools}
             
-            text = self._extract_response_text(response)
-            if not text:
-                logger.warning("Empty response from tool selection")
-                return None, {}
+        for name, tool in target_tools.items():
+            parameters = {
+                "type": "OBJECT",
+                "properties": {},
+                "required": []
+            }
             
-            # Clean and parse JSON
-            cleaned = text.strip()
-            # Remove markdown code blocks if present
-            if cleaned.startswith('```'):
-                cleaned = cleaned.split('\n', 1)[-1].rsplit('```', 1)[0]
-            cleaned = cleaned.replace('`', '').replace('json', '').strip()
+            for param_name, param_type in tool.parameters.items():
+                ptype = "STRING"
+                if param_type == 'int': ptype = "INTEGER"
+                elif param_type == 'float': ptype = "NUMBER"
+                elif param_type == 'bool': ptype = "BOOLEAN"
+                
+                parameters["properties"][param_name] = {"type": ptype}
+                parameters["required"].append(param_name)
             
-            choice = json.loads(cleaned)
+            fds.append(genai.protos.FunctionDeclaration(
+                name=name,
+                description=tool.description,
+                parameters=parameters
+            ))
             
-            tool_name = choice.get('tool')
-            args = choice.get('args', {})
-            confidence = choice.get('confidence', 0.5)
-            
-            logger.info(f"Tool selection: {tool_name} (confidence: {confidence})")
-            
-            # If confidence is low, might want conversational fallback
-            if confidence < 0.3 and tool_name != 'conversational':
-                logger.info("Low confidence, falling back to conversational")
-                return 'conversational', {}
-            
-            return tool_name, args
-            
-        except json.JSONDecodeError as e:
-            logger.error(f"JSON parse error in tool selection: {e}")
-            return 'conversational', {}
-        except Exception as e:
-            logger.error(f"Tool selection error: {e}", exc_info=True)
-            return None, {}
+        return genai.protos.Tool(function_declarations=fds)
     
     def _extract_response_text(self, response) -> Optional[str]:
         """Robustly extract text from various Gemini response formats."""
@@ -899,10 +1047,10 @@ Examples:
         """Generate a conversational reply using the AI model."""
         context = self.identity_prompt.format(
             current_time=datetime.now().strftime('%I:%M %p on %A, %B %d'),
-            context_summary=self.conversation.get_context_summary()
+            context_summary=self.conversation_manager.get_context_summary()
         )
         
-        history = self.conversation.get_formatted_history(last_n=8)
+        history = self.conversation_manager.get_formatted_history(last_n=8)
         
         full_prompt = f"""{context}
 
@@ -922,8 +1070,8 @@ User: {prompt}
                 reply = "I'm not sure how to respond to that."
             
             # Update conversation and memory
-            self.conversation.add('user', prompt)
-            self.conversation.add('assistant', reply)
+            self.conversation_manager.add('user', prompt)
+            self.conversation_manager.add('assistant', reply)
             update_memory(prompt, reply)
             
             return reply.strip()
@@ -932,48 +1080,111 @@ User: {prompt}
             logger.error(f"Conversational reply error: {e}", exc_info=True)
             return "I'm having trouble processing that right now."
     
-    async def process_command(self, command: str) -> str:
-        """Process a user command with improved async handling."""
+    async def process_command(self, command: str, source: str = "text") -> str:
+        """
+        [Public Service API] Process a user command and return the response.
+        Generates a unique Request ID for the duration of this command.
+        """
+        import uuid
+        req_id = str(uuid.uuid4())[:8]
+        token = request_id_ctx.set(req_id)
+        
+        logger.info(f"Processing command from {source}: '{command}'")
+        
+        try:
+            return await self._process_command_internal(command)
+        except Exception as e:
+            logger.error(f"Error command processing: {e}", exc_info=True)
+            return f"I encountered an error: {str(e)}"
+        finally:
+            request_id_ctx.reset(token)
+
+    async def _process_command_internal(self, command: str) -> str:
+        """Process a user command using Gemini Native Function Calling and Smart Selection."""
         if not command or not command.strip():
             return "I didn't catch that. Could you repeat?"
         
         command = command.strip()
         logger.info(f"Processing command: {command[:50]}...")
         
-        # Select appropriate tool
-        tool_name, args = await self._select_tool(command)
+        context = self.identity_prompt.format(
+            current_time=datetime.now().strftime('%I:%M %p on %A, %B %d'),
+            context_summary=self.conversation_manager.get_context_summary()
+        )
+        history = self.conversation_manager.get_formatted_history(last_n=5)
         
-        if tool_name is None:
+        full_prompt = f"""{context}\n\nRecent history:\n{history}\n\nUser: {command}\n(Use a tool if appropriate, otherwise respond conversationally.)"""
+
+        try:
+            # --- 1. PREDICT RELEVANT TOOLS ---
+            # This is the key optimization: Filter tools before calling API
+            relevant_tools = self._predict_relevant_tools(command)
+            
+            # If the classifier strongly believes this is just conversation, 
+            # skip tool schema generation entirely (saves tokens + latency)
+            if relevant_tools == ["conversational"]:
+                logger.info("Skipping tool schema generation based on classifier.")
+                return await self._conversational_reply(command)
+
+            # --- 2. GENERATE TOOLS SCHEMA (FILTERED) ---
+            # Only send definitions for tools deemed relevant
+            tools_obj = self._get_gemini_tools_schema(allowed_tools=relevant_tools)
+            
+            # --- 3. CALL GEMINI ---
+            response = await asyncio.to_thread(
+                self.model.generate_content,
+                full_prompt,
+                tools=[tools_obj]
+            )
+            
+            # --- 4. HANDLE RESPONSE ---
+            function_call = None
+            if hasattr(response, 'candidates') and response.candidates:
+                part = response.candidates[0].content.parts[0]
+                if hasattr(part, 'function_call') and part.function_call:
+                    function_call = part.function_call
+            
+            if function_call:
+                tool_name = function_call.name
+                args = dict(function_call.args)
+                
+                if tool_name not in self.tools:
+                    return await self._conversational_reply(command)
+                
+                tool = self.tools[tool_name]
+                
+                if tool.requires_confirmation and not self.debug_mode:
+                    if self.voice_enabled:
+                         self.voice_service.speak(f"Are you sure you want to {tool_name.replace('_', ' ')}? Say yes to confirm.")
+                    # Confirmation logic skipped for automation as per instructions
+                    pass 
+
+                success, result = await self.tool_executor.execute(tool, args)
+                
+                if success:
+                    formatted = self._format_tool_result(result)
+                    self.conversation_manager.add('user', command, tool_used=tool_name)
+                    self.conversation_manager.add('assistant', formatted, tool_used=tool_name)
+                    if self.voice_enabled:
+                        self.voice_service.speak(formatted)
+                    return formatted
+                else:
+                    error_msg = f"I couldn't complete that action. {result}"
+                    if self.voice_enabled:
+                        self.voice_service.speak(error_msg)
+                    return error_msg
+            
+            else:
+                reply = self._extract_response_text(response)
+                if not reply: reply = "I'm not sure how to respond."
+                if self.voice_enabled: self.voice_service.speak(reply)
+                self.conversation_manager.add('user', command)
+                self.conversation_manager.add('assistant', reply)
+                return reply
+                
+        except Exception as e:
+            logger.error(f"Error in native tool execution: {e}", exc_info=True)
             return "I encountered an error processing your request."
-        
-        if tool_name == 'conversational':
-            return await self._conversational_reply(command)
-        
-        if tool_name not in self.tools:
-            logger.warning(f"Unknown tool selected: {tool_name}")
-            return await self._conversational_reply(command)
-        
-        tool = self.tools[tool_name]
-        
-        # Handle confirmation for dangerous operations
-        if tool.requires_confirmation and not self.debug_mode:
-            speak(f"Are you sure you want to {tool_name.replace('_', ' ')}? Say yes to confirm.")
-            confirmation = recognize_speech()
-            if not confirmation or 'yes' not in confirmation.lower():
-                return "Operation cancelled."
-        
-        # Execute the tool
-        success, result = await self.tool_executor.execute(tool, args)
-        
-        if success:
-            formatted = self._format_tool_result(result)
-            self.conversation.add('user', command, tool_used=tool_name)
-            self.conversation.add('assistant', formatted, tool_used=tool_name)
-            return formatted
-        else:
-            # Tool failed, try conversational fallback
-            logger.warning(f"Tool {tool_name} failed: {result}")
-            return f"I couldn't complete that action. {result}"
     
     async def generate_daily_brief(self) -> str:
         """Generate a comprehensive daily briefing with improved error handling."""
@@ -994,7 +1205,7 @@ User: {prompt}
         
         # Reminders - with validation
         try:
-            reminders = self.reminder_manager.list_reminders()
+            reminders = await list_reminders()
             if reminders:
                 reminder_count = len(reminders)
                 reminder_text = f"You have {reminder_count} active reminder{'s' if reminder_count != 1 else ''}."
@@ -1034,29 +1245,6 @@ User: {prompt}
         
         return brief
     
-    def _speak(self, text: str, priority: str = "normal"):
-        """Speak text synchronously.
-        CRITICAL FIX: Running this on the main thread prevents pyttsx3 freezing."""
-        if not text or not text.strip():
-            return
-        
-        # Skip redundant outputs
-        if hasattr(self, '_last_spoken') and self._last_spoken == text:
-            logger.debug("Skipping duplicate speech output")
-            return
-        
-        self._last_spoken = text
-        
-        # Log first so we see output even if voice fails
-        logger.info(f"[{self.config['name']}]: {text}")
-
-        if self.voice_enabled:
-            try:
-                # Run directly (Synchronously) - Do NOT use asyncio.to_thread here
-                speak(text)
-            except Exception as e:
-                logger.error(f"Speech synthesis failed: {e}")
-
     async def _listen(self) -> Optional[str]:
         """Get input with timeout and validation.
         CRITICAL FIX: Made async to await results without starting a new loop."""

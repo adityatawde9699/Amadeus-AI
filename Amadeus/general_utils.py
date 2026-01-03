@@ -214,7 +214,7 @@ async def get_news_async(
 
 # ============== WEB BROWSING UTILITIES ==============
 
-def open_website(query: str) -> str:
+def open_website(query: str = None, url: str = None, **kwargs) -> str:
     """
     Opens a website or performs a Google search.
     
@@ -224,6 +224,10 @@ def open_website(query: str) -> str:
     Returns:
         Status message
     """
+    query = query or url or kwargs.get('link')
+    if not query:
+        return "Error: No URL or search query provided."
+    
     query = query.strip()
     
     # Check if it looks like a URL
