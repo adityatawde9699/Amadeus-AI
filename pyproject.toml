@@ -1,0 +1,275 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "amadeus-ai"
+version = "2.0.0"
+description = "A production-ready AI voice assistant built with Clean Architecture principles"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+authors = [
+    {name = "Aditya Tawde", email = "adityatawde9699@gmail.com"}
+]
+keywords = ["ai", "assistant", "voice", "llm", "fastapi", "clean-architecture"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+
+dependencies = [
+    # Web / API
+    "fastapi>=0.118.0",
+    "uvicorn[standard]>=0.37.0",
+    
+    # Database
+    "sqlalchemy[asyncio]>=2.0.0",
+    "aiosqlite>=0.19.0",
+    "alembic>=1.13.0",
+    
+    # Validation / Config
+    "pydantic>=2.11.0",
+    "pydantic-settings>=2.0.0",
+    "python-dotenv>=1.0.0",
+    
+    # Dependency Injection
+    "dependency-injector>=4.41.0",
+    
+    # Utilities / System
+    "psutil>=5.9.0",
+    
+    # Image / OCR
+    "Pillow>=10.0.0",
+    "pytesseract>=0.3.10",
+    
+    # Generative AI
+    "google-generativeai>=0.8.0",
+    
+    # Natural Language Parsing
+    "dateparser>=1.2.0",
+    
+    # HTTP Client
+    "requests>=2.31.0",
+]
+
+[project.optional-dependencies]
+# Voice features - requires system dependencies (portaudio) and Rust
+voice = [
+    "SpeechRecognition>=3.10.0",
+    "pyttsx3>=2.90",
+    "faster-whisper>=0.10.0",
+]
+
+# Dashboard UI
+dashboard = [
+    "streamlit>=1.30.0",
+    "streamlit-lottie>=0.0.5",
+    "streamlit-mic-recorder>=0.0.8",
+]
+
+dev = [
+    # Testing
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "httpx>=0.27.0",  # For FastAPI TestClient
+    
+    # Code Quality
+    "black>=24.0.0",
+    "ruff>=0.3.0",
+    "mypy>=1.8.0",
+    
+    # Type Stubs
+    "types-psutil>=5.9.0",
+    "types-requests>=2.31.0",
+]
+
+test = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "httpx>=0.27.0",
+]
+
+# Full installation with all features
+all = [
+    "amadeus-ai[voice,dashboard,dev]",
+]
+
+[project.scripts]
+amadeus = "src.api.server:main"
+
+[project.urls]
+Homepage = "https://github.com/adityatawde9699/Amadeus-AI"
+Documentation = "https://github.com/adityatawde9699/Amadeus-AI#readme"
+Repository = "https://github.com/adityatawde9699/Amadeus-AI.git"
+Issues = "https://github.com/adityatawde9699/Amadeus-AI/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+# ============================================================================
+# TOOL CONFIGURATIONS
+# ============================================================================
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_functions = ["test_*"]
+addopts = [
+    "-ra",
+    "-q",
+    "--strict-markers",
+    "--strict-config",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+show_missing = true
+fail_under = 70
+
+[tool.black]
+line-length = 100
+target-version = ["py311", "py312"]
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+    \.git
+    | \.hg
+    | \.mypy_cache
+    | \.tox
+    | \.venv
+    | amadeus_venv
+    | _build
+    | buck-out
+    | build
+    | dist
+    | Amadeus  # Exclude legacy code
+)/
+'''
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = [
+    ".git",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".venv",
+    "amadeus_venv",
+    "Amadeus",  # Exclude legacy code
+]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # Pyflakes
+    "I",    # isort
+    "C90",  # mccabe complexity
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "S",    # flake8-bandit (security)
+    "A",    # flake8-builtins
+    "C4",   # flake8-comprehensions
+    "DTZ",  # flake8-datetimez
+    "T10",  # flake8-debugger
+    "EXE",  # flake8-executable
+    "ISC",  # flake8-implicit-str-concat
+    "ICN",  # flake8-import-conventions
+    "PIE",  # flake8-pie
+    "PT",   # flake8-pytest-style
+    "Q",    # flake8-quotes
+    "RSE",  # flake8-raise
+    "RET",  # flake8-return
+    "SLF",  # flake8-self
+    "SIM",  # flake8-simplify
+    "TID",  # flake8-tidy-imports
+    "TCH",  # flake8-type-checking
+    "ARG",  # flake8-unused-arguments
+    "PTH",  # flake8-use-pathlib
+    "ERA",  # eradicate
+    "PL",   # Pylint
+    "TRY",  # tryceratops
+    "RUF",  # Ruff-specific rules
+]
+ignore = [
+    "S101",    # Use of assert detected (OK in tests)
+    "PLR0913", # Too many arguments to function call
+    "TRY003",  # Avoid specifying long messages outside exception class
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "PLR2004", "ARG001"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src"]
+force-single-line = false
+lines-after-imports = 2
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+show_error_codes = true
+strict_equality = true
+strict_concatenate = true
+exclude = [
+    "Amadeus/",  # Exclude legacy code
+    "amadeus_venv/",
+]
+
+[[tool.mypy.overrides]]
+module = [
+    "pyttsx3.*",
+    "speech_recognition.*",
+    "faster_whisper.*",
+    "streamlit.*",
+    "streamlit_lottie.*",
+    "streamlit_mic_recorder.*",
+    "google.generativeai.*",
+    "pytesseract.*",
+]
+ignore_missing_imports = true

@@ -1,0 +1,93 @@
+# =============================================================================
+# Docker Ignore File - Amadeus AI
+# =============================================================================
+# Exclude files and directories that should not be copied to Docker image
+
+# Version control
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+.eggs/
+*.manifest
+*.spec
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual environments
+venv/
+.venv/
+amadeus_venv/
+ENV/
+env/
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Testing
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.hypothesis/
+
+# Build artifacts
+build/
+dist/
+*.whl
+
+# Documentation
+docs/_build/
+
+# Logs
+*.log
+logs/
+
+# Database files (we mount these as volumes)
+*.db
+*.sqlite
+*.sqlite3
+
+# Legacy code (old structure)
+Amadeus/
+
+# Model files (large binaries)
+*.joblib
+*.pkl
+*.h5
+*.pt
+*.pth
+Model/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.docker/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Misc
+*.md
+!README.md
+LICENSE*
+Makefile

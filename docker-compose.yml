@@ -1,0 +1,100 @@
+# =============================================================================
+# Amadeus AI - Docker Compose Configuration
+# =============================================================================
+# Development and production profiles for the AI assistant
+# 
+# Usage:
+#   Development: docker-compose up --build
+#   Production:  docker-compose --profile prod up --build
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # API Service (Development)
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: amadeus-api
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      - ENV=development
+      - DEBUG=true
+      - DATABASE_URL=sqlite:///./data/amadeus.db
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - WEATHER_API_KEY=${WEATHER_API_KEY}
+      - NEWS_API_KEY=${NEWS_API_KEY}
+      - LOG_LEVEL=INFO
+    volumes:
+      # Mount source code for hot-reload during development
+      - ./src:/app/src:ro
+      # Persist database
+      - amadeus-data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - amadeus-network
+
+  # ---------------------------------------------------------------------------
+  # API Service (Production)
+  # ---------------------------------------------------------------------------
+  api-prod:
+    profiles:
+      - prod
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: amadeus-api-prod
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      - ENV=production
+      - DEBUG=false
+      - DATABASE_URL=sqlite:///./data/amadeus.db
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - WEATHER_API_KEY=${WEATHER_API_KEY}
+      - NEWS_API_KEY=${NEWS_API_KEY}
+      - LOG_LEVEL=WARNING
+    volumes:
+      # Only persist database, no source mount
+      - amadeus-data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: always
+    networks:
+      - amadeus-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+# =============================================================================
+# VOLUMES
+# =============================================================================
+volumes:
+  amadeus-data:
+    driver: local
+
+# =============================================================================
+# NETWORKS
+# =============================================================================
+networks:
+  amadeus-network:
+    driver: bridge
