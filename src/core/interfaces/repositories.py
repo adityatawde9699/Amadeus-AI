@@ -357,3 +357,74 @@ class ICalendarEventRepository(IRepository[CalendarEvent]):
             Dict with counts and upcoming event details.
         """
         pass
+
+
+# =============================================================================
+# CONVERSATION REPOSITORY
+# =============================================================================
+
+class IConversationRepository(ABC):
+    """Repository interface for conversation history persistence."""
+    
+    @abstractmethod
+    async def add_message(
+        self,
+        session_id: str,
+        role: str,
+        content: str,
+        tool_used: str | None = None,
+    ) -> None:
+        """
+        Add a message to the conversation history.
+        
+        Args:
+            session_id: Session identifier to group messages.
+            role: 'user' or 'assistant'.
+            content: Message content.
+            tool_used: Optional tool that was used.
+        """
+        pass
+    
+    @abstractmethod
+    async def get_recent_context(
+        self,
+        session_id: str,
+        limit: int = 10,
+    ) -> list[dict]:
+        """
+        Get recent messages for context.
+        
+        Args:
+            session_id: The session to retrieve messages for.
+            limit: Maximum number of messages to return.
+            
+        Returns:
+            List of message dicts with role, content, tool_used, timestamp.
+        """
+        pass
+    
+    @abstractmethod
+    async def get_session_history(self, session_id: str) -> list[dict]:
+        """Get all messages for a session."""
+        pass
+    
+    @abstractmethod
+    async def clear_session(self, session_id: str) -> int:
+        """
+        Clear all messages for a session.
+        
+        Returns:
+            Number of messages deleted.
+        """
+        pass
+    
+    @abstractmethod
+    async def list_sessions(self, limit: int = 20) -> list[str]:
+        """
+        List recent session IDs.
+        
+        Returns:
+            List of session IDs ordered by recency.
+        """
+        pass
+
