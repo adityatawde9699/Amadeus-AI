@@ -100,17 +100,25 @@ class Tool:
         
         for param_name, param_info in self.parameters.items():
             if isinstance(param_info, dict):
+                # FIXED: Capitalize type for Gemini SDK (string -> STRING)
+                p_type = param_info.get("type", "string").upper()
+                
                 properties[param_name] = {
-                    "type": param_info.get("type", "string"),
+                    "type": p_type,
                     "description": param_info.get("description", ""),
                 }
                 if param_info.get("required", True):
                     required.append(param_name)
             else:
                 # Simple type string like 'str', 'int'
-                type_map = {"str": "string", "int": "integer", "float": "number", "bool": "boolean"}
+                type_map = {
+                    "str": "STRING", 
+                    "int": "INTEGER", 
+                    "float": "NUMBER", 
+                    "bool": "BOOLEAN"
+                }
                 properties[param_name] = {
-                    "type": type_map.get(param_info, "string"),
+                    "type": type_map.get(param_info, "STRING"),
                 }
                 required.append(param_name)
         
@@ -118,10 +126,10 @@ class Tool:
             "name": self.name,
             "description": self.description,
             "parameters": {
-                "type": "object",
+                "type": "OBJECT",  # FIXED: Capitalized
                 "properties": properties,
                 "required": required,
-            } if properties else {"type": "object", "properties": {}},
+            } if properties else {"type": "OBJECT", "properties": {}},
         }
 
 

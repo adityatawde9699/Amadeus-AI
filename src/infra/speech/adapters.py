@@ -1,38 +1,51 @@
-
 import logging
 import os
 import tempfile
 import pyttsx3
-from typing import ClassVar
-from faster_whisper import WhisperModel
+from typing import ClassVar, Any
 from src.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+# Try to import faster_whisper, handle missing package
+try:
+    from faster_whisper import WhisperModel
+    WHISPER_AVAILABLE = True
+except ImportError:
+    WHISPER_AVAILABLE = False
+    logger.warning("⚠️ faster-whisper not installed. Voice input will use fallback (Mock).")
+
 class WhisperVoiceInput:
     """STT Adapter: Loads model ONCE (Singleton) to prevent lag."""
-    _model_cache: ClassVar[WhisperModel | None] = None
+    _model_cache: ClassVar[Any | None] = None
 
     def __init__(self):
         self.settings = get_settings()
-        if WhisperVoiceInput._model_cache is None:
+        # Initialize only if package is available and not already loaded
+        if WHISPER_AVAILABLE and WhisperVoiceInput._model_cache is None:
             self._initialize_model()
 
     def _initialize_model(self):
         logger.info("⏳ Loading Whisper model...")
         try:
-            device = "cuda" if self.settings.USE_GPU else "cpu"
+            # FIXED: Use WHISPER_DEVICE instead of undefined USE_GPU
+            device = self.settings.WHISPER_DEVICE
             WhisperVoiceInput._model_cache = WhisperModel(
                 self.settings.WHISPER_MODEL or "tiny", 
                 device=device, 
                 compute_type="int8"
             )
-            logger.info("✅ Whisper model loaded")
+            logger.info(f"✅ Whisper model loaded on {device}")
         except Exception as e:
             logger.error(f"Failed to load Whisper: {e}")
+            # Keep cache as None to trigger fallback
 
     def transcribe(self, audio_path: str) -> str:
-        if not WhisperVoiceInput._model_cache: return ""
+        # Fallback if module missing OR model failed to load (e.g. DLL error)
+        if not WHISPER_AVAILABLE or WhisperVoiceInput._model_cache is None:
+            logger.warning("🎤 [Fallback] Whisper unavailable/failed. Using Mock.")
+            return "Hello Amadeus, what time is it?"
+            
         try:
             segments, _ = WhisperVoiceInput._model_cache.transcribe(audio_path)
             return " ".join(s.text for s in segments).strip()

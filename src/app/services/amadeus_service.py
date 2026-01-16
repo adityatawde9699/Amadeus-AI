@@ -520,7 +520,11 @@ Guidelines:
             return (text, None)
             
         except Exception as e:
-            logger.error(f"Gemini API error: {e}")
+            logger.error(f"Gemini API error type: {type(e)}")
+            logger.error(f"Gemini API error repr: {repr(e)}")
+            logger.error(f"Gemini API error args: {e.args}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return (f"I had trouble processing that: {e}", None)
     
     async def _process_without_gemini(self, user_input: str) -> tuple[str, str | None]:
