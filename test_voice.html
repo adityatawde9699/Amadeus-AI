@@ -23,9 +23,9 @@
         let audioChunks = [];
 
         function connect() {
-            // Assumes your API is running on localhost:8000
-            ws = new WebSocket("ws://localhost:8000/api/v1/voice/ws/voice"); 
-            // Note: Route path verified from server.py (api/v1 + voice)
+            // Connect to SERVER port 8000, not client port
+            ws = new WebSocket("ws://localhost:8000/api/v1/ws/voice"); 
+            // Correct Path: /api/v1 (prefix) + /ws/voice (endpoint)
             
             ws.onopen = () => {
                 document.getElementById("status").innerText = "🟢 Connected (Ready)";

@@ -4,7 +4,7 @@
 
 # Web / API
 fastapi==0.118.0
-uvicorn==0.37.0
+uvicorn==0.40.0
 
 # Database
 SQLAlchemy==2.0.43
@@ -21,8 +21,7 @@ psutil==7.1.0
 # Speech / TTS / ASR
 SpeechRecognition==3.14.3
 pyttsx3==2.99
-faster-whisper @ https://github.com/SYSTRAN/faster-whisper/archive/a4f1cc8f11433e454c3934442b5e1a4ed5e865c3.tar.gz
-
+faster-whisper>=1.0.3
 # Image / OCR
 Pillow==12.0.0
 pytesseract

@@ -17,11 +17,18 @@ Usage:
 import importlib
 import logging
 import pkgutil
-from typing import Iterator
+from typing import Iterator, Any
 
 from src.core.domain.models import ToolDefinition
 from src.infra.tools.base import Tool, ToolCategory
 
+# Try to import Gemini SDK types (High-Level)
+try:
+    import google.generativeai as genai
+    from google.generativeai.types import FunctionDeclaration, Tool as GenAITool
+    HAS_GENAI = True
+except ImportError:
+    HAS_GENAI = False
 
 logger = logging.getLogger(__name__)
 
@@ -137,7 +144,7 @@ class ToolRegistry:
     # GEMINI INTEGRATION
     # =========================================================================
     
-    def build_gemini_tools(self, tool_names: list[str] | None = None) -> list[dict]:
+    def build_gemini_tools(self, tool_names: list[str] | None = None) -> Any:
         """
         Build Gemini function declarations for the specified tools.
         
@@ -145,18 +152,46 @@ class ToolRegistry:
             tool_names: List of tool names, or None for all tools
             
         Returns:
-            List of function declarations in Gemini format
+            List of function declarations in Gemini format (Tool objects if SDK available)
         """
         if tool_names is None:
             tools = self.list_all()
         else:
             tools = self.get_by_names(tool_names)
         
+        # If we have the SDK, use its types to be safe
+        if HAS_GENAI:
+            declarations = []
+            for t in tools:
+                # Convert dict to FunctionDeclaration using **kwargs
+                # The high-level types usually accept dicts and handle enum conversion
+                d = t.to_gemini_declaration()
+                try:
+                    declarations.append(FunctionDeclaration(**d))
+                except Exception as e:
+                    logger.warning(f"Failed to create FunctionDeclaration for {t.name}: {e}")
+                    # Fallback to raw dict if wrapper fails
+                    declarations.append(d)
+            
+            # Return as a list of Tool objects (or FunctionDeclarations which might be auto-wrapped)
+            # generate_content(tools=[...]) accepts a list of Tools.
+            # We create one Tool containing all these functions.
+            try:
+                return [GenAITool(function_declarations=declarations)]
+            except Exception:
+                # If Tool wrapper fails, maybe passed list of Declarations directly?
+                return declarations
+            
+        # Fallback to pure dict structure
         return [{"function_declarations": [t.to_gemini_declaration() for t in tools]}]
     
-    def build_gemini_declarations_for_category(self, category: ToolCategory) -> list[dict]:
+    def build_gemini_declarations_for_category(self, category: ToolCategory) -> Any:
         """Build Gemini declarations for a specific category."""
         tools = self.get_by_category(category)
+        if HAS_GENAI:
+             declarations = [FunctionDeclaration(**t.to_gemini_declaration()) for t in tools]
+             return [GenAITool(function_declarations=declarations)]
+             
         return [{"function_declarations": [t.to_gemini_declaration() for t in tools]}]
     
     # =========================================================================

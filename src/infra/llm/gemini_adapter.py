@@ -52,7 +52,7 @@ class GeminiAdapter(ILLMService):
             raise MissingAPIKeyError("GEMINI_API_KEY")
         
         genai.configure(api_key=self._api_key)
-        self._model = genai.GenerativeModel("gemini-1.5-flash")
+        self._model = genai.GenerativeModel("gemini-2.5-flash")
         self._configured = True
         logger.info("Gemini API configured")
     

@@ -506,6 +506,10 @@ def get_productivity_tools() -> list[Tool]:
     """Get all productivity tools for manual registration."""
     tools = []
     for name, obj in globals().items():
+        # Skip SQLAlchemy function generators which return true for ANY attribute access
+        if name in ("func", "select", "update", "delete", "case"):
+            continue
+            
         if hasattr(obj, "_tool_metadata"):
             tools.append(obj._tool_metadata)
     return tools

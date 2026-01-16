@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     """
     
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=[".env", "Amadeus/.env"],
         env_file_encoding="utf-8",
         case_sensitive=True,
         extra="ignore",  # Ignore extra env vars
@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     # API KEYS
     # =========================================================================
     GEMINI_API_KEY: str | None = None
+    GEMINI_MODEL: str = "gemini-2.5-flash"
     WEATHER_API_KEY: str | None = None
     NEWS_API_KEY: str | None = None
     OPENAI_API_KEY: str | None = None  # Reserved for future use
