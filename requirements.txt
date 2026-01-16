@@ -21,7 +21,7 @@ psutil==7.1.0
 # Speech / TTS / ASR
 SpeechRecognition==3.14.3
 pyttsx3==2.99
-faster-whisper
+faster-whisper @ https://github.com/SYSTRAN/faster-whisper/archive/a4f1cc8f11433e454c3934442b5e1a4ed5e865c3.tar.gz
 
 # Image / OCR
 Pillow==12.0.0

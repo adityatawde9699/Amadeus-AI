@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Amadeus AI Voice Debugger</title>
+    <style>
+        body { font-family: monospace; background: #1a1a1a; color: #0f0; padding: 20px; }
+        #log { border: 1px solid #333; height: 300px; overflow-y: scroll; padding: 10px; background: #000; }
+        #status { font-weight: bold; color: #fff; margin-bottom: 10px; }
+        button { padding: 10px 20px; cursor: pointer; font-weight: bold; }
+        .recording { background: red; color: white; }
+    </style>
+</head>
+<body>
+    <h1>Amadeus AI Voice Interface</h1>
+    <div id="status">🔴 Disconnected</div>
+    <button id="micBtn" onmousedown="startRecording()" onmouseup="stopRecording()">Hold Space / Click to Speak</button>
+    <br><br>
+    <div id="log"></div>
+
+    <script>
+        let ws;
+        let mediaRecorder;
+        let audioChunks = [];
+
+        function connect() {
+            // Assumes your API is running on localhost:8000
+            ws = new WebSocket("ws://localhost:8000/api/v1/voice/ws/voice"); 
+            // Note: Route path verified from server.py (api/v1 + voice)
+            
+            ws.onopen = () => {
+                document.getElementById("status").innerText = "🟢 Connected (Ready)";
+                log("System: Connected to Amadeus Core.");
+            };
+
+            ws.onerror = (error) => {
+                log("System: Connection Error (Check Check WebSocket URL)");
+                // Fallback attempt if URL is different
+            };
+            
+            ws.onclose = () => {
+                 document.getElementById("status").innerText = "🔴 Disconnected";
+            }
+
+            ws.onmessage = async (event) => {
+                // If text (JSON)
+                if (typeof event.data === "string") {
+                    const data = JSON.parse(event.data);
+                    if (data.type === "transcription") log("You: " + data.text);
+                    if (data.type === "response_text") log("Amadeus: " + data.text);
+                } 
+                // If binary (Audio)
+                else if (event.data instanceof Blob) {
+                    log("System: Receiving Audio Response...");
+                    const audioUrl = URL.createObjectURL(event.data);
+                    const audio = new Audio(audioUrl);
+                    audio.play();
+                }
+            };
+        }
+
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+            mediaRecorder = new MediaRecorder(stream);
+            mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
+            mediaRecorder.onstop = () => {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(audioBlob);
+                    log("System: Sent audio data...");
+                }
+                audioChunks = [];
+            };
+        });
+
+        function startRecording() {
+            audioChunks = [];
+            mediaRecorder.start();
+            document.getElementById("micBtn").classList.add("recording");
+            document.getElementById("micBtn").innerText = "Listening...";
+        }
+
+        function stopRecording() {
+            mediaRecorder.stop();
+            document.getElementById("micBtn").classList.remove("recording");
+            document.getElementById("micBtn").innerText = "Hold Space / Click to Speak";
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && mediaRecorder.state === 'inactive') startRecording();
+        });
+        document.addEventListener('keyup', (e) => {
+            if (e.code === 'Space') stopRecording();
+        });
+
+        function log(msg) {
+            const div = document.getElementById("log");
+            div.innerHTML += `<div>${msg}</div>`;
+            div.scrollTop = div.scrollHeight;
+        }
+
+        connect();
+    </script>
+</body>
+</html>

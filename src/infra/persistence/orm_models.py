@@ -219,3 +219,30 @@ class InteractionLogORM(Base):
     
     def __repr__(self) -> str:
         return f"<InteractionLog(id={self.id}, source={self.source})>"
+
+
+class MessageORM(Base):
+    """ORM model for conversation messages (for persistence across restarts)."""
+    
+    __tablename__ = "messages"
+    
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    session_id = Column(String(36), nullable=False, index=True)  # Group messages by session
+    role = Column(String(16), nullable=False)  # 'user' or 'assistant'
+    content = Column(Text, nullable=False)
+    tool_used = Column(String(128), nullable=True, index=True)
+    timestamp = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        index=True,
+        nullable=False,
+    )
+    
+    __table_args__ = (
+        Index("idx_message_session_timestamp", "session_id", "timestamp"),
+        Index("idx_message_role_timestamp", "role", "timestamp"),
+    )
+    
+    def __repr__(self) -> str:
+        return f"<Message(id={self.id}, role={self.role}, session={self.session_id[:8]}...)>"
+

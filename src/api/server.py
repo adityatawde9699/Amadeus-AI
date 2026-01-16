@@ -174,10 +174,12 @@ async def root():
 # =============================================================================
 
 # Import and register route modules
-from src.api.routes import tasks, health  # noqa: E402
+from src.api.routes import tasks, health, chat, voice  # noqa: E402
 
 app.include_router(tasks.router, prefix="/api/v1", tags=["Tasks"])
 app.include_router(health.router, prefix="/api/v1", tags=["System"])
+app.include_router(chat.router, prefix="/api/v1", tags=["Chat"])
+app.include_router(voice.router, prefix="/api/v1", tags=["Voice"])
 
 
 # =============================================================================
