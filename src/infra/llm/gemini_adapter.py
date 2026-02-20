@@ -5,6 +5,7 @@ This adapter wraps the Google Generative AI library and implements
 the ILLMService interface from src/core/interfaces/services.py.
 """
 
+import hashlib
 import json
 import logging
 from typing import Any
@@ -37,9 +38,10 @@ class GeminiAdapter(ILLMService):
     using the Google Generative AI API.
     """
     
-    def __init__(self, api_key: str | None = None):
+    def __init__(self, api_key: str | None = None, redis_client=None):
         self._settings = get_settings()
         self._api_key = api_key or self._settings.GEMINI_API_KEY
+        self._redis = redis_client
         self._model = None
         self._configured = False
     
@@ -56,12 +58,26 @@ class GeminiAdapter(ILLMService):
         self._configured = True
         logger.info("Gemini API configured")
     
+    def _sanitize_input(self, text: str) -> str:
+        """Sanitize user input before sending to LLM."""
+        if not text:
+            return ""
+        # Remove null bytes and non-printable chars (keep newlines and tabs)
+        text = "".join(char for char in text if char.isprintable() or char in "\n\t")
+        # Limit excessive length
+        max_length = self._settings.FILE_READ_MAX_CHARS or 10000
+        if len(text) > max_length:
+            text = text[:max_length] + "... [truncated]"
+        return text.strip()
+
     def _build_prompt_with_context(
         self,
         prompt: str,
         context: ConversationContext | None,
     ) -> str:
         """Build a prompt with conversation context."""
+        prompt = self._sanitize_input(prompt)
+        
         if not context or not context.messages:
             return prompt
         
@@ -106,6 +122,16 @@ Guidelines:
         try:
             full_prompt = self._build_prompt_with_context(prompt, context)
             
+            # Check cache first
+            cache_key = None
+            if self._redis:
+                key_str = f"gemini:response:{full_prompt}:{temperature}:{max_tokens}"
+                cache_key = hashlib.md5(key_str.encode()).hexdigest()
+                cached = await self._redis.get(cache_key)
+                if cached:
+                    logger.debug(f"Cache hit for Gemini response: {cache_key}")
+                    return cached
+            
             generation_config = genai.GenerationConfig(
                 temperature=temperature,
                 max_output_tokens=max_tokens or 1024,
@@ -119,6 +145,10 @@ Guidelines:
             if not response.text:
                 raise LLMResponseError("Empty response from Gemini")
             
+            # Store in cache (expire after 24h)
+            if self._redis and cache_key:
+                await self._redis.setex(cache_key, 86400, response.text)
+                
             return response.text
             
         except genai.types.BlockedPromptException as e:
@@ -147,6 +177,18 @@ Guidelines:
             gemini_tools = self._convert_tools(tools)
             
             full_prompt = self._build_prompt_with_context(prompt, context)
+            
+            # Function calls are extremely dynamic so simple string caching 
+            # might not be safe unless context is identical and simple. 
+            # For this exercise, caching is mostly effective on direct interactions.
+            cache_key = None
+            if self._redis and not tools:
+                key_str = f"gemini:tools:{full_prompt}"
+                cache_key = hashlib.md5(key_str.encode()).hexdigest()
+                cached = await self._redis.get(cache_key)
+                if cached:
+                    logger.debug(f"Cache hit for Gemini tool response: {cache_key}")
+                    return cached, None
             
             response = self._model.generate_content(
                 [self._get_system_prompt(), full_prompt],

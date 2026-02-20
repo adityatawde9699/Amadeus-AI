@@ -44,19 +44,26 @@ def test_settings() -> Settings:
 # DATABASE FIXTURES
 # =============================================================================
 
-@pytest_asyncio.fixture(scope="function")
-async def test_db():
-    """
-    Create a fresh test database for each test function.
+@pytest_asyncio.fixture(scope="session")
+def postgres_container():
+    """Start a PostgreSQL container for the test session."""
+    from testcontainers.postgres import PostgresContainer
     
-    Uses an in-memory SQLite database for speed.
+    with PostgresContainer("postgres:15-alpine") as postgres:
+        yield postgres
+
+@pytest_asyncio.fixture(scope="function")
+async def test_db(postgres_container):
     """
-    # Create in-memory database
+    Create a fresh test database for each test function using testcontainers.
+    """
+    db_url = postgres_container.get_connection_url().replace("postgresql+psycopg2", "postgresql+asyncpg")
+    
+    # Create engine for test DB
     engine = create_async_engine(
-        "sqlite+aiosqlite:///:memory:",
+        db_url,
         echo=False,
         poolclass=StaticPool,
-        connect_args={"check_same_thread": False},
     )
     
     # Create tables
@@ -70,10 +77,12 @@ async def test_db():
         expire_on_commit=False,
     )
     
-    # Yield the factory
     yield session_factory
     
-    # Cleanup
+    # Cleanup tables after test
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+        
     await engine.dispose()
 
 

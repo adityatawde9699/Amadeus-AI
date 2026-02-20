@@ -5,36 +5,13 @@ Health and system status API routes.
 import psutil
 
 from fastapi import APIRouter
-from pydantic import BaseModel
 
 from src.core.config import get_settings
-from src.core.domain.models import SystemStatus
+from src.core.domain.models import SystemStatus, HealthResponse, SystemStatusResponse
 
 
 router = APIRouter()
 settings = get_settings()
-
-
-class HealthResponse(BaseModel):
-    """Detailed health check response."""
-    status: str
-    service: str
-    version: str
-    environment: str
-    database: str
-    voice_enabled: bool
-
-
-class SystemStatusResponse(BaseModel):
-    """System status response."""
-    cpu_usage: float
-    memory_usage: float
-    disk_usage: float
-    battery_percent: float | None
-    is_charging: bool
-    uptime_seconds: float
-    is_healthy: bool
-    alerts: list[str]
 
 
 @router.get("/health/detailed", response_model=HealthResponse, tags=["Health"])

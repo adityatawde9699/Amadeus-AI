@@ -92,6 +92,53 @@ async def get_db_session() -> AsyncGenerator:
 
 
 # =============================================================================
+# VOICE SERVICE INJECTION
+# =============================================================================
+
+@lru_cache()
+def get_voice_service() -> "VoiceService":
+    """
+    Get the Voice Service singleton.
+    """
+    from src.app.services.voice_service import VoiceService
+    from src.infra.speech.adapters import WhisperVoiceInput, Pyttsx3VoiceOutput
+    
+    amadeus = get_amadeus_service()
+    stt = WhisperVoiceInput()
+    tts = Pyttsx3VoiceOutput()
+    
+    service = VoiceService(
+        amadeus_service=amadeus,
+        stt_service=stt,
+        tts_service=tts
+    )
+    logger.info("VoiceService singleton initialized")
+    return service
+
+
+# =============================================================================
+# CACHE CLIENT
+# =============================================================================
+
+@lru_cache()
+def get_redis_client() -> "redis.asyncio.Redis | None":
+    """
+    Get the Redis cache client singleton.
+    
+    Returns None if redis connection fails or is not configured properly.
+    """
+    import redis.asyncio as redis
+    settings = get_settings()
+    
+    try:
+        client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        logger.info("Redis cache client configured")
+        return client
+    except Exception as e:
+        logger.error(f"Failed to configure Redis client: {e}")
+        return None
+
+# =============================================================================
 # CLEANUP
 # =============================================================================
 
@@ -104,6 +151,15 @@ async def shutdown_services() -> None:
     # Clear cached instances
     get_tool_registry.cache_clear()
     get_amadeus_service.cache_clear()
+    get_voice_service.cache_clear()
+    
+    # Close Redis connection if active
+    redis_client = get_redis_client()
+    if redis_client:
+        await redis_client.aclose()
+    get_redis_client.cache_clear()
     
     logger.info("Services shut down complete")
+
+
 

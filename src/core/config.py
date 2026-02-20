@@ -67,9 +67,15 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str | None = None  # Reserved for future use
     
     # =========================================================================
+    # OBSERVABILITY
+    # =========================================================================
+    SENTRY_DSN: str | None = None
+    
+    # =========================================================================
     # DATABASE
     # =========================================================================
     DATABASE_URL: str = "sqlite:///./data/amadeus.db"
+    REDIS_URL: str = "redis://localhost:6379/0"
     
     # Connection Pool Settings
     DB_POOL_SIZE: int = Field(default=5, ge=1, le=50)
