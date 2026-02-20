@@ -14,7 +14,11 @@ Usage:
 """
 
 import logging
+import sys
 from contextlib import asynccontextmanager
+
+import sentry_sdk
+import structlog
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,8 +29,28 @@ from src.core.exceptions import AmadeusError
 from src.infra.persistence.database import close_db, init_db
 
 
-logger = logging.getLogger(__name__)
+structlog.configure(
+    processors=[
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.add_logger_name,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.dict_tracebacks,
+        structlog.processors.JSONRenderer(),
+    ],
+    logger_factory=structlog.stdlib.LoggerFactory(),
+    wrapper_class=structlog.stdlib.BoundLogger,
+    cache_logger_on_first_use=True,
+)
+
+logger = structlog.get_logger(__name__)
 settings = get_settings()
+
+if settings.SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        environment=settings.ENV,
+        traces_sample_rate=1.0,
+    )
 
 
 # =============================================================================
@@ -108,6 +132,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Prometheus Metrics
+from prometheus_fastapi_instrumentator import Instrumentator
+Instrumentator().instrument(app).expose(app, endpoint="/api/v1/metrics", tags=["System"])
+
 
 # =============================================================================
 # EXCEPTION HANDLERS
@@ -175,11 +203,14 @@ async def root():
 
 # Import and register route modules
 from src.api.routes import tasks, health, chat, voice  # noqa: E402
+from src.api.middleware.authentication import verify_jwt_token
+from fastapi import Depends
 
-app.include_router(tasks.router, prefix="/api/v1", tags=["Tasks"])
+# Disable auth for health, enable for everything else
 app.include_router(health.router, prefix="/api/v1", tags=["System"])
-app.include_router(chat.router, prefix="/api/v1", tags=["Chat"])
-app.include_router(voice.router, prefix="/api/v1", tags=["Voice"])
+app.include_router(tasks.router, prefix="/api/v1", tags=["Tasks"], dependencies=[Depends(verify_jwt_token)])
+app.include_router(chat.router, prefix="/api/v1", tags=["Chat"], dependencies=[Depends(verify_jwt_token)])
+app.include_router(voice.router, prefix="/api/v1", tags=["Voice"], dependencies=[Depends(verify_jwt_token)])
 
 
 # =============================================================================

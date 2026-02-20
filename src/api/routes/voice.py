@@ -5,7 +5,7 @@ Handles real-time audio streaming.
 
 import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
-from src.container import get_amadeus_service
+from src.container import get_voice_service
 from src.app.services.voice_service import VoiceService, VoiceInput
 
 logger = logging.getLogger(__name__)
@@ -14,13 +14,10 @@ router = APIRouter()
 @router.websocket("/ws/voice")
 async def voice_websocket_endpoint(
     websocket: WebSocket,
-    amadeus_service = Depends(get_amadeus_service)
+    voice_service: VoiceService = Depends(get_voice_service)
 ):
     await websocket.accept()
     logger.info("🔌 Voice WebSocket connected")
-    
-    # Initialize service for this connection
-    voice_service = VoiceService(amadeus_service)
     
     try:
         while True:

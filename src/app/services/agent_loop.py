@@ -66,25 +66,34 @@ class AgentResult:
 
 
 # =============================================================================
-# REACT AGENT
+# REACT AGENT STATE MACHINE
 # =============================================================================
+
+from enum import Enum
+import asyncio
+
+
+class AgentState(Enum):
+    """States for the Agent State Machine."""
+    START = "START"
+    THINK = "THINK"
+    ACT = "ACT"
+    OBSERVE = "OBSERVE"
+    SYNTHESIZE = "SYNTHESIZE"
+    END = "END"
+
 
 class ReActAgent:
     """
-    ReAct (Reason + Act) Agent for multi-step task execution.
+    ReAct (Reason + Act) Agent implemented as an async state machine.
     
     The agent follows this loop:
-    1. Think about what to do next
-    2. Choose and execute an action (tool)
-    3. Observe the result
-    4. Decide if done or continue
+    START -> THINK -> ACT -> OBSERVE -> ... -> SYNTHESIZE -> END
     
-    This allows handling complex requests like:
-    - "Get the weather and my tasks for today"
-    - "Check system status and clear low priority reminders"
+    This avoids blocking while loops and supports structured asynchronous execution
+    via `asyncio.Queue` for handling inter-step communications.
     """
     
-    # Special action to indicate task completion
     FINISH_ACTION = "FINISH"
     
     def __init__(
@@ -95,16 +104,6 @@ class ReActAgent:
         max_iterations: int = 5,
         verbose: bool = False,
     ):
-        """
-        Initialize the ReAct agent.
-        
-        Args:
-            tool_registry: Registry of available tools
-            tool_executor: Executor for running tools
-            llm_generate: Function to call LLM (None = use keyword matching)
-            max_iterations: Maximum steps before forcing completion
-            verbose: Enable debug logging
-        """
         self.tool_registry = tool_registry
         self.tool_executor = tool_executor
         self.llm_generate = llm_generate
@@ -113,87 +112,114 @@ class ReActAgent:
     
     async def run(self, task: str, context: str = "") -> AgentResult:
         """
-        Execute a task using the ReAct loop.
+        Execute a task using the async State Machine built on asyncio.Queue.
         
         Args:
             task: The user's request
-            context: Additional context (conversation history, etc.)
+            context: Additional context
             
         Returns:
             AgentResult with final answer and execution trace
         """
-        steps: list[AgentStep] = []
-        tools_used: list[str] = []
-        observations: list[str] = []
+        self.task = task
+        self.context = context
+        self.steps: list[AgentStep] = []
+        self.tools_used: list[str] = []
+        self.observations: list[str] = []
+        self.iteration = 0
         
-        for i in range(self.max_iterations):
-            step_num = i + 1
-            
-            # Build the scratchpad of previous steps
-            scratchpad = "\n\n".join(s.to_prompt() for s in steps)
-            
-            # Step 1: THINK - Decide what to do
-            thought, action, action_input = await self._think(
-                task=task,
-                context=context,
-                scratchpad=scratchpad,
-                observations=observations,
-            )
-            
-            step = AgentStep(
-                step_number=step_num,
-                thought=thought,
-                action=action,
-                action_input=action_input,
-            )
+        self.queue = asyncio.Queue()
+        await self.queue.put(AgentState.START)
+        
+        final_answer = ""
+        success = False
+        
+        # Async State Machine Processing Loop
+        while not self.queue.empty():
+            state = await self.queue.get()
             
             if self.verbose:
-                logger.info(f"Step {step_num}: {thought} -> {action}")
+                logger.debug(f"Agent State: {state.value} | Iteration: {self.iteration}")
             
-            # Step 2: Check if FINISH
-            if action == self.FINISH_ACTION:
-                # The "action_input" contains the final answer
-                final_answer = action_input.get("answer", thought)
-                step.observation = "Task complete"
-                steps.append(step)
+            if state == AgentState.START:
+                await self.queue.put(AgentState.THINK)
                 
-                return AgentResult(
-                    success=True,
-                    final_answer=final_answer,
-                    steps=steps,
-                    tools_used=tools_used,
-                    total_iterations=step_num,
+            elif state == AgentState.THINK:
+                if self.iteration >= self.max_iterations:
+                    if self.verbose:
+                        logger.debug("Max iterations reached. Defaulting to exact synthesize.")
+                    await self.queue.put(AgentState.SYNTHESIZE)
+                    continue
+                
+                self.iteration += 1
+                scratchpad = "\n\n".join(s.to_prompt() for s in self.steps)
+                
+                thought, action, action_input = await self._think(
+                    task=self.task,
+                    context=self.context,
+                    scratchpad=scratchpad,
+                    observations=self.observations,
                 )
-            
-            # Step 3: ACT - Execute the tool
-            tool = self.tool_registry.get(action)
-            if not tool:
-                step.observation = f"Error: Tool '{action}' not found"
-                steps.append(step)
-                continue
-            
-            try:
-                result = await self.tool_executor.execute(tool, action_input)
-                observation = str(result.result) if result.success else f"Error: {result.error_message}"
-                tools_used.append(action)
-            except Exception as e:
-                observation = f"Error executing {action}: {e}"
-                logger.error(f"Tool execution error: {e}")
-            
-            # Step 4: OBSERVE - Record the result
-            step.observation = observation
-            observations.append(f"{action}: {observation}")
-            steps.append(step)
-        
-        # Max iterations reached - synthesize what we have
-        final_answer = await self._synthesize_answer(task, observations)
-        
+                
+                step = AgentStep(
+                    step_number=self.iteration,
+                    thought=thought,
+                    action=action,
+                    action_input=action_input,
+                )
+                self.current_step = step
+                
+                if action == self.FINISH_ACTION:
+                    final_answer = action_input.get("answer", thought)
+                    step.observation = "Task complete"
+                    self.steps.append(step)
+                    success = True
+                    await self.queue.put(AgentState.END)
+                else:
+                    await self.queue.put(AgentState.ACT)
+                    
+            elif state == AgentState.ACT:
+                action = self.current_step.action
+                action_input = self.current_step.action_input
+                
+                tool = self.tool_registry.get(action)
+                if not tool:
+                    self.current_step.observation = f"Error: Tool '{action}' not found"
+                    self.steps.append(self.current_step)
+                    await self.queue.put(AgentState.THINK)
+                    continue
+                
+                try:
+                    result = await self.tool_executor.execute(tool, action_input)
+                    self.current_observation = str(result.result) if result.success else f"Error: {result.error_message}"
+                    self.tools_used.append(action)
+                except Exception as e:
+                    self.current_observation = f"Error executing {action}: {e}"
+                    logger.error(f"Tool execution error: {e}")
+                
+                await self.queue.put(AgentState.OBSERVE)
+                
+            elif state == AgentState.OBSERVE:
+                self.current_step.observation = self.current_observation
+                self.observations.append(f"{self.current_step.action}: {self.current_observation}")
+                self.steps.append(self.current_step)
+                
+                await self.queue.put(AgentState.THINK)
+                
+            elif state == AgentState.SYNTHESIZE:
+                final_answer = await self._synthesize_answer(self.task, self.observations)
+                success = True
+                await self.queue.put(AgentState.END)
+                
+            elif state == AgentState.END:
+                break
+                
         return AgentResult(
-            success=True,
+            success=success,
             final_answer=final_answer,
-            steps=steps,
-            tools_used=tools_used,
-            total_iterations=self.max_iterations,
+            steps=self.steps,
+            tools_used=self.tools_used,
+            total_iterations=self.iteration,
         )
     
     async def _think(

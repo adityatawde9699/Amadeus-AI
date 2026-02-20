@@ -1,395 +1,125 @@
-# Amadeus AI
+# Project Overview
 
-A modular voice-enabled AI assistant built with Python, using Google Gemini for natural language processing and Clean Architecture principles for maintainability.
-
-## Project Overview
-
-Amadeus is a local-first AI assistant that combines speech recognition, natural language understanding, and system automation into a unified interface. The project provides voice and text interaction modes, persists user data locally via SQLite, and exposes functionality through both a CLI and REST API.
-
-The architecture separates concerns into domain models, application services, infrastructure adapters, and an API layer. Tool selection uses a local TF-IDF + SVM classifier to reduce Gemini API quota consumption by predicting relevant tools before sending requests.
-
-**Current Status**: Development/Beta. The core conversation loop, tool execution, and persistence layers are functional. Voice features require platform-specific dependencies.
+Amadeus-AI is a backend service for an AI-powered voice and text assistant built using Clean Architecture principles in Python. It provides an extensible agent loop that processes user commands, manages conversation history, and invokes various system and productivity tools. The architecture strictly separates core domain models from application logic, infrastructure integrations, and API presentation, ensuring maintainability and robust dependency management.
 
 ## Features
 
-### Implemented
-
-**Conversational AI**
-- Multi-turn conversation with context retention (configurable history depth)
-- Google Gemini 2.0 integration for response generation
-- Local ML classifier for tool prediction (reduces API calls)
-
-**Voice Interface**
-- Speech-to-text via Faster-Whisper (with fallback if unavailable)
-- Text-to-speech via pyttsx3
-- Wake word detection (configurable)
-
-**Productivity Tools**
-- Task management: create, list, complete, delete tasks
-- Note-taking with tag support
-- Reminder scheduling with natural language time parsing
-
-**System Control**
-- Application launcher (Windows, macOS, Linux support)
-- File operations: search, read, copy, move, delete
-- Process management: list and terminate processes
-- Directory operations: create folders, list contents
-
-**System Monitoring**
-- CPU, memory, disk usage metrics
-- Battery status and network statistics
-- GPU monitoring (when available)
-- Configurable alert thresholds
-
-**Information Services**
-- Weather data via OpenWeatherMap API
-- News headlines via NewsAPI
-- Wikipedia article summaries
-- Basic calculations and unit conversions
-- Date/time queries
-
-**REST API**
-- FastAPI-based HTTP endpoints
-- Task, note, reminder CRUD operations
-- Chat endpoint for programmatic access
-- Health check endpoints
-
-**Dashboard (Optional)**
-- Streamlit-based web interface
-- Voice input via browser
-- Visual task and reminder management
-
-### Experimental / Partial
-
-- Pomodoro timer (implemented but limited testing)
-- Calendar integration (basic structure exists)
-- Docker deployment (Dockerfile present, not production-tested)
+- **Conversational AI Core**: Orchestrates input processing using Google's Gemini models.
+- **Voice Interface**: Supports speech recognition and text-to-speech workflows (via `faster-whisper` and `pyttsx3`).
+- **Tool Execution Engine**: Dynamically executes tools across categories including system operations, productivity (Pomodoro, calendar), and monitoring.
+- **Conversation Persistence**: Async SQLite and PostgreSQL support for persistent chat history.
+- **RESTful API**: Exposes endpoints for chat, tool listing, and history retrieval.
+- **Observability Hooks**: Integrates Structlog, Sentry, and Prometheus.
 
 ## Tech Stack
 
-### Runtime
+**Runtime:**
+- Python 3.11+
+- Containerized via Docker
 
-| Component | Technology |
-|-----------|------------|
-| Language | Python 3.11+ |
-| LLM | Google Gemini (google-generativeai) |
-| Web Framework | FastAPI + Uvicorn |
-| Database | SQLAlchemy 2.0 + SQLite (async via aiosqlite) |
-| Speech Recognition | Faster-Whisper |
-| Text-to-Speech | pyttsx3 |
-| Validation | Pydantic + pydantic-settings |
-| System Monitoring | psutil |
-| Dashboard | Streamlit (optional) |
+**Frameworks:**
+- FastAPI (Web framework)
+- SQLAlchemy (Async ORM)
+- dependency-injector (IoC container)
+- Pydantic (Validation & Settings)
 
-### Development
+**Databases:**
+- PostgreSQL (Production)
+- SQLite (Development)
+- Redis
 
-| Tool | Purpose |
-|------|---------|
-| pytest | Testing framework |
-| Black | Code formatting |
-| Ruff | Linting |
-| mypy | Static type checking |
-| Alembic | Database migrations |
+**APIs & Services:**
+- Google Generative AI (Gemini)
+- OpenWeatherMap API & News API integrations
+- Sentry (Error tracking)
 
-## Architecture
+**Development:**
+- Testing: Pytest, pytest-asyncio, Testcontainers
+- Code Quality: Ruff, Black, Mypy
 
-The project follows Clean Architecture with four main layers:
+## Architecture / Design
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                         API Layer                           │
-│                   (FastAPI routes, middleware)              │
-├─────────────────────────────────────────────────────────────┤
-│                    Application Layer                        │
-│           (AmadeusService, ToolRegistry, VoiceService)      │
-├─────────────────────────────────────────────────────────────┤
-│                       Core Layer                            │
-│         (Domain models, interfaces, configuration)          │
-├─────────────────────────────────────────────────────────────┤
-│                   Infrastructure Layer                      │
-│     (Persistence, LLM adapters, Speech adapters, Tools)     │
-└─────────────────────────────────────────────────────────────┘
-```
+The system implements Clean Architecture, cleanly separating concerns across four main layers to ensure the business logic remains agnostic of external delivery mechanisms.
 
-### Component Responsibilities
+- **Core Module (`src/core`)**: Contains domain models, abstract interfaces, configuration schemas, and custom exceptions.
+- **Application Module (`src/app`)**: orchestrates the `agent_loop`, `amadeus_service`, and `tool_registry`.
+- **Infrastructure Module (`src/infra`)**: Houses concrete implementations for LLMs (`gemini_adapter`), persistence repositories, speech processing, and external API tool integrations.
+- **API Module (`src/api`)**: The presentation layer containing FastAPI routes, middleware, and server bootstrapping.
 
-| Component | Location | Responsibility |
-|-----------|----------|----------------|
-| `core/config.py` | src/core | Centralized settings via pydantic-settings |
-| `core/domain/models.py` | src/core | Pydantic models for Task, Note, Reminder, etc. |
-| `app/services/amadeus_service.py` | src/app | Main orchestrator with conversation management |
-| `app/services/tool_registry.py` | src/app | Tool registration and lookup |
-| `infra/tools/` | src/infra | Tool implementations (productivity, system, info, monitor) |
-| `infra/persistence/` | src/infra | SQLAlchemy ORM models and repositories |
-| `infra/speech/` | src/infra | STT/TTS adapters |
-| `api/server.py` | src/api | FastAPI application with lifespan management |
-| `api/routes/` | src/api | HTTP endpoint handlers |
-
-### Data Flow
-
-```
-User Input (Voice/Text)
-        │
-        ▼
-┌─────────────────────┐
-│   AmadeusService    │
-│  ┌───────────────┐  │
-│  │ ML Classifier │──┼──▶ Predict relevant tools (local)
-│  └───────────────┘  │
-│          │          │
-│          ▼          │
-│  ┌───────────────┐  │
-│  │ Gemini API    │──┼──▶ Generate response / select tool
-│  └───────────────┘  │
-│          │          │
-│          ▼          │
-│  ┌───────────────┐  │
-│  │ ToolExecutor  │──┼──▶ Execute selected tool
-│  └───────────────┘  │
-└─────────────────────┘
-        │
-        ▼
-   SQLite Database (tasks, notes, reminders, conversations)
+```text
+API Layer (FastAPI) → App Services (Agent Loop) → Core Domain (Interfaces)
+                             ↓
+Infrastructure Layer (Postgres, Gemini API, System Tools)
 ```
 
 ## Setup & Installation
 
-### Prerequisites
+**Prerequisites:**
+- Docker & Docker Compose
+- Python 3.11+ (if running locally without Docker)
+- Required API Keys (Gemini)
 
-- Python 3.11 or higher
-- pip package manager
-- Working microphone (for voice features)
-- Internet connection (for Gemini, weather, news APIs)
+**Environment Variables:**
+Create a `.env` file referencing `.env.example`:
+- `ENV` (development/production)
+- `GEMINI_API_KEY` (Required)
+- `DATABASE_URL` (Optional override)
+- `WEATHER_API_KEY` , `NEWS_API_KEY` (Optional)
 
-### Installation
+**Dependency Installation (Local Run):**
+1. Ensure `uv` or `pip` is available.
+2. Run `pip install -e .[all]` or `uv pip install -e .[all]`.
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/adityatawde9699/Amadeus-AI.git
-   cd Amadeus-AI
-   ```
-
-2. **Create virtual environment**
-   ```bash
-   python -m venv venv
-   
-   # Windows
-   venv\Scripts\activate
-   
-   # macOS/Linux
-   source venv/bin/activate
-   ```
-
-3. **Install dependencies**
-   
-   Basic installation:
-   ```bash
-   pip install -r requirements.txt
-   ```
-   
-   Or with optional features:
-   ```bash
-   pip install -e ".[voice,dashboard,dev]"
-   ```
-
-4. **Configure environment**
-   
-   Copy the example configuration:
-   ```bash
-   cp .env.example .env
-   ```
-   
-   Edit `.env` and add your API keys:
-   ```env
-   GEMINI_API_KEY=your_gemini_api_key
-   WEATHER_API_KEY=your_openweathermap_key    # optional
-   NEWS_API_KEY=your_newsapi_key              # optional
-   ```
-
-### Environment Variables
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `GEMINI_API_KEY` | Yes | — | Google Gemini API key |
-| `WEATHER_API_KEY` | No | — | OpenWeatherMap API key |
-| `NEWS_API_KEY` | No | — | NewsAPI key |
-| `DATABASE_URL` | No | `sqlite:///./data/amadeus.db` | Database connection string |
-| `VOICE_ENABLED` | No | `true` | Enable/disable voice features |
-| `WHISPER_MODEL` | No | `tiny` | Whisper model size |
-| `WHISPER_DEVICE` | No | `cpu` | Device for Whisper inference |
-| `DEBUG` | No | `true` | Enable debug mode |
-
-See `.env.example` for the complete list of configuration options.
+**Running the Project via Docker:**
+```bash
+# Start the development environment with PostgreSQL
+docker-compose up --build
+```
+For production:
+```bash
+docker-compose --profile prod up --build -d
+```
 
 ## Usage
 
-### Run the API Server
+Once running, the API server is available at `http://localhost:8000`.
 
+**Chat Endpoint Example:**
 ```bash
-# Using uvicorn directly
-uvicorn src.api.server:app --reload --port 8000
-
-# Or using the module
-python -m src.api.server
+curl -X POST "http://localhost:8000/chat" \
+     -H "Content-Type: application/json" \
+     -d '{"message": "Start a 25-minute Pomodoro timer", "source": "cli"}'
 ```
 
-The API will be available at `http://localhost:8000`. Interactive documentation is at `/docs` when `DEBUG=true`.
-
-### API Examples
-
-**Send a chat message:**
+**Conversation History:**
 ```bash
-curl -X POST http://localhost:8000/api/v1/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "What time is it?"}'
+curl -X GET "http://localhost:8000/chat/history?session_id=<SESSION_ID>"
 ```
 
-**Create a task:**
+**List Available Tools:**
 ```bash
-curl -X POST http://localhost:8000/api/v1/tasks \
-  -H "Content-Type: application/json" \
-  -d '{"content": "Review pull requests"}'
-```
-
-**List tasks:**
-```bash
-curl http://localhost:8000/api/v1/tasks
-```
-
-**Check system health:**
-```bash
-curl http://localhost:8000/health
-```
-
-### Run the Dashboard (Optional)
-
-```bash
-streamlit run Amadeus/dashboard.py
-```
-
-### Legacy CLI Mode
-
-The `Amadeus/` directory contains the original monolithic implementation:
-```bash
-python Amadeus/main.py           # Voice mode
-python Amadeus/main.py --debug   # Text-only mode
+curl -X GET "http://localhost:8000/chat/tools"
 ```
 
 ## Project Structure
 
-```
-Amadeus-AI/
-├── src/                          # Clean Architecture implementation
-│   ├── api/                      # HTTP layer
-│   │   ├── routes/               # Endpoint handlers
-│   │   │   ├── chat.py           # Chat endpoints
-│   │   │   ├── tasks.py          # Task CRUD
-│   │   │   ├── health.py         # System health
-│   │   │   └── voice.py          # TTS endpoints
-│   │   └── server.py             # FastAPI app
-│   ├── app/                      # Application layer
-│   │   └── services/
-│   │       ├── amadeus_service.py # Main orchestrator
-│   │       ├── tool_registry.py   # Tool management
-│   │       └── voice_service.py   # Voice coordination
-│   ├── core/                     # Domain layer
-│   │   ├── config.py             # Settings management
-│   │   ├── domain/models.py      # Domain entities
-│   │   ├── exceptions.py         # Custom exceptions
-│   │   └── interfaces/           # Abstract interfaces
-│   └── infra/                    # Infrastructure layer
-│       ├── llm/                  # LLM adapters
-│       ├── persistence/          # Database (SQLAlchemy)
-│       ├── speech/               # STT/TTS adapters
-│       └── tools/                # Tool implementations
-│           ├── base.py           # Tool decorator and executor
-│           ├── productivity_tools.py
-│           ├── system_tools.py
-│           ├── monitor_tools.py
-│           └── info_tools.py
-├── Amadeus/                      # Legacy monolithic implementation
-├── tests/                        # Test suite
-│   ├── unit/
-│   └── integration/
-├── data/                         # SQLite database storage
-├── requirements.txt              # Minimal dependencies
-├── pyproject.toml                # Full project configuration
-├── Dockerfile                    # Container definition
-└── docker-compose.yml            # Multi-container setup
-```
+- `src/api/`: Presentation layer, FastAPI routes (`chat.py`, `health.py`), and middleware.
+- `src/app/`: Application layer featuring the primary `AmadeusService`, `agent_loop.py`, and `tool_registry.py`.
+- `src/core/`: Domain layer with settings (`config.py`), base interfaces, and core domain models.
+- `src/infra/`: Infrastructure implementations corresponding to database repositories, `gemini_adapter.py`, and local system tools.
+- `tests/`: End-to-end and unit testing utilities relying on pytest and testcontainers.
 
 ## Known Limitations
 
-**Voice Features**
-- Faster-Whisper requires additional system dependencies (PortAudio, Rust). Falls back to mock input if unavailable.
-- TTS quality varies by platform (pyttsx3 uses system voices).
-- No real-time voice activity detection; uses fixed timeout.
-
-**Tool Execution**
-- File operations are limited to user-accessible paths.
-- Application launcher mappings are hardcoded for common apps.
-- No sandboxing for tool execution.
-
-**Database**
-- Default SQLite limits concurrent write operations.
-- No automatic backup mechanism.
-
-**Authentication**
-- No authentication implemented. The API should not be exposed publicly without adding auth middleware.
-
-**API Rate Limiting**
-- Rate limiting configuration exists but is not enforced by default.
-
-**Testing**
-- Integration tests require API keys to run.
-- Coverage target is 70% but not currently met.
+- **Single LLM Provider**: Currently hard-coupled to `gemini_adapter.py` (Google Generative AI); lacking Anthropic/OpenAI fallback implementations despite internal architecture allowances.
+- **Authentication**: No explicit OAuth or structural user authentication middleware exposed on internal `/chat` routes (assumes private or internal-only API access).
 
 ## Future Improvements
 
-1. **Authentication Layer**: Implement JWT or API key authentication for the REST API.
+- Provide provider-agnostic adapter subclasses to cleanly support OpenAI or local models.
+- Implement explicit API rate limiting or scoped API-key authorization middleware.
+- Extend CI/CD pipeline automation setup (e.g., GitHub Actions).
 
-2. **Plugin System**: Replace hardcoded tool registration with a plugin discovery mechanism.
+## Screenshots / Demo
 
-3. **Voice Activity Detection**: Add VAD to replace fixed timeout-based speech recognition.
-
-4. **Persistent Conversations**: Add session management for multi-session conversation history.
-
-5. **GPU Acceleration**: Improve Whisper performance with CUDA support configuration.
-
-6. **PostgreSQL Support**: Test and document async PostgreSQL setup for production deployments.
-
-7. **Tool Sandboxing**: Add process isolation for file and system tools.
-
-8. **Streaming Responses**: Implement SSE for streaming LLM responses to the API.
-
-## Running Tests
-
-```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=src --cov-report=html
-
-# Run only unit tests
-pytest tests/unit/
-
-# Run only integration tests (requires API keys)
-pytest tests/integration/
-```
-
-## License
-
-Apache License 2.0 — see [LICENSE.txt](LICENSE.txt) for details.
-
-## Acknowledgments
-
-- [Google Gemini](https://ai.google.dev/) — Language model
-- [Faster-Whisper](https://github.com/guillaumekln/faster-whisper) — Speech recognition
-- [FastAPI](https://fastapi.tiangolo.com/) — Web framework
-- [SQLAlchemy](https://www.sqlalchemy.org/) — Database ORM
-- [pyttsx3](https://github.com/nateshmbhat/pyttsx3) — Text-to-speech
-
----
-
-**Author**: Aditya S. Tawde
+*(Add Demo Video / Architecture Diagrams / Output screenshots here)*

@@ -7,51 +7,13 @@ CRUD endpoints for managing tasks/todos.
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, status
-from pydantic import BaseModel, Field
 
-from src.core.domain.models import Task, TaskStatus
+from src.core.domain.models import Task, TaskStatus, TaskCreate, TaskResponse, TaskListResponse
 from src.infra.persistence.database import get_session
 from src.infra.persistence.repositories.task_repository import SQLAlchemyTaskRepository
 
 
 router = APIRouter()
-
-
-# =============================================================================
-# SCHEMAS
-# =============================================================================
-
-class TaskCreate(BaseModel):
-    """Schema for creating a task."""
-    content: str = Field(..., min_length=1, max_length=1000, description="Task content")
-
-
-class TaskResponse(BaseModel):
-    """Schema for task response."""
-    id: int
-    content: str
-    status: str
-    created_at: str
-    completed_at: str | None = None
-    
-    @classmethod
-    def from_domain(cls, task: Task) -> "TaskResponse":
-        return cls(
-            id=task.id,
-            content=task.content,
-            status=task.status.value,
-            created_at=task.created_at.isoformat(),
-            completed_at=task.completed_at.isoformat() if task.completed_at else None,
-        )
-
-
-class TaskListResponse(BaseModel):
-    """Schema for task list response."""
-    tasks: list[TaskResponse]
-    total: int
-    pending: int
-    completed: int
-
 
 # =============================================================================
 # ENDPOINTS
