@@ -90,6 +90,14 @@ ENV/
 env.bak/
 venv.bak/
 amadeus_venv/
+__pycache__
+*.sqlite3
+*.db
+*.log
+*.json
+*.env
+*.pyc
+.env
 
 # =============================================================================
 # SECRETS & ENVIRONMENT FILES
