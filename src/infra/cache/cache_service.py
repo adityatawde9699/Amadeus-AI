@@ -1,0 +1,195 @@
+"""
+Unified Redis Cache Service for Amadeus AI.
+
+Provides namespaced caching for LLM responses, TTS audio, tool results,
+and search results. Each namespace has an appropriate TTL.
+
+Cache namespaces and TTLs:
+- llm:    3600s  (1 hour)  — LLM responses (may become stale)
+- tts:    86400s (24 hours) — Audio for common phrases
+- tool:   300s   (5 min)   — Weather, news, system stats
+- search: 1800s  (30 min)  — Search results
+
+Usage:
+    cache = CacheService(redis_client)
+    cached = await cache.get_llm(prompt)
+    if not cached:
+        response = await llm.generate(prompt)
+        await cache.set_llm(prompt, response)
+"""
+
+import hashlib
+import json
+import logging
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
+
+
+logger = logging.getLogger(__name__)
+
+
+# Tools whose results are safe to cache (stateless, non-mutating)
+CACHEABLE_TOOLS: frozenset[str] = frozenset({
+    "get_weather",
+    "get_news",
+    "get_datetime_info",
+    "wikipedia_search",
+    "web_search",
+    "get_cpu_usage",
+    "get_memory_info",
+    "get_battery_info",
+    "system_status",
+    "tell_joke",
+})
+
+
+class CacheService:
+    """
+    Unified Redis-backed cache for Amadeus AI services.
+
+    Thread-safe and async-native. Falls back gracefully if Redis is unavailable.
+    """
+
+    NAMESPACES: dict[str, int] = {
+        "llm": 3600,     # 1 hour
+        "tts": 86400,    # 24 hours
+        "tool": 300,     # 5 minutes
+        "search": 1800,  # 30 minutes
+    }
+
+    def __init__(self, redis: "Redis") -> None:
+        self._redis = redis
+        self._hits = 0
+        self._misses = 0
+
+    def _key(self, namespace: str, content: str) -> str:
+        """Generate a namespaced Redis key using a SHA-256 hash of content."""
+        content_hash = hashlib.sha256(content.encode()).hexdigest()[:16]
+        return f"amadeus:{namespace}:{content_hash}"
+
+    # -------------------------------------------------------------------------
+    # LLM Response Cache
+    # -------------------------------------------------------------------------
+
+    async def get_llm(self, prompt: str, provider: str = "") -> str | None:
+        """Retrieve cached LLM response for a prompt."""
+        key = self._key("llm", f"{provider}:{prompt}")
+        try:
+            result = await self._redis.get(key)
+            if result:
+                self._hits += 1
+                return result.decode() if isinstance(result, bytes) else result
+            self._misses += 1
+            return None
+        except Exception as e:
+            logger.debug("Cache get_llm failed: %s", type(e).__name__)
+            return None
+
+    async def set_llm(self, prompt: str, response: str, provider: str = "") -> None:
+        """Cache an LLM response."""
+        key = self._key("llm", f"{provider}:{prompt}")
+        try:
+            await self._redis.setex(key, self.NAMESPACES["llm"], response)
+        except Exception as e:
+            logger.debug("Cache set_llm failed: %s", type(e).__name__)
+
+    # -------------------------------------------------------------------------
+    # TTS Audio Cache
+    # -------------------------------------------------------------------------
+
+    async def get_tts(self, text: str, voice: str) -> bytes | None:
+        """Retrieve cached TTS audio bytes."""
+        key = self._key("tts", f"{voice}:{text}")
+        try:
+            result = await self._redis.get(key)
+            if result:
+                self._hits += 1
+                return result
+            self._misses += 1
+            return None
+        except Exception as e:
+            logger.debug("Cache get_tts failed: %s", type(e).__name__)
+            return None
+
+    async def set_tts(self, text: str, voice: str, audio: bytes) -> None:
+        """Cache TTS audio bytes."""
+        if not audio:
+            return
+        key = self._key("tts", f"{voice}:{text}")
+        try:
+            await self._redis.setex(key, self.NAMESPACES["tts"], audio)
+        except Exception as e:
+            logger.debug("Cache set_tts failed: %s", type(e).__name__)
+
+    # -------------------------------------------------------------------------
+    # Tool Result Cache
+    # -------------------------------------------------------------------------
+
+    async def get_tool_result(self, tool_name: str, args: dict) -> str | None:
+        """Retrieve cached tool execution result."""
+        if tool_name not in CACHEABLE_TOOLS:
+            return None
+        key = self._key("tool", f"{tool_name}:{json.dumps(args, sort_keys=True)}")
+        try:
+            result = await self._redis.get(key)
+            if result:
+                self._hits += 1
+                return result.decode() if isinstance(result, bytes) else result
+            self._misses += 1
+            return None
+        except Exception as e:
+            logger.debug("Cache get_tool_result failed: %s", type(e).__name__)
+            return None
+
+    async def set_tool_result(self, tool_name: str, args: dict, result: str) -> None:
+        """Cache a tool result (only for safe, stateless tools)."""
+        if tool_name not in CACHEABLE_TOOLS:
+            return
+        key = self._key("tool", f"{tool_name}:{json.dumps(args, sort_keys=True)}")
+        try:
+            await self._redis.setex(key, self.NAMESPACES["tool"], result)
+        except Exception as e:
+            logger.debug("Cache set_tool_result failed: %s", type(e).__name__)
+
+    # -------------------------------------------------------------------------
+    # Search Result Cache
+    # -------------------------------------------------------------------------
+
+    async def get_search(self, query: str) -> str | None:
+        """Retrieve cached search results."""
+        key = self._key("search", query)
+        try:
+            result = await self._redis.get(key)
+            if result:
+                self._hits += 1
+                return result.decode() if isinstance(result, bytes) else result
+            self._misses += 1
+            return None
+        except Exception as e:
+            logger.debug("Cache get_search failed: %s", type(e).__name__)
+            return None
+
+    async def set_search(self, query: str, result: str) -> None:
+        """Cache search results."""
+        key = self._key("search", query)
+        try:
+            await self._redis.setex(key, self.NAMESPACES["search"], result)
+        except Exception as e:
+            logger.debug("Cache set_search failed: %s", type(e).__name__)
+
+    # -------------------------------------------------------------------------
+    # Stats
+    # -------------------------------------------------------------------------
+
+    def get_stats(self) -> dict:
+        """Return cache hit/miss statistics."""
+        total = self._hits + self._misses
+        hit_rate = (self._hits / total * 100) if total > 0 else 0.0
+        return {
+            "hits": self._hits,
+            "misses": self._misses,
+            "total": total,
+            "hit_rate_pct": round(hit_rate, 2),
+        }

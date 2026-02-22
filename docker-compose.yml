@@ -24,9 +24,12 @@ services:
       - ENV=development
       - DEBUG=true
       - DATABASE_URL=postgresql://amadeus:amadeus_password@postgres:5432/amadeus_db
+      - REDIS_URL=redis://redis:6379/0
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - WEATHER_API_KEY=${WEATHER_API_KEY}
       - NEWS_API_KEY=${NEWS_API_KEY}
+      - SECRET_KEY=${SECRET_KEY}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
       - LOG_LEVEL=INFO
     volumes:
       # Mount source code for hot-reload during development
@@ -35,6 +38,8 @@ services:
       - amadeus-data:/app/data
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/detailed')" ]
@@ -90,6 +95,24 @@ services:
         reservations:
           cpus: '0.5'
           memory: 256M
+
+  # ---------------------------------------------------------------------------
+  # Cache Service (Redis)
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: amadeus-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+    networks:
+      - amadeus-network
 
   # ---------------------------------------------------------------------------
   # Database Service (PostgreSQL)

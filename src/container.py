@@ -73,6 +73,43 @@ def get_amadeus_service() -> AmadeusService:
     return service
 
 
+@lru_cache()
+def get_llm_router() -> "LLMRouter":
+    """
+    Get the LLM Router singleton.
+
+    Chains: Groq (free, 14.4K/day) → Gemini (free, 1.5K/day) → OpenAI (paid, emergency)
+    """
+    from src.infra.llm.router import LLMRouter
+    from src.infra.llm.gemini_adapter import GeminiAdapter
+
+    settings = get_settings()
+
+    groq_adapter = None
+    if settings.GROQ_API_KEY:
+        try:
+            from src.infra.llm.groq_adapter import GroqAdapter
+            groq_adapter = GroqAdapter(api_key=settings.GROQ_API_KEY)
+            logger.info("Groq adapter configured as primary LLM")
+        except Exception as e:
+            logger.warning("Failed to configure Groq adapter: %s", e)
+
+    gemini_adapter = None
+    if settings.GEMINI_API_KEY:
+        try:
+            gemini_adapter = GeminiAdapter(api_key=settings.GEMINI_API_KEY)
+            logger.info("Gemini adapter configured as secondary LLM")
+        except Exception as e:
+            logger.warning("Failed to configure Gemini adapter: %s", e)
+
+    router = LLMRouter(groq=groq_adapter, gemini=gemini_adapter)
+    logger.info(
+        "LLMRouter initialized with providers: %s",
+        [k for k, v in {"groq": groq_adapter, "gemini": gemini_adapter}.items() if v]
+    )
+    return router
+
+
 # =============================================================================
 # ASYNC SESSION FACTORY
 # =============================================================================
@@ -99,18 +136,41 @@ async def get_db_session() -> AsyncGenerator:
 def get_voice_service() -> "VoiceService":
     """
     Get the Voice Service singleton.
+    Uses EdgeTTS (free, unlimited) as the primary TTS provider.
     """
     from src.app.services.voice_service import VoiceService
-    from src.infra.speech.adapters import WhisperVoiceInput, Pyttsx3VoiceOutput
+    from src.infra.speech.adapters import WhisperVoiceInput
     
     amadeus = get_amadeus_service()
+    settings = get_settings()
     stt = WhisperVoiceInput()
-    tts = Pyttsx3VoiceOutput()
+    
+    # Build TTS router: EdgeTTS (default) + ElevenLabs (critical priority)
+    try:
+        from src.infra.speech.edge_tts_adapter import EdgeTTSAdapter
+        from src.infra.speech.tts_router import TTSRouter
+        edge_tts = EdgeTTSAdapter(voice=settings.EDGE_TTS_VOICE)
+        
+        elevenlabs_adapter = None
+        if settings.ELEVENLABS_API_KEY:
+            try:
+                from src.infra.speech.tts_router import ElevenLabsAdapter
+                elevenlabs_adapter = ElevenLabsAdapter(api_key=settings.ELEVENLABS_API_KEY)
+            except Exception as e:
+                logger.warning("ElevenLabs TTS unavailable: %s", e)
+        
+        tts = TTSRouter(edge_tts=edge_tts, elevenlabs=elevenlabs_adapter)
+        logger.info("TTSRouter initialized (EdgeTTS primary)")
+    except ImportError:
+        # Fallback: edge-tts not installed, use silent adapter
+        logger.warning("edge-tts not installed, TTS will return empty bytes. Install: pip install edge-tts")
+        from src.infra.speech.adapters import _SilentTTSAdapter  # type: ignore[attr-defined]
+        tts = _SilentTTSAdapter()
     
     service = VoiceService(
         amadeus_service=amadeus,
         stt_service=stt,
-        tts_service=tts
+        tts_service=tts,
     )
     logger.info("VoiceService singleton initialized")
     return service
@@ -152,6 +212,7 @@ async def shutdown_services() -> None:
     get_tool_registry.cache_clear()
     get_amadeus_service.cache_clear()
     get_voice_service.cache_clear()
+    get_llm_router.cache_clear()
     
     # Close Redis connection if active
     redis_client = get_redis_client()

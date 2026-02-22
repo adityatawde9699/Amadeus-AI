@@ -1,36 +1,117 @@
-name: CI
+name: CI Pipeline
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [main, develop]
   pull_request:
-    branches: [ "main" ]
+    branches: [main]
 
 jobs:
-  test:
+  # ---------------------------------------------------------------------------
+  # Lint, type check, security scan
+  # ---------------------------------------------------------------------------
+  quality:
+    name: Code Quality
     runs-on: ubuntu-latest
-    
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Install uv
-      uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v4
 
-    - name: "Set up Python"
-      uses: actions/setup-python@v5
-      with:
-        python-version-file: "pyproject.toml"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
 
-    - name: Install dependencies
-      run: uv sync --all-extras --dev
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: "pyproject.toml"
 
-    - name: Run Ruff (Linter & Formatter Check)
-      run: |
-        uv run ruff check src/
-        uv run ruff format --check src/
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
 
-    - name: Run Mypy (Type Checker)
-      run: uv run mypy src/
+      - name: Lint (ruff)
+        run: uv run ruff check src/ tests/
 
-    - name: Run Pytest (Unit Tests)
-      run: uv run pytest tests/
+      - name: Format check (ruff)
+        run: uv run ruff format --check src/
+
+      - name: Type check (mypy)
+        run: uv run mypy src/ --ignore-missing-imports
+
+      - name: Security scan (bandit)
+        run: uv run bandit -r src/ -ll -x src/infra/tools/
+
+      - name: Dependency audit (pip-audit)
+        run: uv run pip-audit --requirement <(uv pip freeze) || true
+
+  # ---------------------------------------------------------------------------
+  # Test suite with real PostgreSQL
+  # ---------------------------------------------------------------------------
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: amadeus
+          POSTGRES_PASSWORD: amadeus_test_pass
+          POSTGRES_DB: amadeus_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: "pyproject.toml"
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Run tests with coverage
+        run: |
+          uv run pytest tests/ \
+            --cov=src \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --cov-fail-under=40 \
+            -v
+        env:
+          DATABASE_URL: postgresql+asyncpg://amadeus:amadeus_test_pass@localhost:5432/amadeus_test
+          GEMINI_API_KEY: test_key_not_real
+          SECRET_KEY: test-secret-key-32-chars-minimum-xx
+          REDIS_URL: redis://localhost:6379/0
+          SKIP_CONFIG_VALIDATION: "true"
+          ENV: development
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+
+  # ---------------------------------------------------------------------------
+  # Deploy to Railway staging on merge to develop
+  # ---------------------------------------------------------------------------
+  deploy-staging:
+    name: Deploy to Staging
+    needs: [quality, test]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to Railway (staging)
+        uses: bervProject/railway-deploy@main
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        with:
+          service: amadeus-api-staging
