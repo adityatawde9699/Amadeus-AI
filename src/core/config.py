@@ -89,6 +89,40 @@ class Settings(BaseSettings):
     SENTRY_DSN: str | None = None
     
     # =========================================================================
+    # MESSAGING: TELEGRAM
+    # =========================================================================
+    TELEGRAM_BOT_TOKEN: str | None = None
+    TELEGRAM_WEBHOOK_SECRET: str | None = None
+    TELEGRAM_WEBHOOK_URL: str | None = None  # e.g. https://yourhost.com/api/v1/messaging/telegram
+    
+    # =========================================================================
+    # MESSAGING: WHATSAPP (Meta Cloud API)
+    # =========================================================================
+    WHATSAPP_ACCESS_TOKEN: str | None = None
+    WHATSAPP_VERIFY_TOKEN: str | None = None
+    WHATSAPP_PHONE_NUMBER_ID: str | None = None
+    
+    # =========================================================================
+    # EMAIL (IMAP / SMTP)
+    # =========================================================================
+    EMAIL_IMAP_SERVER: str = "imap.gmail.com"
+    EMAIL_SMTP_SERVER: str = "smtp.gmail.com"
+    EMAIL_SMTP_PORT: int = Field(default=587, ge=1, le=65535)
+    EMAIL_ADDRESS: str | None = None
+    EMAIL_APP_PASSWORD: str | None = None  # App-specific password or OAuth token
+    
+    # =========================================================================
+    # MEMORY / SUMMARIZATION
+    # =========================================================================
+    MEMORY_SUMMARIZATION_THRESHOLD: int = Field(default=10, ge=3, le=100)
+
+    # Vector / Long-term semantic memory (ChromaDB)
+    CHROMA_ENABLED: bool = True
+    CHROMA_PERSIST_DIR: str = "./data/chroma_db"
+    CHROMA_COLLECTION_NAME: str = "amadeus_memory"
+    MEMORY_EMBED_MODEL: str = "models/embedding-001"  # Gemini embedding model
+    
+    # =========================================================================
     # DATABASE
     # =========================================================================
     DATABASE_URL: str = "sqlite:///./data/amadeus.db"

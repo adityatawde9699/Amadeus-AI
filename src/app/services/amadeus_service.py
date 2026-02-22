@@ -25,6 +25,7 @@ import numpy as np
 from src.core.config import Settings, get_settings
 from src.app.services.tool_registry import ToolRegistry
 from src.infra.tools.base import Tool, ToolCategory, ToolExecutor
+from src.infra.memory_service import ChromaMemoryService
 
 
 logger = logging.getLogger(__name__)
@@ -204,7 +205,14 @@ class AmadeusService:
         
         self.tool_executor = ToolExecutor()
         self.tool_registry = tool_registry or ToolRegistry()
-        
+
+        # Long-term semantic memory (ChromaDB + Gemini embeddings)
+        self.memory_service = ChromaMemoryService(settings=self.settings)
+        if self.memory_service.is_enabled:
+            logger.info("Long-term memory ENABLED — ChromaDB ready (%d stored memories)", self.memory_service.memory_count)
+        else:
+            logger.info("Long-term memory DISABLED — operating with session-only context")
+
         # Initialize components
         self._load_api_keys()
         self._load_tool_classifier()
@@ -376,7 +384,10 @@ Guidelines:
         try:
             # Add user message (ConversationManager handles both cache AND DB)
             await self.conversation_manager.add("user", user_input)
-            
+
+            # Store user message in long-term semantic memory
+            await self.memory_service.store(self.session_id, "user", user_input)
+
             # Check if this is a multi-step query that needs the agent
             if self._is_multi_step_query(user_input):
                 response, tools_used = await self._process_with_agent(user_input)
@@ -387,7 +398,10 @@ Guidelines:
             
             # Add assistant response (unified - goes to both cache and DB)
             await self.conversation_manager.add("assistant", response, tool_used=tool_used)
-            
+
+            # Store assistant response in long-term semantic memory
+            await self.memory_service.store(self.session_id, "assistant", response)
+
             return response
             
         except Exception as e:
@@ -485,12 +499,18 @@ Guidelines:
         # Step 3: Build prompt with context
         current_time = datetime.now().strftime("%I:%M %p on %A, %B %d")
         context_summary = self.conversation_manager.get_context_summary()
-        
+
+        # Retrieve semantically relevant long-term memories
+        long_term_memories = await self.memory_service.retrieve(user_input, top_k=5)
+        memory_context = self.memory_service.format_for_prompt(long_term_memories)
+
         system_prompt = self.identity_prompt.format(
             current_time=current_time,
             context_summary=context_summary,
         )
-        
+        if memory_context:
+            system_prompt = f"{system_prompt}\n\n{memory_context}"
+
         # Step 4: Get Gemini declarations for relevant tools only
         tools_config = self.tool_registry.build_gemini_tools(relevant_tools)
         
@@ -583,11 +603,16 @@ Guidelines:
         """Generate a response without any tools."""
         current_time = datetime.now().strftime("%I:%M %p on %A, %B %d")
         context = self.conversation_manager.get_formatted_history(3)
-        
+
+        # Inject long-term memories for conversational turns too
+        long_term_memories = await self.memory_service.retrieve(user_input, top_k=3)
+        memory_context = self.memory_service.format_for_prompt(long_term_memories, max_chars=600)
+
         prompt = f"""{self.identity_prompt.format(
             current_time=current_time,
             context_summary=self.conversation_manager.get_context_summary(),
         )}
+{memory_context}
 
 Recent conversation:
 {context}
@@ -595,7 +620,7 @@ Recent conversation:
 User: {user_input}
 
 Respond naturally and conversationally. Be concise."""
-        
+
         try:
             response = self.model.generate_content(prompt)
             return response.text if hasattr(response, "text") else str(response)
@@ -629,6 +654,7 @@ Provide a natural, concise response that incorporates this result. Don't just re
         return self.tool_registry.get_summary()
     
     async def clear_conversation(self) -> None:
-        """Clear conversation history (from cache and DB)."""
+        """Clear conversation history (from cache, DB, and long-term vector memory)."""
         await self.conversation_manager.clear()
+        await self.memory_service.clear_session(self.session_id)
 

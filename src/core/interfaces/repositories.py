@@ -428,3 +428,48 @@ class IConversationRepository(ABC):
         """
         pass
 
+
+# =============================================================================
+# POMODORO REPOSITORY
+# =============================================================================
+
+from src.core.domain.models import PomodoroSession, PomodoroState  # noqa: E402
+
+
+class IPomodoroRepository(ABC):
+    """Repository interface for Pomodoro session persistence."""
+
+    @abstractmethod
+    async def create(self, session_model: PomodoroSession) -> PomodoroSession:
+        """Insert a new Pomodoro session and return the persisted record."""
+        pass
+
+    @abstractmethod
+    async def get_by_id(self, session_id: int) -> PomodoroSession | None:
+        """Fetch a single Pomodoro session by primary key."""
+        pass
+
+    @abstractmethod
+    async def get_active(self) -> PomodoroSession | None:
+        """Return the active/running session (working/break/paused), or None."""
+        pass
+
+    @abstractmethod
+    async def update_state(
+        self,
+        session_id: int,
+        new_state: PomodoroState,
+        cycles_completed: int | None = None,
+    ) -> PomodoroSession | None:
+        """Transition a Pomodoro session to a new state."""
+        pass
+
+    @abstractmethod
+    async def list_recent(self, limit: int = 10) -> list[PomodoroSession]:
+        """Return the N most recent Pomodoro sessions."""
+        pass
+
+    @abstractmethod
+    async def count_completed_today(self) -> int:
+        """Count Pomodoro cycles completed today (UTC)."""
+        pass

@@ -26,18 +26,55 @@ logger = logging.getLogger(__name__)
 def get_tool_registry() -> ToolRegistry:
     """
     Get the tool registry singleton.
-    
-    Tools are registered on first call.
+
+    Phase 3: Task and Pomodoro tools are constructed with injected repositories.
+    Note: SQLAlchemyTaskRepository and SQLAlchemyPomodoroRepository are initialized
+    once at startup; they do NOT hold a long-lived session — they receive a new
+    session per call via the parent context manager in their usage paths.
+    Legacy tools (note, reminder) still use _get_session() internally.
     """
     registry = ToolRegistry()
-    
-    # Auto-discover and register all tools
+
+    # ── Repository-injected tools ─────────────────────────────────────────────
+    try:
+        from src.infra.persistence.database import get_session
+        from src.infra.persistence.repositories.task_repository import SQLAlchemyTaskRepository
+        from src.infra.persistence.repositories.pomodoro_repository import SQLAlchemyPomodoroRepository
+        from src.infra.tools.productivity_tools import build_task_tools, build_pomodoro_tools
+
+        # We create thin ``SessionProxy`` wrappers that open a fresh session per call.
+        # This avoids holding a long-lived session in the singleton.
+        class _SessionProxy:
+            """Thin wrapper to give repository factories a lazy session per call."""
+            def __init__(self, repo_cls):
+                self._repo_cls = repo_cls
+
+            def __getattr__(self, method_name):
+                async def _caller(*args, **kwargs):
+                    async with get_session() as session:
+                        repo = self._repo_cls(session)
+                        return await getattr(repo, method_name)(*args, **kwargs)
+                return _caller
+
+        task_repo = _SessionProxy(SQLAlchemyTaskRepository)
+        pomodoro_repo = _SessionProxy(SQLAlchemyPomodoroRepository)
+
+        for t in build_task_tools(task_repo):       # type: ignore[arg-type]
+            registry.register(t)
+        for t in build_pomodoro_tools(pomodoro_repo):  # type: ignore[arg-type]
+            registry.register(t)
+
+        logger.info("Registered repository-injected tools (task, pomodoro)")
+    except Exception as e:
+        logger.error("Error registering injected tools: %s", e)
+
+    # ── Auto-discovered tools (info, system, monitor, legacy productivity) ────
     try:
         from src.infra.tools.info_tools import get_info_tools
         from src.infra.tools.system_tools import get_system_tools
         from src.infra.tools.monitor_tools import get_monitor_tools
         from src.infra.tools.productivity_tools import get_productivity_tools
-        
+
         for tool in get_info_tools():
             registry.register(tool)
         for tool in get_system_tools():
@@ -46,11 +83,11 @@ def get_tool_registry() -> ToolRegistry:
             registry.register(tool)
         for tool in get_productivity_tools():
             registry.register(tool)
-        
-        logger.info(f"Tool registry initialized with {len(registry)} tools")
+
+        logger.info("Tool registry initialized with %d tools", len(registry))
     except Exception as e:
-        logger.error(f"Error initializing tool registry: {e}")
-    
+        logger.error("Error initializing tool registry: %s", e)
+
     return registry
 
 

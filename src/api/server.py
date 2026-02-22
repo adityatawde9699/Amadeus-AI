@@ -217,7 +217,7 @@ async def root():
 # =============================================================================
 
 # Import and register route modules
-from src.api.routes import tasks, health, chat, voice, llm  # noqa: E402
+from src.api.routes import tasks, health, chat, voice, llm, webhooks  # noqa: E402
 from src.api.middleware.authentication import verify_jwt_token
 from fastapi import Depends
 
@@ -227,6 +227,9 @@ app.include_router(llm.router, prefix="/api/v1", tags=["LLM"])  # No auth — in
 app.include_router(tasks.router, prefix="/api/v1", tags=["Tasks"], dependencies=[Depends(verify_jwt_token)])
 app.include_router(chat.router, prefix="/api/v1", tags=["Chat"], dependencies=[Depends(verify_jwt_token)])
 app.include_router(voice.router, prefix="/api/v1", tags=["Voice"], dependencies=[Depends(verify_jwt_token)])
+
+# Webhooks use their own secret-token validation — no JWT
+app.include_router(webhooks.router, prefix="/api/v1", tags=["Webhooks"])
 
 
 # =============================================================================
