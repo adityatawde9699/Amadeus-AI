@@ -1,5 +1,5 @@
 """
-Unit tests for ChromaMemoryService (src/infra/memory_service.py).
+Unit tests for QdrantMemoryService (src/infra/memory_service.py).
 
 All ChromaDB and Gemini calls are mocked so tests run without
 any API keys or local ChromaDB installation.
@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.infra.memory_service import ChromaMemoryService, MemoryResult
+from src.infra.memory_service import QdrantMemoryService, MemoryResult
 
 
 # ===========================================================================
@@ -39,8 +39,8 @@ class TestChromeMemoryServiceInit:
     def test_disabled_when_chroma_not_enabled(self) -> None:
         """Service stays disabled when CHROMA_ENABLED=False."""
         settings = _mock_settings(chroma_enabled=False)
-        with patch("src.infra.memory_service.ChromaMemoryService._setup"):
-            svc = ChromaMemoryService.__new__(ChromaMemoryService)
+        with patch("src.infra.memory_service.QdrantMemoryService._setup"):
+            svc = QdrantMemoryService.__new__(QdrantMemoryService)
             svc._settings = settings
             svc._enabled = False
             svc._initialized = False
@@ -52,7 +52,7 @@ class TestChromeMemoryServiceInit:
         settings = _mock_settings()
         with patch("builtins.__import__", side_effect=ImportError("no module named chromadb")):
             # Patching _setup to simulate an ImportError scenario
-            svc = ChromaMemoryService.__new__(ChromaMemoryService)
+            svc = QdrantMemoryService.__new__(QdrantMemoryService)
             svc._settings = settings
             svc._client = None
             svc._collection = None
@@ -76,7 +76,7 @@ class TestChromeMemoryServiceStore:
         settings = _mock_settings()
 
         # Build a pre-initialized service without touching real ChromaDB
-        svc = ChromaMemoryService.__new__(ChromaMemoryService)
+        svc = QdrantMemoryService.__new__(QdrantMemoryService)
         svc._settings = settings
         svc._enabled = True
         svc._initialized = True
@@ -100,7 +100,7 @@ class TestChromeMemoryServiceStore:
     @pytest.mark.asyncio
     async def test_store_returns_false_when_disabled(self) -> None:
         """store() should return False immediately when service is disabled."""
-        svc = ChromaMemoryService.__new__(ChromaMemoryService)
+        svc = QdrantMemoryService.__new__(QdrantMemoryService)
         svc._enabled = False
         svc._initialized = False
 
@@ -111,7 +111,7 @@ class TestChromeMemoryServiceStore:
     async def test_store_returns_false_on_embedding_failure(self) -> None:
         """store() should return False gracefully when embedding fails."""
         settings = _mock_settings()
-        svc = ChromaMemoryService.__new__(ChromaMemoryService)
+        svc = QdrantMemoryService.__new__(QdrantMemoryService)
         svc._settings = settings
         svc._enabled = True
         svc._initialized = True
@@ -136,7 +136,7 @@ class TestChromeMemoryServiceRetrieve:
     async def test_retrieve_returns_memory_results(self) -> None:
         """retrieve() should return a list of MemoryResult on success."""
         settings = _mock_settings()
-        svc = ChromaMemoryService.__new__(ChromaMemoryService)
+        svc = QdrantMemoryService.__new__(QdrantMemoryService)
         svc._settings = settings
         svc._enabled = True
         svc._initialized = True
@@ -169,7 +169,7 @@ class TestChromeMemoryServiceRetrieve:
     @pytest.mark.asyncio
     async def test_retrieve_returns_empty_when_disabled(self) -> None:
         """retrieve() must return [] when service is disabled."""
-        svc = ChromaMemoryService.__new__(ChromaMemoryService)
+        svc = QdrantMemoryService.__new__(QdrantMemoryService)
         svc._enabled = False
         svc._initialized = False
 
@@ -180,7 +180,7 @@ class TestChromeMemoryServiceRetrieve:
     async def test_retrieve_returns_empty_on_query_failure(self) -> None:
         """retrieve() must return [] gracefully on ChromaDB error."""
         settings = _mock_settings()
-        svc = ChromaMemoryService.__new__(ChromaMemoryService)
+        svc = QdrantMemoryService.__new__(QdrantMemoryService)
         svc._settings = settings
         svc._enabled = True
         svc._initialized = True
@@ -204,7 +204,7 @@ class TestFormatForPrompt:
     """Test the prompt-formatting helper."""
 
     def test_empty_memories_returns_empty_string(self) -> None:
-        svc = ChromaMemoryService.__new__(ChromaMemoryService)
+        svc = QdrantMemoryService.__new__(QdrantMemoryService)
         assert svc.format_for_prompt([]) == ""
 
     def test_formats_memories_with_role_labels(self) -> None:
@@ -212,7 +212,7 @@ class TestFormatForPrompt:
             MemoryResult("s1", "user", "I love astronomy", "2026-01-01", 0.01),
             MemoryResult("s1", "assistant", "That's wonderful!", "2026-01-01", 0.05),
         ]
-        svc = ChromaMemoryService.__new__(ChromaMemoryService)
+        svc = QdrantMemoryService.__new__(QdrantMemoryService)
         output = svc.format_for_prompt(memories)
         assert "User]:" in output
         assert "Amadeus]:" in output
@@ -222,6 +222,6 @@ class TestFormatForPrompt:
     def test_max_chars_truncates_output(self) -> None:
         """format_for_prompt should stop appending memories once max_chars is reached."""
         memories = [MemoryResult("s1", "user", "x" * 200, "2026-01-01", i * 0.01) for i in range(10)]
-        svc = ChromaMemoryService.__new__(ChromaMemoryService)
+        svc = QdrantMemoryService.__new__(QdrantMemoryService)
         output = svc.format_for_prompt(memories, max_chars=300)
         assert len(output) <= 500  # generous bound accounting for header line

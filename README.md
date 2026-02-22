@@ -1,434 +1,690 @@
 <div align="center">
 
-# 🎵 Amadeus-AI
+# Amadeus AI
 
-**A production-ready, omni-channel AI assistant backend built with Clean Architecture in Python.**
+**A production-grade, multi-modal AI assistant backend built on Clean Architecture — text, voice, and tool execution unified under one API.**
 
-[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue?style=flat-square&logo=python)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.118%2B-009688?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE.txt)
-[![Tests](https://img.shields.io/badge/tests-38%20passing-brightgreen?style=flat-square)](tests/)
-[![Docker](https://img.shields.io/badge/docker-ready-2496ED?style=flat-square&logo=docker)](Dockerfile)
+[![CI Pipeline](https://github.com/adityatawde9699/Amadeus-AI/actions/workflows/main.yml/badge.svg)](https://github.com/adityatawde9699/Amadeus-AI/actions)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.118%2B-009688?logo=fastapi)](https://fastapi.tiangolo.com)
+[![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE.txt)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
+> **Tech Stack Highlights:**
+> `Python 3.11` · `FastAPI` · `SQLAlchemy` · `Gemini` · `Groq (Llama 3.3)` · `Redis` · `PostgreSQL` · `JWT Auth` · `faster-whisper` · `Edge TTS` · `Docker` · `GitHub Actions`
 
 </div>
 
 ---
 
-## Overview
+## 1. Problem Statement
 
-Amadeus-AI is a backend service for a fully async, multi-channel AI assistant. It orchestrates user commands through a **Multi-LLM routing system** (Google Gemini + Groq), executes real-world tools, maintains **cross-session long-term memory** via a ChromaDB vector store, and delivers responses over REST APIs, Telegram, WhatsApp, and Email.
-
-The codebase follows **Clean Architecture** — separating domain logic, application services, infrastructure adapters, and API presentation into strict layers.
+General-purpose AI assistants are typically coupled to a single LLM provider, lack voice interoperability, and do not compose well with local system tools. When a provider's rate limit exhausts, the system fails entirely. In addition, most open-source assistants expose no structured API, have no authentication boundary, and lack mechanisms for caching repetitive queries — making them unsuitable for any deployment context beyond a single developer's machine.
 
 ---
 
-## Feature Highlights
+## 2. Description / Solution
 
-| Category | Feature |
-|---|---|
-| 🧠 **LLM Routing** | Gemini 2.5 Flash + Groq (Llama 3) with automatic fallback |
-| 💾 **Long-Term Memory** | ChromaDB vector store + Gemini embeddings for semantic cross-session recall |
-| 🛠️ **Tool Execution Engine** | 40+ callable tools covering productivity, system ops, info, and web |
-| 🎙️ **Voice Interface** | Whisper (STT), Edge-TTS / ElevenLabs (TTS), wake-word detection |
-| 📱 **Messaging Channels** | Telegram (python-telegram-bot v20+) · WhatsApp (Meta Cloud API) · Email (IMAP/SMTP) |
-| 🔐 **Security** | JWT authentication middleware + SlowAPI rate limiting |
-| 📊 **Observability** | Structlog structured logging · Sentry error tracking · Prometheus metrics |
-| 🗄️ **Persistence** | Async PostgreSQL (prod) / SQLite (dev) via SQLAlchemy 2.0 + Redis cache |
-| 🐳 **Containerized** | Docker + Docker Compose with dev/staging/production profiles |
-| ✅ **CI/CD** | GitHub Actions pipeline: lint (Ruff, Black, Mypy) → test → build |
+Amadeus AI is a FastAPI-based backend service that orchestrates a conversational AI agent loop across multiple LLM providers (Groq → Gemini → OpenAI) with automatic daily quota tracking and fallback routing. It exposes REST and WebSocket endpoints for text and real-time voice interaction, executes a categorized registry of system, productivity, and informational tools, and persists conversation history in PostgreSQL or SQLite. Caching is layered over Redis to reduce redundant LLM and tool calls. All protected routes require JWT-authenticated requests.
 
 ---
 
-## Architecture
+## 3. Features
 
-The backend follows a strict four-layer Clean Architecture:
+### Conversational AI
+- Multi-LLM routing: Groq (Llama 3.3 70B) as primary → Gemini 2.5 Flash → OpenAI (high-complexity fallback)
+- Daily quota tracking per provider with automatic midnight reset
+- Persistent conversation memory with configurable context window
+- Semantic (long-term) memory via ChromaDB vector embeddings *(experimental)*
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│  API Layer (FastAPI)                                                 │
-│  JWT Auth · Rate Limiting · REST Routes · Webhook Receivers         │
-└──────────────────────────────┬──────────────────────────────────────┘
-                               │
-┌──────────────────────────────▼──────────────────────────────────────┐
-│  Application Layer                                                   │
-│  AmadeusService · ReActAgent (agent_loop) · ToolRegistry            │
-└──────────────────────────────┬──────────────────────────────────────┘
-                               │
-┌──────────────────────────────▼──────────────────────────────────────┐
-│  Infrastructure Layer                                                │
-│  LLM Adapters (Gemini/Groq)  ·  ChromaDB Memory                    │
-│  Messaging (Telegram/WA/Email) · Speech (Whisper/Edge-TTS)         │
-│  PostgreSQL/SQLite Repos · Redis Cache · Search Router (DDG/Brave)  │
-└──────────────────────────────┬──────────────────────────────────────┘
-                               │
-┌──────────────────────────────▼──────────────────────────────────────┐
-│  Core Domain Layer                                                   │
-│  Config · Interfaces · Domain Models · Custom Exceptions            │
-└─────────────────────────────────────────────────────────────────────┘
-```
+### Voice Interface
+- Real-time bidirectional voice via WebSocket (`/api/v1/ws/voice`)
+- Speech-to-text via `faster-whisper` (CTranslate2 — CPU and CUDA)
+- Text-to-speech via Microsoft Edge TTS (`edge-tts`) — free, unlimited
+- Configurable TTS voice (e.g. `en-US-JennyNeural`)
 
----
+### Tool Execution Engine
+**Information tools:**
+- Current weather (OpenWeatherMap API)
+- Top news headlines (NewsAPI)
+- Wikipedia lookup with fallback search
+- Web search via tiered SearchRouter (DuckDuckGo → Brave → Tavily)
+- Date/time queries, unit conversions (temperature, length), math calculator
+- Timer, greeting
 
-## Tool Capabilities
+**Productivity tools:**
+- Task management (create, list, complete, summarize)
+- Pomodoro timer (start, stop, status)
+- Notes (create, list, retrieve)
+- Reminders (set, list — with natural language time parsing via `dateparser`)
 
-### 📅 Productivity
-- **Pomodoro Timer** — start/pause/stop work sessions with configurable cycles
-- **Reminders** — natural language scheduling with background polling
-- **Calendar Events** — create, list, and query upcoming events
-- **Tasks/To-Do** — add, complete, and list pending tasks
-- **Notes** — tagged note creation and retrieval
+**System & monitoring tools:**
+- CPU, memory, disk, battery monitoring with configurable alert thresholds
 
-### ℹ️ Information & Web
-- **Weather** — current conditions + feel-like via OpenWeatherMap
-- **News Headlines** — category/country filtered, via NewsAPI
-- **Wikipedia Search** — article summaries with fallback search
-- **Web Search** — tiered router: DuckDuckGo → Brave Search → Tavily
-- **Calculator** — safe expression evaluator supporting `sqrt`, `**`, `%`
-- **Unit Converters** — length (mm/cm/m/km/in/ft/mi) and temperature (C/F/K)
-- **Timer** — countdown timer up to 24 hours
+### API & Security
+- JWT Bearer authentication on all protected routes (`/chat`, `/tasks`, `/voice`)
+- SlowAPI rate limiting (configurable, default 60 req/min per IP)
+- Request audit logging middleware (request IDs, latency headers)
+- Prometheus metrics endpoint (`/api/v1/metrics`)
+- Sentry error tracking integration
 
-### 🖥️ System & OS
-- **System Status** — CPU, RAM, disk usage, battery, and uptime
-- **Process Monitor** — list and kill running processes
-- **Volume Control** — adjust system audio
-- **Power Control** — shutdown / restart / sleep
-- **Filesystem** — safe read, write, search, and directory navigation
-- **App Launcher** — open applications by name
+### Caching (Redis)
+- LLM responses: 1-hour TTL
+- TTS audio: 24-hour TTL
+- Tool results (stateless only): 5-minute TTL
+- Web search results: 30-minute TTL
+- Graceful fallback if Redis is unavailable
 
-### 📡 Messaging (Outbound)
-- **Telegram** — text + voice replies, inline keyboard buttons
-- **WhatsApp** — text, interactive buttons, and template messages
-- **Email** — read unread mail, compose and send replies via SMTP
+### CI/CD & Deployment
+- GitHub Actions pipeline: lint (ruff), format check, type check (mypy), security scan (bandit), dependency audit (pip-audit)
+- Automated test run with real PostgreSQL service container
+- Staging deploy to Railway on `develop` branch merge
 
 ---
 
-## Long-Term Memory
+## 4. System Requirements
 
-Amadeus uses a **two-tier memory architecture**:
+| Component | Minimum | Recommended |
+|-----------|---------|-------------|
+| Python | 3.11 | 3.12 |
+| RAM | 1 GB | 2 GB |
+| Disk | 2 GB (with Whisper `small` model ~460 MB) | 4 GB |
+| CPU | Any x86-64 | Multi-core for concurrent requests |
+| GPU | Not required | CUDA-compatible for faster Whisper inference |
+| OS | Linux / macOS / Windows | Linux (production) |
 
-| Tier | Storage | Scope | Purpose |
-|------|---------|-------|---------|
-| Short-term | PostgreSQL / SQLite (`messages` table) | Per-session | Recent conversation context |
-| Long-term | ChromaDB (vector DB) + Gemini embeddings | Cross-session | Semantic recall of past preferences and facts |
-
-Every user and assistant message is embedded and stored. On each new query, the top-5 most semantically similar past messages are retrieved and injected into the LLM system prompt — enabling Amadeus to **remember things across sessions without being told twice**.
-
-```python
-# Example: tell it in session A
-"My name is Aditya and I love astronomy"
-
-# Ask in session B (different session_id, days later)
-"What do I enjoy?" → Amadeus recalls "astronomy" ✅
-```
-
->  Memory requires `GEMINI_API_KEY` and `CHROMA_ENABLED=true`. If either is missing, the service silently degrades to session-only memory.
+**External service requirements:**
+- PostgreSQL 15+ (production) or SQLite (development, default)
+- Redis 5+ (caching and rate limiting)
 
 ---
 
-## Project Structure
-
-```
-Amadeus-AI/
-├── src/
-│   ├── api/                    # Presentation layer (FastAPI)
-│   │   ├── routes/             # chat.py, health.py, tasks.py, voice.py, webhooks.py
-│   │   ├── middleware/         # JWT auth, rate limiting
-│   │   └── server.py           # App factory & startup lifecycle
-│   │
-│   ├── app/                    # Application layer
-│   │   └── services/
-│   │       ├── amadeus_service.py   # Main orchestrator
-│   │       ├── agent_loop.py        # ReAct multi-step agent
-│   │       ├── tool_registry.py     # Tool discovery & Gemini tool spec builder
-│   │       └── voice_service.py     # Voice session coordinator
-│   │
-│   ├── core/                   # Domain layer (no external dependencies)
-│   │   ├── config.py           # Pydantic settings (all env vars)
-│   │   ├── interfaces/         # Abstract repository and service interfaces
-│   │   ├── domain/             # Domain models
-│   │   └── exceptions.py       # Custom exceptions hierarchy
-│   │
-│   └── infra/                  # Infrastructure layer
-│       ├── llm/
-│       │   ├── router.py           # Multi-LLM routing (Gemini → Groq fallback)
-│       │   ├── gemini_adapter.py   # Google Generative AI adapter
-│       │   └── groq_adapter.py     # Groq API adapter
-│       ├── memory_service.py       # ChromaDB long-term semantic memory
-│       ├── messaging/
-│       │   ├── telegram_adapter.py # python-telegram-bot v20+
-│       │   ├── whatsapp_adapter.py # Meta Cloud API (buttons + templates)
-│       │   └── email_adapter.py    # IMAP/SMTP email integration
-│       ├── persistence/
-│       │   ├── database.py         # Async SQLAlchemy engine & session
-│       │   ├── orm_models.py       # All database table definitions
-│       │   └── repositories/       # Concrete async repository implementations
-│       ├── search/                 # Tiered web search router (DDG/Brave/Tavily)
-│       ├── speech/                 # Whisper STT, Edge-TTS, ElevenLabs TTS
-│       ├── cache/                  # Redis cache service
-│       └── tools/                  # All executable tools
-│           ├── base.py             # Tool decorator, ToolExecutor, ToolCategory
-│           ├── info_tools.py       # Weather, news, Wikipedia, calculator, timer
-│           ├── productivity_tools.py # Pomodoro, tasks, notes, reminders, calendar
-│           ├── system_tools.py     # Volume, power, app launch, OS operations
-│           ├── monitor_tools.py    # CPU/RAM/disk/process monitoring
-│           ├── filesystem_tools.py # File read/write/search
-│           └── email_tools.py      # Email tool wrappers
-│
-├── tests/
-│   ├── unit/                   # Fast unit tests (mock all I/O)
-│   │   ├── core/test_config.py
-│   │   ├── test_memory_service.py
-│   │   └── test_messaging_adapters.py
-│   └── integration/            # Integration tests (testcontainers)
-│
-├── alembic/                    # Database migration scripts
-├── data/                       # Runtime data (SQLite, ChromaDB)
-├── Dockerfile
-├── docker-compose.yml
-├── pyproject.toml
-└── .env.example
-```
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|------|-----------|
-| **Runtime** | Python 3.11+ |
-| **Web Framework** | FastAPI + Uvicorn (ASGI) |
-| **LLMs** | Google Gemini 2.5 Flash, Groq (Llama 3.3 70B) |
-| **Vector Memory** | ChromaDB (persistent) + Gemini `embedding-001` |
-| **ORM** | SQLAlchemy 2.0 (async) |
-| **Databases** | PostgreSQL (prod) · SQLite (dev) |
-| **Cache / Broker** | Redis |
-| **Migrations** | Alembic |
-| **IoC Container** | dependency-injector |
-| **Validation** | Pydantic v2 + pydantic-settings |
-| **STT** | faster-whisper (local) · SpeechRecognition |
-| **TTS** | Edge-TTS · ElevenLabs · pyttsx3 |
-| **Messaging** | python-telegram-bot v20+ · Meta Cloud API (WhatsApp) · imap-tools / aiosmtplib |
-| **Observability** | Structlog · Sentry · Prometheus (prometheus-fastapi-instrumentator) |
-| **Testing** | Pytest · pytest-asyncio · testcontainers |
-| **Code Quality** | Ruff · Black · Mypy |
-| **CI/CD** | GitHub Actions |
-| **Containers** | Docker · Docker Compose |
-
----
-
-## Setup & Installation
+## 5. Setup & Installation
 
 ### Prerequisites
 
-- Python 3.11+
-- Docker & Docker Compose (recommended)
-- A [Gemini API key](https://makersuite.google.com/app/apikey) — required for LLM + memory embeddings
+1. [Python 3.11+](https://www.python.org/downloads/)
+2. [`uv`](https://docs.astral.sh/uv/) (recommended) or `pip`
+3. [Docker & Docker Compose](https://docs.docker.com/get-docker/) (for containerized setup)
+4. At minimum one LLM API key (Groq is free and recommended as primary)
 
-### 1 — Clone & Configure
+### Clone the Repository
 
 ```bash
 git clone https://github.com/adityatawde9699/Amadeus-AI.git
 cd Amadeus-AI
-cp .env.example .env
-# Edit .env and fill in your API keys
 ```
 
-### 2 — Run with Docker (Recommended)
+### Environment Variables
+
+Copy the example and fill in your values:
 
 ```bash
-# Development (hot-reload, SQLite + Redis in containers)
-docker-compose up --build
+cp .env.example .env
+```
 
-# Production (Gunicorn workers, PostgreSQL)
+**Required variables:**
+
+| Variable | Description |
+|----------|-------------|
+| `SECRET_KEY` | JWT signing secret — generate with `openssl rand -hex 32` |
+| `GROQ_API_KEY` | Groq API key — [console.groq.com](https://console.groq.com) (free tier: 14,400 req/day) |
+| `GEMINI_API_KEY` | Google Gemini key — [makersuite.google.com](https://makersuite.google.com/app/apikey) |
+| `DATABASE_URL` | Database connection string (defaults to SQLite for dev) |
+
+**Optional variables:**
+
+| Variable | Description |
+|----------|-------------|
+| `OPENAI_API_KEY` | Emergency fallback LLM (paid) |
+| `REDIS_URL` | Redis for caching (default: `redis://localhost:6379/0`) |
+| `WEATHER_API_KEY` | OpenWeatherMap API key |
+| `NEWS_API_KEY` | NewsAPI key |
+| `BRAVE_SEARCH_API_KEY` | Brave Search (2,000 free/month) |
+| `TAVILY_API_KEY` | Tavily deep search |
+| `EDGE_TTS_VOICE` | Edge TTS voice name (default: `en-US-JennyNeural`) |
+| `SENTRY_DSN` | Sentry error tracking DSN |
+| `TELEGRAM_BOT_TOKEN` | Telegram bot integration |
+| `CHROMA_ENABLED` | Enable ChromaDB vector memory (default: `true`) |
+| `ENV` | `development` / `staging` / `production` |
+
+### Option A — Local Installation (without Docker)
+
+```bash
+# Install all dependencies including dev tools and voice extras
+pip install -e ".[all]"
+
+# OR using uv (faster)
+uv sync --all-extras --dev
+
+# Run database migrations
+python -m alembic upgrade head
+
+# Start the API server
+uvicorn src.api.server:app --reload --host 0.0.0.0 --port 8000
+```
+
+### Option B — Docker (Development)
+
+```bash
+# Starts API + PostgreSQL
+docker-compose up --build
+```
+
+### Option C — Docker (Production)
+
+```bash
 docker-compose --profile prod up --build -d
 ```
 
-### 3 — Run Locally (without Docker)
+The production profile runs gunicorn with 4 Uvicorn workers (`UvicornWorker`) and resource limits (2 CPU / 1 GB RAM).
 
-```bash
-# Install all dependencies
-pip install -e ".[all]"
-# Or with uv (faster)
-uv pip install -e ".[all]"
+---
 
-# Apply database migrations
-alembic upgrade head
+## 6. API Documentation
 
-# Start the server
-uvicorn src.api.server:app --host 0.0.0.0 --port 8000 --reload
+The API base path is `/api/v1`. Interactive docs are available at `http://localhost:8000/docs` when `DEBUG=true`.
+
+All endpoints except `/health` and `/api/v1/llm/*` require a **JWT Bearer token** in the `Authorization` header.
+
+### Authentication
+
+There is no built-in user registration endpoint at this time. Tokens must be generated externally using the `SECRET_KEY` with HS256 algorithm. See `src/api/middleware/authentication.py`.
+
+### Endpoints
+
+#### System
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/health` | No | Liveness check (load balancer probe) |
+| `GET` | `/` | No | API info and version |
+| `GET` | `/api/v1/health/detailed` | No | Detailed health with DB/Redis status |
+| `GET` | `/api/v1/metrics` | No | Prometheus metrics |
+
+#### Chat
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/v1/chat` | Yes | Send a message to the assistant |
+| `GET` | `/api/v1/chat/history` | Yes | Retrieve conversation history by session |
+| `GET` | `/api/v1/chat/tools` | Yes | List all available tools by category |
+| `POST` | `/api/v1/chat/clear` | Yes | Clear conversation history |
+
+**Chat request body:**
+```json
+{
+  "message": "What is the weather in Mumbai?",
+  "source": "api",
+  "session_id": "optional-existing-session-id",
+  "request_id": "optional-idempotency-key"
+}
+```
+
+**Chat response body:**
+```json
+{
+  "response": "The weather in Mumbai, IN: Haze. Temperature is 29.5°C (feels like 34.2°C). Humidity is 78%...",
+  "source": "api",
+  "session_id": "uuid-session-id",
+  "tools_used": []
+}
+```
+
+#### Voice
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `WS` | `/api/v1/ws/voice` | Yes (via query param) | Real-time voice streaming WebSocket |
+
+**Voice WebSocket protocol:**
+1. Client sends raw audio bytes (PCM / WAV chunk)
+2. Server responds with three messages in sequence:
+   - `{"type": "transcription", "text": "what you said"}` — STT output
+   - `{"type": "response_text", "text": "assistant reply"}` — LLM response
+   - Binary frame — TTS audio bytes
+
+#### Tasks
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/v1/tasks` | Yes | Create a new task |
+| `GET` | `/api/v1/tasks` | Yes | List tasks (filter by status) |
+| `PATCH` | `/api/v1/tasks/{id}/complete` | Yes | Mark task complete |
+| `DELETE` | `/api/v1/tasks/{id}` | Yes | Delete a task |
+
+#### LLM Usage (Informational — no auth)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/api/v1/llm/usage` | No | Daily LLM usage report per provider |
+
+---
+
+## 7. Full Tech Stack
+
+### Runtime & Language
+- **Python 3.11 / 3.12** — primary language
+- **Docker** — containerization (multi-stage build)
+
+### Framework & API
+- **FastAPI 0.118+** — async web framework
+- **Uvicorn** — ASGI server (development)
+- **Gunicorn + UvicornWorker** — production multi-worker setup
+- **SlowAPI** — rate limiting (IP-based, per-minute window)
+- **python-jose** — JWT encoding and validation
+
+### Database & ORM
+- **SQLAlchemy 2.0 (asyncio)** — async ORM
+- **Alembic** — database migrations
+- **PostgreSQL 15** (production) via `asyncpg`
+- **SQLite** (development) via `aiosqlite`
+- **Redis 5+** — caching layer (via `redis-py` async client)
+
+### AI & LLM
+- **Google Generative AI (Gemini 2.5 Flash)** — secondary LLM
+- **Groq API (Llama 3.3 70B)** — primary LLM (free tier)
+- **OpenAI** — emergency fallback (paid, optional)
+- **ChromaDB** — vector database for semantic memory *(experimental)*
+- **LLMRouter** — internal daily-quota-aware routing engine
+
+### Voice
+- **faster-whisper** — CTranslate2 Whisper STT (CPU/CUDA)
+- **edge-tts** — Microsoft Edge TTS (free, cloud-based)
+- **SpeechRecognition + pyttsx3** — alternative local TTS/STT stack *(optional)*
+
+### Validation & Configuration
+- **Pydantic v2 + pydantic-settings** — type-safe settings from environment
+- **python-dotenv** — `.env` file loading
+
+### Dependency Injection
+- **dependency-injector 4.41+** — IoC container (`src/container.py`)
+
+### Observability
+- **Structlog** — structured JSON logging
+- **Sentry SDK** — error monitoring
+- **prometheus-fastapi-instrumentator** — Prometheus metrics
+
+### Development & Quality
+- **pytest + pytest-asyncio** — testing framework
+- **testcontainers[postgres]** — integration tests with containerized PostgreSQL
+- **httpx** — async HTTP client for FastAPI TestClient
+- **Ruff** — linting and formatting
+- **Black** — code formatter
+- **Mypy** — static type checking
+- **Bandit** — security scanning
+- **pip-audit** — dependency vulnerability auditing
+- **uv** — dependency management and virtual environments
+
+---
+
+## 8. System Architecture Overview
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                         CLIENT LAYER                                 │
+│          HTTP / REST Clients         WebSocket (voice stream)        │
+└───────────────────────┬──────────────────────────┬───────────────────┘
+                        │                          │
+┌──────────────────────▼──────────────────────────▼───────────────────┐
+│                         API LAYER  (src/api/)                        │
+│  FastAPI routes: /chat, /tasks, /voice, /health, /llm               │
+│  Middleware: JWT Auth · Audit Logger · SlowAPI Rate Limiter          │
+│  Exception handlers: AmadeusError → 400, Generic → 500              │
+└───────────────────────┬──────────────────────────────────────────────┘
+                        │  Depends()
+┌──────────────────────▼──────────────────────────────────────────────┐
+│                   APPLICATION LAYER  (src/app/)                      │
+│  AmadeusService → AgentLoop → ToolRegistry                          │
+│  VoiceService (STT → LLM → TTS pipeline)                           │
+└────────┬──────────────────────────┬─────────────────────────────────┘
+         │ Core Interfaces          │ Infrastructure Services
+┌────────▼──────────────┐  ┌───────▼──────────────────────────────────┐
+│  CORE LAYER (src/core)│  │        INFRA LAYER  (src/infra/)          │
+│  Domain Models        │  │  ┌────────────┐  ┌──────────────────────┐│
+│  Interfaces / ABCs    │  │  │ LLMRouter   │  │ CacheService (Redis) ││
+│  Config (Settings)    │  │  │ Groq/Gemini │  │  llm / tts / tool   ││
+│  Exceptions           │  │  │ adapters    │  │  search namespaces  ││
+└───────────────────────┘  │  └────────────┘  └──────────────────────┘│
+                           │  ┌────────────┐  ┌──────────────────────┐│
+                           │  │ Persistence │  │  Tools               ││
+                           │  │ SQLAlchemy  │  │  info / productivity ││
+                           │  │ Alembic     │  │  system / monitor    ││
+                           │  └────────────┘  └──────────────────────┘│
+                           │  ┌────────────┐  ┌──────────────────────┐│
+                           │  │ Speech      │  │ SearchRouter          ││
+                           │  │ Whisper STT │  │ DDG → Brave → Tavily ││
+                           │  │ Edge TTS    │  └──────────────────────┘│
+                           │  └────────────┘                           │
+                           └──────────────────────────────────────────┘
+                                        │
+┌───────────────────────────────────────▼──────────────────────────────┐
+│                        DATA LAYER                                     │
+│     PostgreSQL (prod)   SQLite (dev)   Redis (cache)   ChromaDB      │
+└───────────────────────────────────────────────────────────────────────┘
+```
+
+**LLM Routing Order:**
+```
+Request → Groq (14,400/day free) → Gemini (1,500/day free) → OpenAI (100/day paid)
+                                         ↓ all exhausted →
+                               LLMRateLimitError (503)
 ```
 
 ---
 
-## Configuration
+## 9. Usage Examples
 
-All settings are loaded from environment variables. Copy `.env.example` to `.env` and fill in the values.
-
-### Required Keys
-
-| Variable | Purpose |
-|---|---|
-| `GEMINI_API_KEY` | Primary LLM + memory embeddings |
-| `SECRET_KEY` | JWT signing (generate: `openssl rand -hex 32`) |
-
-### Optional Keys (enables features)
-
-| Variable | Feature |
-|---|---|
-| `GROQ_API_KEY` | Fallback LLM (free: 14,400 req/day) |
-| `WEATHER_API_KEY` | Weather tool (OpenWeatherMap) |
-| `NEWS_API_KEY` | News headlines tool |
-| `BRAVE_SEARCH_API_KEY` | Web search (tier 2) |
-| `TAVILY_API_KEY` | Deep web research (tier 3) |
-| `ELEVENLABS_API_KEY` | High-quality TTS voice |
-| `TELEGRAM_BOT_TOKEN` | Telegram messaging channel |
-| `TELEGRAM_WEBHOOK_URL` | Telegram webhook endpoint (HTTPS) |
-| `WHATSAPP_ACCESS_TOKEN` | WhatsApp messaging channel |
-| `WHATSAPP_PHONE_NUMBER_ID` | WhatsApp sender ID |
-| `WHATSAPP_VERIFY_TOKEN` | WhatsApp webhook verification |
-| `EMAIL_ADDRESS` | Email integration |
-| `EMAIL_APP_PASSWORD` | Email app password / OAuth token |
-| `CHROMA_ENABLED` | Enable long-term vector memory (`true`/`false`) |
-| `SENTRY_DSN` | Error tracking |
-
----
-
-## API Reference
-
-The server starts at `http://localhost:8000`. All protected endpoints require a JWT Bearer token.
-
-### Chat
+### Text Chat
 
 ```bash
-# Send a message
-POST /api/v1/chat
-Content-Type: application/json
-Authorization: Bearer <JWT>
+# Authenticate (generate a JWT externally using SECRET_KEY and HS256)
+TOKEN="your.jwt.token"
 
-{"message": "What's the weather in Mumbai?", "source": "text"}
+# Ask a question
+curl -X POST "http://localhost:8000/api/v1/chat" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"message": "What is the weather in Delhi?", "source": "curl"}'
+
+# Get current news
+curl -X POST "http://localhost:8000/api/v1/chat" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"message": "Give me today'\''s technology news headlines"}'
+
+# Start a Pomodoro timer
+curl -X POST "http://localhost:8000/api/v1/chat" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"message": "Start a 25 minute Pomodoro for writing documentation"}'
+
+# Add a task
+curl -X POST "http://localhost:8000/api/v1/chat" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"message": "Add task: Review pull requests"}'
+
+# Calculate
+curl -X POST "http://localhost:8000/api/v1/chat" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"message": "What is 1234 * 5678?"}'
 ```
+
+### Conversation History
 
 ```bash
-# Retrieve conversation history
-GET /api/v1/chat/history?session_id=<UUID>
-Authorization: Bearer <JWT>
+# Retrieve history for a session
+curl "http://localhost:8000/api/v1/chat/history?session_id=<SESSION_ID>" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Clear conversation
+curl -X POST "http://localhost:8000/api/v1/chat/clear" \
+  -H "Authorization: Bearer $TOKEN"
 ```
+
+### Tool Discovery
 
 ```bash
-# List all available tools
-GET /api/v1/chat/tools
-Authorization: Bearer <JWT>
+# List all available tools grouped by category
+curl "http://localhost:8000/api/v1/chat/tools" \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
-### Tasks & Productivity
+### LLM Usage Report (no auth)
 
 ```bash
-# List tasks
-GET /api/v1/tasks
-Authorization: Bearer <JWT>
-
-# Create a task
-POST /api/v1/tasks
-{"content": "Review pull requests"}
+curl "http://localhost:8000/api/v1/llm/usage"
+# Returns: provider usage counts, daily limits, remaining quota, estimated cost
 ```
 
-### Health & Metrics
-
-```bash
-# Health check (public)
-GET /health
-
-# Readiness probe
-GET /health/ready
-
-# Prometheus metrics (public)
-GET /metrics
-```
-
-### Webhooks (Messaging)
-
-```bash
-# Telegram webhook (configured via set_webhook)
-POST /api/v1/messaging/telegram
-
-# WhatsApp webhook verification (GET) + events (POST)
-GET  /api/v1/messaging/whatsapp?hub.verify_token=<token>&hub.challenge=<ch>
-POST /api/v1/messaging/whatsapp
-```
-
----
-
-## Running Tests
-
-```bash
-# All unit tests (no API keys needed — all mocked)
-.venv/Scripts/python.exe -m pytest tests/unit/ -v
-
-# Integration tests (requires Docker for testcontainers)
-pytest tests/integration/ -v -m integration
-
-# With coverage report
-pytest tests/unit/ --cov=src --cov-report=term-missing
-```
-
-> ✅ **Current status**: 38 unit tests passing, 0 failures.
-
----
-
-## Telegram Webhook Setup
-
-Once deployed to a public HTTPS host (Railway, Render, etc.):
+### Voice via WebSocket (Python client example)
 
 ```python
-from src.infra.messaging.telegram_adapter import TelegramAdapter
-from src.core.config import get_settings
+import asyncio
+import websockets
 
-settings = get_settings()
-adapter = TelegramAdapter()
+async def voice_session():
+    uri = "ws://localhost:8000/api/v1/ws/voice"
+    headers = {"Authorization": "Bearer YOUR_JWT_TOKEN"}
+    async with websockets.connect(uri, additional_headers=headers) as ws:
+        with open("audio_chunk.wav", "rb") as f:
+            await ws.send(f.read())
+        transcription = await ws.recv()   # {"type": "transcription", "text": "..."}
+        response_text = await ws.recv()   # {"type": "response_text", "text": "..."}
+        audio_bytes = await ws.recv()     # binary TTS audio
 
-# Run once at deploy time
-await adapter.set_webhook(
-    webhook_url=settings.TELEGRAM_WEBHOOK_URL,
-    secret_token=settings.TELEGRAM_WEBHOOK_SECRET,
-)
+asyncio.run(voice_session())
 ```
 
-For local development, use [ngrok](https://ngrok.com/) to get a public HTTPS tunnel:
+---
+
+## 10. Project Structure
+
+```
+Amadeus-AI/
+├── .github/
+│   └── workflows/
+│       └── main.yml              # CI/CD: lint, test, deploy to Railway staging
+├── alembic/                      # Database migration scripts
+│   ├── env.py
+│   └── versions/
+├── data/                         # Local data (SQLite db, ChromaDB)
+├── src/
+│   ├── container.py              # IoC container — wires all dependencies
+│   ├── api/
+│   │   ├── server.py             # FastAPI app, middleware, lifespan
+│   │   ├── middleware/
+│   │   │   ├── authentication.py # JWT Bearer token verification
+│   │   │   └── audit_logger.py   # Request ID + timing middleware
+│   │   └── routes/
+│   │       ├── chat.py           # POST /chat, GET /history, GET /tools
+│   │       ├── voice.py          # WebSocket /ws/voice
+│   │       ├── tasks.py          # CRUD /tasks
+│   │       ├── health.py         # GET /health/detailed
+│   │       └── llm.py            # GET /llm/usage
+│   ├── app/
+│   │   └── services/
+│   │       ├── amadeus_service.py # Main orchestrator
+│   │       ├── agent_loop.py      # LLM ↔ tool execution loop
+│   │       ├── tool_registry.py   # Tool discovery and dispatch
+│   │       └── voice_service.py   # STT → LLM → TTS pipeline
+│   ├── core/
+│   │   ├── config.py             # Pydantic-settings: all env vars
+│   │   ├── exceptions.py         # Domain exception hierarchy
+│   │   ├── domain/
+│   │   │   └── models.py         # Pydantic domain models
+│   │   └── interfaces/
+│   │       └── repositories.py   # Abstract repository interfaces
+│   └── infra/
+│       ├── llm/
+│       │   ├── router.py         # Multi-LLM routing with daily quota tracking
+│       │   ├── gemini_adapter.py # Google Gemini adapter
+│       │   └── groq_adapter.py   # Groq adapter
+│       ├── cache/
+│       │   └── cache_service.py  # Redis cache (LLM, TTS, tool, search)
+│       ├── persistence/
+│       │   ├── database.py       # Engine, session factory
+│       │   ├── orm_models.py     # SQLAlchemy ORM models
+│       │   └── repositories/     # Concrete repository implementations
+│       ├── speech/
+│       │   ├── adapters.py       # Whisper STT, pyttsx3 TTS adapters
+│       │   ├── edge_tts_adapter.py # Edge TTS adapter
+│       │   └── tts_router.py     # TTS provider selector
+│       ├── search/
+│       │   └── search_router.py  # Tiered web search (DDG → Brave → Tavily)
+│       └── tools/
+│           ├── base.py           # Tool, ToolCategory, @tool decorator
+│           ├── info_tools.py     # Weather, news, Wikipedia, calculator, etc.
+│           ├── productivity_tools.py # Tasks, Pomodoro, notes, reminders
+│           ├── monitor_tools.py  # CPU, memory, disk, battery monitoring
+│           └── system_tools.py   # File ops, app launch, system commands
+├── tests/
+│   ├── conftest.py               # Pytest fixtures (async DB session, DI container)
+│   └── unit/                     # Unit test modules
+├── Dockerfile                    # Multi-stage build (builder → model_cache → runtime)
+├── docker-compose.yml            # Development and production profiles
+├── pyproject.toml                # Project metadata, dependencies, tool configs
+├── alembic.ini                   # Alembic configuration
+├── .env.example                  # Environment variable documentation template
+└── locustfile.py                 # Load testing configuration (Locust)
+```
+
+---
+
+## 11. Testing
+
+### Run All Tests
 
 ```bash
-ngrok http 8000
-# Then set TELEGRAM_WEBHOOK_URL=https://<ngrok-id>.ngrok.io/api/v1/messaging/telegram
+# Using uv
+uv run pytest tests/ -v --cov=src --cov-report=term-missing
+
+# Using pip
+pytest tests/ -v --cov=src --cov-report=term-missing
+```
+
+### Run by Marker
+
+```bash
+# Unit tests only
+pytest tests/ -m unit -v
+
+# Integration tests (requires running PostgreSQL)
+pytest tests/ -m integration -v
+
+# Skip slow tests
+pytest tests/ -m "not slow" -v
+```
+
+### Coverage Threshold
+
+The project enforces a minimum of 40% coverage in CI (enforced via `--cov-fail-under=40` in GitHub Actions). The `pyproject.toml` locally reports `fail_under = 70` as a target.
+
+### Integration Tests
+
+Integration tests use `testcontainers[postgres]` to spin up a temporary PostgreSQL container. No manual database setup required:
+
+```bash
+pytest tests/ -m integration
+```
+
+### Load Testing
+
+```bash
+locust -f locustfile.py --host http://localhost:8000
 ```
 
 ---
 
-## Known Limitations
+## 12. Deployment Instructions
 
-- **No Frontend**: The system is a pure backend. Interaction is via raw HTTP, Telegram, WhatsApp, or Email.
-- **Async Task Queue**: Long-running background jobs use basic `asyncio.sleep()` — a Celery/ARQ worker queue would be more robust for production.
-- **No WebSocket Streaming**: LLM responses are returned synchronously; real-time streaming requires a WebSocket endpoint.
-- **Voice Locally Intensive**: `faster-whisper` and local TTS consume significant CPU/RAM on hardware without GPU acceleration.
-- **ChromaDB Not Clustered**: ChromaDB runs in-process (local persistent store). For multi-instance deployments, switch to Qdrant or Pinecone.
+### Deploy to Railway (Staging — Automated)
+
+Merging a pull request into the `develop` branch triggers automatic deployment to Railway staging via GitHub Actions. The `RAILWAY_TOKEN` secret must be configured in the repository's GitHub Actions secrets.
+
+### Deploy to Railway (Manual)
+
+```bash
+# Install Railway CLI
+npm install -g @railway/cli
+
+# Login and link
+railway login
+railway link
+
+# Deploy
+railway up
+```
+
+Set the following environment variables in the Railway dashboard:
+- `SECRET_KEY`, `GROQ_API_KEY`, `GEMINI_API_KEY`
+- `DATABASE_URL` (Railway PostgreSQL plugin)
+- `REDIS_URL` (Railway Redis plugin)
+- `ENV=production`, `DEBUG=false`
+
+### Deploy with Docker Compose (Self-hosted)
+
+```bash
+# Production profile (4 Gunicorn workers, resource limits)
+docker-compose --profile prod up -d
+
+# View logs
+docker-compose logs -f api-prod
+
+# Run migrations manually
+docker-compose exec api-prod python -m alembic upgrade head
+```
+
+The Dockerfile is a **3-stage multi-stage build**:
+1. **builder** — installs Python dependencies
+2. **model_cache** — pre-downloads Whisper `small` model (~460 MB) to avoid cold-start latency
+3. **runtime** — minimal production image, non-root user (`amadeus`)
+
+The container starts with:
+```bash
+alembic upgrade head && uvicorn src.api.server:app --host 0.0.0.0 --port 8000 --workers 1
+```
 
 ---
 
-## Future Improvements
+## 13. Known Limitations
 
-- [ ] WebSocket endpoint for streaming real-time LLM/TTS responses
-- [ ] Celery / ARQ task queue for long-running background jobs
-- [ ] Role-based access control (RBAC) for multi-tenant usage
-- [ ] Transition ChromaDB to Qdrant for clustered, multi-instance deployments
-- [ ] Discord and Slack messaging adapters
-- [ ] Admin dashboard (Streamlit UI is scaffolded in optional deps)
-
----
-
-## License
-
-Distributed under the **MIT License**. See [LICENSE.txt](LICENSE.txt) for details.
+- **No user registration or RBAC**: JWT tokens must be generated externally. There is no `/register` or `/login` endpoint. All authenticated users share the same assistant context unless `session_id` is explicitly scoped.
+- **Single-instance agent loop**: The `LLMRouter` usage counters are stored in memory and reset on process restart. Running multiple workers without a shared Redis counter will cause quota tracking inconsistencies.
+- **Voice WebSocket — no auth on upgrade**: WebSocket JWT enforcement is dependent on proper implementation in the client handshake; the current server accepts connections and errors downstream if token is missing.
+- **ChromaDB semantic memory — experimental**: The vector memory (`CHROMA_ENABLED=true`) is not integrated into the core agent loop response pipeline. It exists as infrastructure but is not queried during inference.
+- **Messaging integrations (Telegram, WhatsApp, Email) — not yet implemented**: Configuration variables exist in `.env.example` but no corresponding route or handler code was found in the scanned source.
+- **OpenAI adapter**: Listed in `LLMRouter` and `.env.example` but no `openai_adapter.py` was found in `src/infra/llm/`. The fallback will log an error if triggered.
+- **Test coverage below target**: GitHub Actions enforces 40% coverage. The local `pyproject.toml` sets a target of 70%, which is not currently met based on prior test run analysis.
+- **Local TTS/STT resource usage**: Running `faster-whisper` (`small` model) and Edge TTS simultaneously on a single CPU core may cause response latency of 1–5 seconds per voice round-trip.
 
 ---
 
-<div align="center">
-Built by <a href="https://github.com/adityatawde9699">Aditya Tawde</a> · <a href="https://github.com/adityatawde9699/Amadeus-AI/issues">Report an Issue</a>
-</div>
+## 14. Future Improvements
+
+- **OpenAI adapter implementation**: Complete the `openai_adapter.py` to enable the emergency fallback route in `LLMRouter`.
+- **User authentication system**: Implement `/auth/register`, `/auth/login`, and `/auth/refresh` endpoints with user-scoped session isolation.
+- **Shared quota tracking**: Move `LLMRouter` daily counters to Redis to support multi-worker production deployments correctly.
+- **ChromaDB integration into agent loop**: Wire the semantic memory layer into the `AgentLoop` context-building step to enable long-term recall during inference.
+- **Messaging integrations**: Implement Telegram, WhatsApp (Meta Cloud API), and email channel handlers referenced in `.env.example`.
+- **Streaming LLM responses**: Replace batch LLM responses with server-sent events (SSE) or WebSocket streaming for lower time-to-first-token.
+- **Improve test coverage**: Add integration tests for tool execution, LLM routing fallback behavior, and the voice pipeline to reach the 70% coverage target.
+- **RBAC**: Add role-based access control to support multi-tenant usage with per-user tool restrictions.
+
+---
+
+## 15. License
+
+This project is licensed under the **Apache License, Version 2.0**.
+
+See [LICENSE.txt](LICENSE.txt) for the full license text.
+
+```
+Copyright 2024 Aditya Tawde
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+```
+
+---
+
+## 16. Author
+
+**Aditya Tawde**
+
+- GitHub: [@adityatawde9699](https://github.com/adityatawde9699)
+- Email: adityatawde9699@gmail.com
+- Repository: [github.com/adityatawde9699/Amadeus-AI](https://github.com/adityatawde9699/Amadeus-AI)
+
+---
+
+## 17. Screenshots / Demo
+
+*Add demo recordings, architecture diagrams, or screenshots of the API in action here.*
+
+> For API exploration, run the server with `DEBUG=true` and visit `http://localhost:8000/docs` for the interactive OpenAPI interface.

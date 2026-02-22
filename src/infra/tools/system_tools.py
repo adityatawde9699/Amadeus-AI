@@ -23,67 +23,12 @@ from src.infra.tools.base import Tool, ToolCategory, tool
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
-# APPLICATION MAPPINGS
-# =============================================================================
+from src.app.services.container import get_container
+from src.infra.system.app_registry import AppRegistry
 
-WINDOWS_APPS = {
-    "brave": "brave.exe", "calculator": "calc.exe", "chrome": "chrome.exe",
-    "edge": "msedge.exe", "telegram": "Telegram.exe", "vlc": "vlc.exe",
-    "notepad": "notepad.exe", "file explorer": "explorer.exe", "word": "winword.exe",
-    "excel": "excel.exe", "powerpoint": "powerpnt.exe", "photoshop": "Photoshop.exe",
-    "spotify": "Spotify.exe", "slack": "slack.exe", "zoom": "Zoom.exe",
-    "firefox": "firefox.exe", "opera": "opera.exe", "teams": "Teams.exe",
-    "onenote": "onenote.exe", "outlook": "outlook.exe", "skype": "skype.exe",
-    "steam": "steam.exe", "discord": "Discord.exe", "vscode": "Code.exe",
-    "visual studio code": "Code.exe", "code": "Code.exe",
-    "pycharm": "pycharm64.exe", "sublime text": "sublime_text.exe",
-    "postman": "Postman.exe", "docker": "Docker Desktop.exe",
-}
-
-MAC_APPS = {
-    "calculator": "Calculator", "chrome": "Google Chrome", "safari": "Safari",
-    "telegram": "Telegram", "vlc": "VLC", "textedit": "TextEdit",
-    "finder": "Finder", "word": "Microsoft Word", "excel": "Microsoft Excel",
-    "spotify": "Spotify", "slack": "Slack", "zoom": "zoom.us",
-    "firefox": "Firefox", "discord": "Discord", "vscode": "Visual Studio Code",
-    "terminal": "Terminal", "docker": "Docker",
-}
-
-LINUX_APPS = {
-    "calculator": "gnome-calculator", "chrome": "google-chrome",
-    "firefox": "firefox", "telegram": "telegram-desktop", "vlc": "vlc",
-    "gedit": "gedit", "file explorer": "nautilus", "spotify": "spotify",
-    "slack": "slack", "discord": "discord", "vscode": "code",
-    "terminal": "gnome-terminal", "docker": "docker",
-}
-
-
-def _get_app_executable(app_name: str) -> str | None:
-    """Get app executable name based on platform.
-    
-    Returns only apps from the predefined allow-list.
-    Returns None for unknown apps to prevent shell injection.
-    """
-    app_dict = {
-        "Windows": WINDOWS_APPS,
-        "Darwin": MAC_APPS,
-        "Linux": LINUX_APPS,
-    }.get(platform.system(), {})
-    
-    app_lower = app_name.lower()
-    
-    # Exact match
-    if app_lower in app_dict:
-        return app_dict[app_lower]
-    
-    # Partial match
-    for key, value in app_dict.items():
-        if key in app_lower or app_lower in key:
-            return value
-    
-    # SECURITY: Return None for unknown apps — never pass raw user input to shell
-    return None
+# Initialize global registry locally for tools since tool execution happens statically
+# In a fully DI environment, this might be injected into ToolConfig
+app_registry = AppRegistry()
 
 
 # =============================================================================
@@ -97,35 +42,29 @@ def _get_app_executable(app_name: str) -> str | None:
     parameters={"app_name": {"type": "string", "description": "Application name to open"}}
 )
 def open_program(app_name: str | None = None, program_name: str | None = None, **kwargs: Any) -> str:
-    """Open an application with verification."""
+    """Open an application using the dynamic AppRegistry with fuzzy matching."""
     target_app = app_name or program_name or kwargs.get("name")
     if not target_app:
         return "Error: No application name provided."
     
-    app_exec = _get_app_executable(target_app)
+    app_exec = app_registry.get_executable(target_app)
     if not app_exec:
-        # SECURITY: Only allow apps in the predefined allow-list
-        available = ", ".join(sorted({
-            "Windows": WINDOWS_APPS,
-            "Darwin": MAC_APPS,
-            "Linux": LINUX_APPS,
-        }.get(platform.system(), {}).keys())[:10])
-        return f"Cannot open '{target_app}'. Not in allow-list. Try: {available}..."
+        return f"Cannot find '{target_app}' on this system. You may need to trigger a system scan using `scan_system_applications`."
     
     logger.info(f"Opening application: {target_app} ({app_exec})")
     
     try:
         if platform.system() == "Windows":
-            # Use os.startfile (no shell) or Popen with explicit list (no shell=True)
             try:
-                os.startfile(app_exec)  # noqa: S606 — only allow-listed executables reach here
+                os.startfile(app_exec)  # noqa: S606
             except (FileNotFoundError, OSError):
                 subprocess.Popen([app_exec], shell=False)  # noqa: S603
         elif platform.system() == "Darwin":
-            subprocess.Popen(["open", "-a", app_exec])  # noqa: S603
+            # On Mac, app_exec from registry is absolute path to .app bundle
+            subprocess.Popen(["open", app_exec])  # noqa: S603
         elif platform.system() == "Linux":
-            # shell=False: app_exec is from allow-list, safe to pass as list
-            subprocess.Popen([app_exec], shell=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)  # noqa: S603
+            # On Linux, app_exec is often the stem of the .desktop file
+            subprocess.Popen(["gtk-launch", app_exec], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)  # noqa: S603
         else:
             return f"Unsupported operating system: {platform.system()}"
         
@@ -134,6 +73,21 @@ def open_program(app_name: str | None = None, program_name: str | None = None, *
     except Exception as e:
         logger.error(f"Error launching app {target_app}: {e}")
         return f"Failed to open {target_app}: {e}"
+
+@tool(
+    name="scan_system_applications",
+    description="Forces a deep scan of the local OS to find newly installed applications and rebuild the app cache. Trigger: 'scan apps', 'find new apps'",
+    category=ToolCategory.SYSTEM,
+    parameters={}
+)
+def scan_system_applications(**kwargs: Any) -> str:
+    """Re-scans the system to update the application registry."""
+    try:
+        logger.info("Executing system-wide application scan manually via tool.")
+        discovered = app_registry.scan_and_cache()
+        return f"Successfully scanned the system and found {len(discovered)} applications."
+    except Exception as e:
+        return f"Failed to scan system applications: {e}"
 
 
 @tool(

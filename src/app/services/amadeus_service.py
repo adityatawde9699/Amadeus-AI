@@ -25,7 +25,9 @@ import numpy as np
 from src.core.config import Settings, get_settings
 from src.app.services.tool_registry import ToolRegistry
 from src.infra.tools.base import Tool, ToolCategory, ToolExecutor
-from src.infra.memory_service import ChromaMemoryService
+from src.infra.memory_service import QdrantMemoryService
+from src.infra.messaging.telegram_adapter import TelegramAdapter
+from src.infra.messaging.whatsapp_adapter import WhatsAppAdapter
 
 
 logger = logging.getLogger(__name__)
@@ -207,7 +209,7 @@ class AmadeusService:
         self.tool_registry = tool_registry or ToolRegistry()
 
         # Long-term semantic memory (ChromaDB + Gemini embeddings)
-        self.memory_service = ChromaMemoryService(settings=self.settings)
+        self.memory_service = QdrantMemoryService(settings=self.settings)
         if self.memory_service.is_enabled:
             logger.info("Long-term memory ENABLED — ChromaDB ready (%d stored memories)", self.memory_service.memory_count)
         else:
@@ -220,6 +222,21 @@ class AmadeusService:
         
         # Build identity prompt
         self.identity_prompt = self._build_identity_prompt()
+        
+        # Initialize Agent Orchestrator (holds the background worker loop)
+        from src.app.services.agent_loop import AgentOrchestrator
+        llm_generate = None
+        if self.model:
+            def _generate(prompt: str) -> str:
+                response = self.model.generate_content(prompt)
+                return response.text if hasattr(response, "text") else str(response)
+            llm_generate = _generate
+
+        self.orchestrator = AgentOrchestrator(
+            tool_registry=self.tool_registry,
+            tool_executor=self.tool_executor,
+            llm_generate=llm_generate
+        )
         
         logger.info(f"AmadeusService initialized with {len(self.tool_registry)} tools, session={self.session_id[:8]}...")
     
@@ -273,6 +290,7 @@ class AmadeusService:
             from src.infra.tools.system_tools import get_system_tools
             from src.infra.tools.monitor_tools import get_monitor_tools
             from src.infra.tools.productivity_tools import get_productivity_tools
+            from src.infra.tools.agent_tools import get_agent_tools
             
             for tool in get_info_tools():
                 self.tool_registry.register(tool)
@@ -281,6 +299,8 @@ class AmadeusService:
             for tool in get_monitor_tools():
                 self.tool_registry.register(tool)
             for tool in get_productivity_tools():
+                self.tool_registry.register(tool)
+            for tool in get_agent_tools():
                 self.tool_registry.register(tool)
             
             logger.info(f"Registered {len(self.tool_registry)} tools from modules")
@@ -293,6 +313,7 @@ class AmadeusService:
 
 Personality: {self.settings.ASSISTANT_PERSONALITY}
 Current time: {{current_time}}
+Current Session ID: {{session_id}}
 Conversation context: {{context_summary}}
 
 Guidelines:
@@ -300,7 +321,8 @@ Guidelines:
 - Don't introduce yourself unless asked
 - When using tools, explain what you're doing briefly
 - If a task fails, suggest alternatives
-- Adapt tone based on task urgency"""
+- Adapt tone based on task urgency
+- Use the schedule_future_task tool to remind yourself to follow up proactively"""
     
     # =========================================================================
     # TOOL SELECTION (ML CLASSIFIER)
@@ -441,32 +463,30 @@ Guidelines:
     
     async def _process_with_agent(self, user_input: str) -> tuple[str, list[str]]:
         """
-        Process a multi-step query using the ReAct agent.
+        Process a multi-step query using the Agent Orchestrator.
         """
-        from src.app.services.agent_loop import ReActAgent
-        
-        # Create LLM generate function if Gemini is available
-        llm_generate = None
-        if self.model:
-            def _generate(prompt: str) -> str:
-                response = self.model.generate_content(prompt)
-                return response.text if hasattr(response, "text") else str(response)
-            llm_generate = _generate
-        
-        agent = ReActAgent(
-            tool_registry=self.tool_registry,
-            tool_executor=self.tool_executor,
-            llm_generate=llm_generate,
-            max_iterations=5,
-            verbose=self.debug_mode,
-        )
-        
         context = self.conversation_manager.get_context_summary()
-        result = await agent.run(task=user_input, context=context)
+        
+        # Submit task to the background Orchestrator queue
+        result = await self.orchestrator.execute(task=user_input, context=context)
         
         if result.success:
             return (result.final_answer, result.tools_used)
         return (result.error or "I couldn't complete that task.", [])
+    
+    async def handle_background_event(self, event_prompt: str) -> None:
+        """
+        Handle a background event prompt silently. Process proactive agent logic.
+        """
+        try:
+            # We don't add the background prompt to the user history
+            # Just push it to the agent directly.
+            response, tools_used = await self._process_with_agent(event_prompt)
+            # The agent executes tools. If it uses schedule_future_task or send_outbound_message, 
+            # they are executed within _process_with_agent.
+            logger.info(f"Background event processed. Tools used: {tools_used}")
+        except Exception as e:
+            logger.error(f"Error handling background event: {e}")
     
     
     async def _process_command_internal(self, user_input: str) -> tuple[str, str | None]:
@@ -506,6 +526,7 @@ Guidelines:
 
         system_prompt = self.identity_prompt.format(
             current_time=current_time,
+            session_id=self.session_id,
             context_summary=context_summary,
         )
         if memory_context:
@@ -610,6 +631,7 @@ Guidelines:
 
         prompt = f"""{self.identity_prompt.format(
             current_time=current_time,
+            session_id=self.session_id,
             context_summary=self.conversation_manager.get_context_summary(),
         )}
 {memory_context}
@@ -657,4 +679,56 @@ Provide a natural, concise response that incorporates this result. Don't just re
         """Clear conversation history (from cache, DB, and long-term vector memory)."""
         await self.conversation_manager.clear()
         await self.memory_service.clear_session(self.session_id)
+
+    async def shutdown(self) -> None:
+        """Cleanup orchestrator background tasks."""
+        if hasattr(self, 'orchestrator'):
+            await self.orchestrator.shutdown()
+
+    # =========================================================================
+    # OUTBOUND MESSAGING (SCHEDULER / PROACTIVE)
+    # =========================================================================
+    
+    async def send_outbound_message(self, user_id: str, platform: str, message: str) -> bool:
+        """
+        Send an outbound message proactively (e.g., from a background task or cron job).
+        
+        Args:
+            user_id: The ID of the user on the target platform
+            platform: 'telegram' or 'whatsapp'
+            message: The content of the message to send
+            
+        Returns:
+            bool: True if sent successfully, False otherwise
+        """
+        try:
+            logger.info(f"Preparing outbound {platform} message to {user_id}...")
+            
+            # Store it in the conversation history as an assistant message
+            # If the user_id corresponds to the active session_id, this keeps context sync'd
+            await self.conversation_manager.add(
+                role="assistant", 
+                content=message, 
+                metadata={"outbound": True, "platform": platform}
+            )
+            
+            # Dispatch to the correct adapter
+            platform_lower = platform.lower()
+            if platform_lower == "telegram":
+                adapter = TelegramAdapter(settings=self.settings)
+                await adapter.send_message(user_id, message)
+                return True
+                
+            elif platform_lower == "whatsapp":
+                adapter = WhatsAppAdapter(settings=self.settings)
+                await adapter.send_message(user_id, message)
+                return True
+                
+            else:
+                logger.error(f"Unsupported outbound platform: {platform}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Failed to send outbound message to {user_id} on {platform}: {e}", exc_info=True)
+            return False
 
