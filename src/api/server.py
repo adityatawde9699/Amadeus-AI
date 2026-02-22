@@ -32,6 +32,11 @@ from src.core.config import get_settings, validate_settings
 from src.core.exceptions import AmadeusError
 from src.infra.persistence.database import close_db, init_db
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+# Global scheduler instance
+scheduler = AsyncIOScheduler()
+
 
 structlog.configure(
     processors=[
@@ -83,12 +88,48 @@ async def lifespan(app: FastAPI):
     # Initialize database
     await init_db()
     
+    # Initialize and start APScheduler
+    logger.info("Initializing background task scheduler...")
+    
+    # Example: Registering a sample job (replace 'example_user_id' with real IDs retrieved from DB)
+    from src.app.services.amadeus_service import AmadeusService
+    
+    async def sample_morning_greeting():
+        """A sample cron job to send proactive morning greetings."""
+        logger.info("Executing scheduled job: sample_morning_greeting")
+        # In a real scenario, loop through active user IDs from the database
+        # svc = AmadeusService()
+        # await svc.send_outbound_message(user_id="example_telegram_id", platform="telegram", message="Good morning! Here is your daily briefing.")
+    
+    scheduler.add_job(
+        sample_morning_greeting, 
+        'cron', 
+        hour=8, 
+        minute=0, 
+        id="morning_greeting_job",
+        replace_existing=True
+    )
+    
+    scheduler.start()
+    
+    # Initialize Autonomous Observation Loop
+    logger.info("Initializing Autonomous Observation Loop...")
+    from src.app.services.autonomous_loop import AutonomousObservationLoop
+    observation_loop = AutonomousObservationLoop(
+        interval_minutes=60, 
+        session_ids=["system_default_session"]
+    )
+    await observation_loop.start()
+    
     logger.info(f"API ready at http://{settings.API_HOST}:{settings.API_PORT}")
     
     yield
     
     # Shutdown
     logger.info("Shutting down API...")
+    observation_loop.stop()
+    if scheduler.running:
+        scheduler.shutdown(wait=False)
     await close_db()
     logger.info("Shutdown complete")
 
@@ -217,19 +258,29 @@ async def root():
 # =============================================================================
 
 # Import and register route modules
-from src.api.routes import tasks, health, chat, voice, llm, webhooks  # noqa: E402
+from src.api.routes import tasks, health, chat, voice, llm, webhooks, websocket, system_admin  # noqa: E402
 from src.api.middleware.authentication import verify_jwt_token
+from src.api.middleware.rbac import RequireUser
 from fastapi import Depends
 
 # Disable auth for health + LLM usage, enable for everything else
 app.include_router(health.router, prefix="/api/v1", tags=["System"])
 app.include_router(llm.router, prefix="/api/v1", tags=["LLM"])  # No auth — informational
-app.include_router(tasks.router, prefix="/api/v1", tags=["Tasks"], dependencies=[Depends(verify_jwt_token)])
-app.include_router(chat.router, prefix="/api/v1", tags=["Chat"], dependencies=[Depends(verify_jwt_token)])
-app.include_router(voice.router, prefix="/api/v1", tags=["Voice"], dependencies=[Depends(verify_jwt_token)])
+
+# Protected routes (Require basic User role)
+protected_deps = [Depends(verify_jwt_token), Depends(RequireUser)]
+app.include_router(tasks.router, prefix="/api/v1", tags=["Tasks"], dependencies=protected_deps)
+app.include_router(chat.router, prefix="/api/v1", tags=["Chat"], dependencies=protected_deps)
+app.include_router(voice.router, prefix="/api/v1", tags=["Voice"], dependencies=protected_deps)
+
+# Admin only routes
+app.include_router(system_admin.router, prefix="/api/v1", tags=["Admin System"])
 
 # Webhooks use their own secret-token validation — no JWT
 app.include_router(webhooks.router, prefix="/api/v1", tags=["Webhooks"])
+
+# WebSocket Endpoint (no HTTP prefix usually needed)
+app.include_router(websocket.router, tags=["Realtime"])
 
 
 # =============================================================================

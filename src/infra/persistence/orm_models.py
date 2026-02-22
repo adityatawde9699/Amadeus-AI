@@ -32,6 +32,12 @@ from src.infra.persistence.database import Base
 # ENUMS (SQLAlchemy compatible)
 # =============================================================================
 
+class UserRoleDB(str, enum.Enum):
+    """RBAC Role enum for database."""
+    ADMIN = "admin"
+    USER = "user"
+    GUEST = "guest"
+
 class TaskStatusDB(str, enum.Enum):
     """Task status enum for database."""
     PENDING = "pending"
@@ -55,6 +61,34 @@ class EventStatusDB(str, enum.Enum):
 # =============================================================================
 # ORM MODELS
 # =============================================================================
+
+class UserORM(Base):
+    """ORM model for users and RBAC."""
+    
+    __tablename__ = "users"
+    
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    username = Column(String(50), unique=True, index=True, nullable=False)
+    email = Column(String(255), unique=True, index=True, nullable=False)
+    hashed_password = Column(String(255), nullable=False)
+    
+    # RBAC Fields
+    role = Column(
+        SAEnum(UserRoleDB),
+        default=UserRoleDB.USER,
+        nullable=False,
+    )
+    tenant_id = Column(String(36), index=True, nullable=True) # Groups users together
+    
+    is_active = Column(Boolean, default=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    def __repr__(self) -> str:
+        return f"<User(id={self.id}, username={self.username}, role={self.role.value})>"
 
 class TaskORM(Base):
     """ORM model for tasks/todos."""

@@ -1,18 +1,18 @@
 """
 Long-Term Semantic Memory Service for Amadeus AI.
 
-Uses ChromaDB as a local, persistent vector database and Google Gemini's
+Uses Qdrant as a local, persistent vector database and Google Gemini's
 embedding API to encode and retrieve memories semantically.
 
 Architecture:
 - Every user/assistant message is embedded and stored with metadata.
 - On each new query, the top-K most semantically similar past messages are
   retrieved via cosine similarity and injected into the LLM prompt.
-- Graceful degradation: if ChromaDB or embeddings fail, the service logs
+- Graceful degradation: if Qdrant or embeddings fail, the service logs
   the error and returns empty results (memory simply disabled, not crashed).
 
 Usage:
-    memory = ChromaMemoryService(settings)
+    memory = QdrantMemoryService(settings)
     await memory.store(session_id="abc", role="user", text="I love astronomy")
     memories = await memory.retrieve(query="What do I enjoy?", top_k=5)
 """
@@ -59,12 +59,12 @@ class MemoryResult:
 
 
 # =============================================================================
-# CHROMA MEMORY SERVICE
+# QDRANT MEMORY SERVICE
 # =============================================================================
 
-class ChromaMemoryService:
+class QdrantMemoryService:
     """
-    Long-term semantic memory powered by ChromaDB + Gemini embeddings.
+    Long-term semantic memory powered by Qdrant + Gemini embeddings.
 
     Stores all conversation messages as vector embeddings for cross-session
     semantic retrieval. This enables the assistant to recall preferences,
@@ -74,51 +74,64 @@ class ChromaMemoryService:
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
         self._client: Any = None
-        self._collection: Any = None
         self._embed_model: Any = None
+        # Reuse CHROMA settings for Qdrant location/collection name
         self._enabled = self._settings.CHROMA_ENABLED
         self._initialized = False
 
+    async def initialize(self) -> None:
+        """Call this async method before using the service."""
         if self._enabled:
-            self._setup()
+            await self._setup()
 
     # -------------------------------------------------------------------------
     # Setup / Initialization
     # -------------------------------------------------------------------------
 
-    def _setup(self) -> None:
-        """Initialize ChromaDB client and Gemini embedding model."""
+    async def _setup(self) -> None:
+        """Initialize Qdrant async client and Gemini embedding model."""
         try:
-            import chromadb  # type: ignore[import-untyped]
-            from chromadb.config import Settings as ChromaSettings  # type: ignore[import-untyped]
+            from qdrant_client import AsyncQdrantClient
+            from qdrant_client.models import Distance, VectorParams
+            
+            # Using the same persist path but handled by Qdrant
+            import os
+            os.makedirs(self._settings.CHROMA_PERSIST_DIR, exist_ok=True)
 
-            self._client = chromadb.PersistentClient(
-                path=self._settings.CHROMA_PERSIST_DIR,
-                settings=ChromaSettings(anonymized_telemetry=False),
-            )
-            self._collection = self._client.get_or_create_collection(
-                name=self._settings.CHROMA_COLLECTION_NAME,
-                metadata={"hnsw:space": "cosine"},
-            )
+            self._client = AsyncQdrantClient(path=self._settings.CHROMA_PERSIST_DIR)
+            
+            # Setup embedding model first to get expected dimension
+            self._setup_embedding_model()
+            
+            if not self._enabled:
+                return
+
+            collection_name = self._settings.CHROMA_COLLECTION_NAME
+            
+            # Check if collection exists
+            if not await self._client.collection_exists(collection_name=collection_name):
+                # We need to know the dimension. Gemini embeddings are typically 768.
+                await self._client.create_collection(
+                    collection_name=collection_name,
+                    vectors_config=VectorParams(size=768, distance=Distance.COSINE),
+                )
+            
             logger.info(
-                "ChromaDB memory initialized — collection=%s, persist_dir=%s",
-                self._settings.CHROMA_COLLECTION_NAME,
+                "Qdrant memory initialized — collection=%s, persist_dir=%s",
+                collection_name,
                 self._settings.CHROMA_PERSIST_DIR,
             )
+            self._initialized = True
         except Exception as exc:
-            logger.error("ChromaDB setup failed — memory disabled: %s", exc)
+            logger.error("Qdrant setup failed — memory disabled: %s", exc)
             self._enabled = False
-            return
-
-        self._setup_embedding_model()
-        self._initialized = self._enabled
 
     def _setup_embedding_model(self) -> None:
         """Configure Gemini embedding model, or fall back to disabled."""
         if not self._settings.GEMINI_API_KEY:
             logger.warning(
                 "GEMINI_API_KEY not set — semantic memory embedding disabled. "
-                "Messages will not be stored in ChromaDB."
+                "Messages will not be stored in Qdrant."
             )
             self._enabled = False
             return
@@ -133,43 +146,28 @@ class ChromaMemoryService:
             self._enabled = False
 
     # -------------------------------------------------------------------------
-    # Embedding Helper
+    # Async Embedding Helpers
     # -------------------------------------------------------------------------
 
-    def _embed(self, text: str) -> list[float] | None:
-        """
-        Embed text synchronously using Gemini's embed_content API.
-
-        Returns None on failure so callers can skip storage gracefully.
-        """
+    async def _embed_async(self, text: str, task_type: str = "retrieval_document") -> list[float] | None:
+        """Embed text asynchronously using an executor."""
         if not self._enabled or not self._embed_model:
             return None
-        try:
+        
+        def _sync_embed():
             import google.generativeai as genai  # type: ignore[import-untyped]
             result = genai.embed_content(
                 model=self._embed_model,
                 content=text,
-                task_type="retrieval_document",
+                task_type=task_type,
             )
             return result["embedding"]
+
+        try:
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(None, _sync_embed)
         except Exception as exc:
             logger.warning("Embedding failed for text snippet: %s", exc)
-            return None
-
-    def _embed_query(self, text: str) -> list[float] | None:
-        """Embed text for a query (retrieval_query task type)."""
-        if not self._enabled or not self._embed_model:
-            return None
-        try:
-            import google.generativeai as genai  # type: ignore[import-untyped]
-            result = genai.embed_content(
-                model=self._embed_model,
-                content=text,
-                task_type="retrieval_query",
-            )
-            return result["embedding"]
-        except Exception as exc:
-            logger.warning("Query embedding failed: %s", exc)
             return None
 
     # -------------------------------------------------------------------------
@@ -179,97 +177,73 @@ class ChromaMemoryService:
     async def store(self, session_id: str, role: str, text: str) -> bool:
         """
         Embed and persist a message into the vector store.
-
-        Args:
-            session_id: The current conversation session identifier.
-            role: 'user' or 'assistant'.
-            text: The message content to store.
-
-        Returns:
-            True if stored successfully, False otherwise.
         """
-        if not self._enabled:
+        if not self._enabled or not self._initialized:
             return False
 
-        # Run blocking embedding + ChromaDB write in a thread
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, self._store_sync, session_id, role, text)
-
-    def _store_sync(self, session_id: str, role: str, text: str) -> bool:
-        """Synchronous store implementation (runs in executor thread)."""
-        embedding = self._embed(text)
+        embedding = await self._embed_async(text, "retrieval_document")
         if embedding is None:
             return False
 
         # Build a stable, unique document ID
         timestamp_str = datetime.now(timezone.utc).isoformat()
-        doc_id = hashlib.sha256(
+        id_str = hashlib.sha256(
             f"{session_id}:{role}:{text}:{timestamp_str}".encode()
-        ).hexdigest()[:32]
+        ).hexdigest()
 
         try:
-            self._collection.upsert(
-                ids=[doc_id],
-                embeddings=[embedding],
-                documents=[text],
-                metadatas=[{
-                    "session_id": session_id,
-                    "role": role,
-                    "timestamp": timestamp_str,
-                }],
+            from qdrant_client.models import PointStruct
+            
+            await self._client.upsert(
+                collection_name=self._settings.CHROMA_COLLECTION_NAME,
+                points=[
+                    PointStruct(
+                        id=id_str,
+                        vector=embedding,
+                        payload={
+                            "session_id": session_id,
+                            "role": role,
+                            "text": text,
+                            "timestamp": timestamp_str,
+                        }
+                    )
+                ]
             )
-            logger.debug("Memory stored — doc_id=%s, role=%s", doc_id, role)
+            logger.debug("Memory stored — id=%s, role=%s", id_str[:8], role)
             return True
         except Exception as exc:
-            logger.warning("ChromaDB upsert failed: %s", exc)
+            logger.warning("Qdrant upsert failed: %s", exc)
             return False
 
     async def retrieve(self, query: str, top_k: int = 5) -> list[MemoryResult]:
         """
         Semantically retrieve the most relevant past messages for a query.
-
-        Args:
-            query: The user's current input or topic to search for.
-            top_k: Maximum number of past memories to return.
-
-        Returns:
-            List of MemoryResult objects, sorted by relevance (closest first).
         """
-        if not self._enabled:
+        if not self._enabled or not self._initialized:
             return []
 
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, self._retrieve_sync, query, top_k)
-
-    def _retrieve_sync(self, query: str, top_k: int) -> list[MemoryResult]:
-        """Synchronous retrieve implementation (runs in executor thread)."""
-        embedding = self._embed_query(query)
+        embedding = await self._embed_async(query, "retrieval_query")
         if embedding is None:
             return []
 
         try:
-            results = self._collection.query(
-                query_embeddings=[embedding],
-                n_results=min(top_k, max(1, self._collection.count())),
-                include=["documents", "metadatas", "distances"],
+            results = await self._client.search(
+                collection_name=self._settings.CHROMA_COLLECTION_NAME,
+                query_vector=embedding,
+                limit=top_k,
+                with_payload=True
             )
 
             memories: list[MemoryResult] = []
-            if not results or not results.get("documents"):
-                return memories
-
-            documents = results["documents"][0]
-            metadatas = results["metadatas"][0]
-            distances = results["distances"][0]
-
-            for doc, meta, dist in zip(documents, metadatas, distances):
+            for hit in results:
+                payload = hit.payload or {}
                 memories.append(
                     MemoryResult(
-                        session_id=meta.get("session_id", ""),
-                        role=meta.get("role", "unknown"),
-                        text=doc,
-                        timestamp=meta.get("timestamp", ""),
-                        distance=float(dist),
+                        session_id=payload.get("session_id", ""),
+                        role=payload.get("role", "unknown"),
+                        text=payload.get("text", ""),
+                        timestamp=payload.get("timestamp", ""),
+                        distance=hit.score, # Qdrant returns similarity score
                     )
                 )
 
@@ -277,39 +251,49 @@ class ChromaMemoryService:
             return memories
 
         except Exception as exc:
-            logger.warning("ChromaDB query failed: %s", exc)
+            logger.warning("Qdrant search failed: %s", exc)
             return []
 
     async def clear_session(self, session_id: str) -> int:
         """
         Remove all stored memories for a specific session.
-
-        Args:
-            session_id: The session to purge.
-
-        Returns:
-            Number of documents deleted.
         """
-        if not self._enabled:
+        if not self._enabled or not self._initialized:
             return 0
 
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, self._clear_session_sync, session_id)
-
-    def _clear_session_sync(self, session_id: str) -> int:
-        """Synchronous clear (runs in executor thread)."""
         try:
-            existing = self._collection.get(
-                where={"session_id": session_id},
-                include=[],
+            from qdrant_client.models import Filter, FieldCondition, MatchValue
+            
+            # Count how many we are about to delete
+            count_result = await self._client.count(
+                collection_name=self._settings.CHROMA_COLLECTION_NAME,
+                count_filter=Filter(
+                    must=[
+                        FieldCondition(
+                            key="session_id",
+                            match=MatchValue(value=session_id)
+                        )
+                    ]
+                )
             )
-            ids_to_delete = existing.get("ids", [])
-            if ids_to_delete:
-                self._collection.delete(ids=ids_to_delete)
-                logger.info("Cleared %d memories for session=%s", len(ids_to_delete), session_id[:8])
-            return len(ids_to_delete)
+            count = count_result.count
+
+            if count > 0:
+                await self._client.delete(
+                    collection_name=self._settings.CHROMA_COLLECTION_NAME,
+                    points_selector=Filter(
+                        must=[
+                            FieldCondition(
+                                key="session_id",
+                                match=MatchValue(value=session_id)
+                            )
+                        ]
+                    )
+                )
+                logger.info("Cleared %d memories for session=%s", count, session_id[:8])
+            return count
         except Exception as exc:
-            logger.warning("ChromaDB session clear failed: %s", exc)
+            logger.warning("Qdrant session clear failed: %s", exc)
             return 0
 
     @property
@@ -320,23 +304,24 @@ class ChromaMemoryService:
     @property
     def memory_count(self) -> int:
         """Total number of stored memories across all sessions."""
-        if not self._enabled or not self._collection:
+        if not self._enabled or not self._initialized:
+            return 0
+        # Since this is an async client now, memory_count shouldn't be a synchronous property
+        # that blocks. For safety in synchronous environments, returning 0.
+        return 0
+
+    async def get_memory_count(self) -> int:
+        if not self._enabled or not self._initialized:
             return 0
         try:
-            return self._collection.count()
+            count = await self._client.count(self._settings.CHROMA_COLLECTION_NAME)
+            return count.count
         except Exception:
             return 0
 
     def format_for_prompt(self, memories: list[MemoryResult], max_chars: int = 1000) -> str:
         """
         Format retrieved memories as a readable string for LLM injection.
-
-        Args:
-            memories: List of MemoryResult from retrieve().
-            max_chars: Soft character cap to avoid bloating the prompt.
-
-        Returns:
-            Formatted multi-line string for the system prompt.
         """
         if not memories:
             return ""

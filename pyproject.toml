@@ -31,6 +31,7 @@ dependencies = [
     # Web / API
     "fastapi>=0.118.0",
     "uvicorn[standard]>=0.37.0",
+    "apscheduler>=3.10.0",
     
     # Database
     "sqlalchemy[asyncio]>=2.0.0",
@@ -51,6 +52,7 @@ dependencies = [
     
     # Utilities / System
     "psutil>=5.9.0",
+    "rapidfuzz>=3.6.0",
     
     # Image / OCR
     "Pillow>=10.0.0",
@@ -83,7 +85,7 @@ dependencies = [
     "beautifulsoup4>=4.12.0",
 
     # Vector Memory (Long-term semantic recall)
-    "chromadb>=0.5.0",
+    "qdrant-client>=1.7.0",
 
     # Telegram Bot (v20+ async, webhook-native)
     "python-telegram-bot[webhooks]>=20.7",

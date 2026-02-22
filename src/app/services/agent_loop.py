@@ -387,20 +387,158 @@ Your response:"""
         return " ".join(parts)
 
 
+from typing import Callable, Optional
+
 # =============================================================================
-# FACTORY FUNCTION
+# SPECIALIZED SUB-AGENTS
 # =============================================================================
 
-def create_react_agent(
-    tool_registry: ToolRegistry,
-    tool_executor: ToolExecutor,
-    llm_generate: Callable[[str], str] | None = None,
-    max_iterations: int = 5,
-) -> ReActAgent:
-    """Create a ReAct agent with the given configuration."""
-    return ReActAgent(
-        tool_registry=tool_registry,
-        tool_executor=tool_executor,
-        llm_generate=llm_generate,
-        max_iterations=max_iterations,
-    )
+class SystemAgent(ReActAgent):
+    """
+    Specialized agent for OS-level interactions and system controls.
+    """
+    def __init__(self, tool_registry: ToolRegistry, tool_executor: ToolExecutor, llm_generate: Callable[[str], str] | None = None):
+        super().__init__(
+            tool_registry=tool_registry,
+            tool_executor=tool_executor,
+            llm_generate=llm_generate,
+            max_iterations=3,
+        )
+
+class ResearchAgent(ReActAgent):
+    """
+    Specialized agent for gathering information, checking the weather,
+    getting news, and analyzing documents.
+    """
+    def __init__(self, tool_registry: ToolRegistry, tool_executor: ToolExecutor, llm_generate: Callable[[str], str] | None = None):
+        super().__init__(
+            tool_registry=tool_registry,
+            tool_executor=tool_executor,
+            llm_generate=llm_generate,
+            max_iterations=5,
+        )
+
+
+# =============================================================================
+# AGENT ORCHESTRATOR
+# =============================================================================
+
+class AgentOrchestrator:
+    """
+    Central router that receives queries, predicts intent via an SVM text classifier,
+    and dispatches the job to the appropriate specialized sub-agent via an asyncio.Queue.
+    """
+    def __init__(
+        self,
+        tool_registry: ToolRegistry,
+        tool_executor: ToolExecutor,
+        llm_generate: Callable[[str], str] | None = None,
+    ):
+        self.tool_registry = tool_registry
+        self.tool_executor = tool_executor
+        self.llm_generate = llm_generate
+        
+        self.queue: asyncio.Queue[tuple[str, str, asyncio.Future]] = asyncio.Queue()
+        
+        # Initialize Sub-Agents
+        self.agents = {
+            "system": SystemAgent(tool_registry, tool_executor, llm_generate),
+            "research": ResearchAgent(tool_registry, tool_executor, llm_generate),
+            "general": ReActAgent(tool_registry, tool_executor, llm_generate, max_iterations=4),
+        }
+        
+        # Try loading SVM model for intent routing
+        self.vectorizer = None
+        self.classifier = None
+        self._load_classifier()
+        
+        # Start the background worker loop
+        self._worker_task = asyncio.create_task(self._process_queue())
+
+    def _load_classifier(self) -> None:
+        """Load TF-IDF vectorizer and SVM classifier tailored for intent routing."""
+        import os
+        import joblib
+        
+        try:
+            vectorizer_path = "Model/router_vectorizer.joblib"
+            classifier_path = "Model/router_classifier.joblib"
+            
+            if os.path.exists(vectorizer_path) and os.path.exists(classifier_path):
+                self.vectorizer = joblib.load(vectorizer_path)
+                self.classifier = joblib.load(classifier_path)
+                logger.info("Agent Orchestrator SVM loaded. Dynamic routing enabled.")
+            else:
+                logger.warning("Agent Orchestrator SVM not found. Falling back to fuzzy keyword routing.")
+        except Exception as e:
+            logger.error(f"Failed to load router classifier: {e}")
+
+    def _predict_intent(self, task: str) -> str:
+        """Predict which agent should handle this task."""
+        if self.classifier and self.vectorizer:
+            try:
+                import numpy as np
+                X = self.vectorizer.transform([task])
+                scores = self.classifier.decision_function(X)[0]
+                classes = self.classifier.classes_
+                best_agent_idx = np.argsort(scores)[-1]
+                predicted_agent = classes[best_agent_idx]
+                
+                if predicted_agent in self.agents:
+                    logger.info(f"SVM routed '{task[:20]}...' to [{predicted_agent}]")
+                    return predicted_agent
+            except Exception as e:
+                logger.error(f"SVM routing failed: {e}")
+
+        # Fallback Keywords
+        lower_task = task.lower()
+        if any(w in lower_task for w in ["open", "close", "system", "volume", "brightness", "battery"]):
+            return "system"
+        if any(w in lower_task for w in ["search", "weather", "news", "summarize", "find"]):
+            return "research"
+            
+        return "general"
+
+    async def _process_queue(self):
+        """Background worker that pulls tasks off the queue and processes them sequentially."""
+        logger.info("AgentOrchestrator worker loop started.")
+        while True:
+            try:
+                task, context, future = await self.queue.get()
+                
+                intent = self._predict_intent(task)
+                target_agent = self.agents.get(intent, self.agents["general"])
+                
+                logger.debug(f"Orchestrator executing task via {intent} agent...")
+                
+                try:
+                    result = await target_agent.run(task, context)
+                    if not future.done():
+                        future.set_result(result)
+                except Exception as e:
+                    logger.error(f"Agent execution failed: {e}")
+                    if not future.done():
+                        future.set_exception(e)
+                finally:
+                    self.queue.task_done()
+                    
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Error in orchestrator loop: {e}")
+
+    async def execute(self, task: str, context: str = "") -> AgentResult:
+        """
+        Public endpoint: Submits a task to the orchestrator queue and awaits the result.
+        """
+        loop = asyncio.get_running_loop()
+        future = loop.create_future()
+        
+        await self.queue.put((task, context, future))
+        
+        # Wait for the worker to process our specific task
+        return await future
+
+    async def shutdown(self):
+        if hasattr(self, '_worker_task'):
+            self._worker_task.cancel()
