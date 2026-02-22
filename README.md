@@ -4,12 +4,15 @@ Amadeus-AI is a backend service for an AI-powered voice and text assistant built
 
 ## Features
 
-- **Conversational AI Core**: Orchestrates input processing using Google's Gemini models.
-- **Voice Interface**: Supports speech recognition and text-to-speech workflows (via `faster-whisper` and `pyttsx3`).
+- **Conversational AI Core**: Orchestrates input processing via a Multi-LLM Routing architecture (Google Gemini & Groq models).
+- **Voice Interface**: Supports speech recognition and text-to-speech workflows (via `faster-whisper`, `pyttsx3`, and `edge-tts`).
 - **Tool Execution Engine**: Dynamically executes tools across categories including system operations, productivity (Pomodoro, calendar), and monitoring.
 - **Conversation Persistence**: Async SQLite and PostgreSQL support for persistent chat history.
+- **Performance Caching**: Redis-backed caching layer for fast data retrieval and optimized API limits.
+- **Security & Reliability**: JWT Authentication middleware and SlowAPI rate-limiting safeguard endpoints.
 - **RESTful API**: Exposes endpoints for chat, tool listing, and history retrieval.
 - **Observability Hooks**: Integrates Structlog, Sentry, and Prometheus.
+- **CI/CD Automation**: GitHub Actions pipeline for linting, testing, and continuous integration.
 
 ## Tech Stack
 
@@ -26,16 +29,18 @@ Amadeus-AI is a backend service for an AI-powered voice and text assistant built
 **Databases:**
 - PostgreSQL (Production)
 - SQLite (Development)
-- Redis
+- Redis (Caching & Message Brokering)
 
 **APIs & Services:**
 - Google Generative AI (Gemini)
+- Groq API (High-speed LLM Inference)
 - OpenWeatherMap API & News API integrations
 - Sentry (Error tracking)
 
 **Development:**
 - Testing: Pytest, pytest-asyncio, Testcontainers
 - Code Quality: Ruff, Black, Mypy
+- CI/CD: GitHub Actions
 
 ## Architecture / Design
 
@@ -43,13 +48,13 @@ The system implements Clean Architecture, cleanly separating concerns across fou
 
 - **Core Module (`src/core`)**: Contains domain models, abstract interfaces, configuration schemas, and custom exceptions.
 - **Application Module (`src/app`)**: orchestrates the `agent_loop`, `amadeus_service`, and `tool_registry`.
-- **Infrastructure Module (`src/infra`)**: Houses concrete implementations for LLMs (`gemini_adapter`), persistence repositories, speech processing, and external API tool integrations.
-- **API Module (`src/api`)**: The presentation layer containing FastAPI routes, middleware, and server bootstrapping.
+- **Infrastructure Module (`src/infra`)**: Houses concrete implementations for LLMs (router and adapters), caching (`cache_service`), persistence repositories, speech processing (`tts_router`), and external API tool integrations.
+- **API Module (`src/api`)**: The presentation layer containing FastAPI routes, authentication middleware, rate limiting, and server bootstrapping.
 
 ```text
-API Layer (FastAPI) → App Services (Agent Loop) → Core Domain (Interfaces)
-                             ↓
-Infrastructure Layer (Postgres, Gemini API, System Tools)
+API Layer (FastAPI) [JWT & Rate Limits] → App Services (Agent Loop) → Core Domain (Interfaces)
+                                                    ↓
+                     Infrastructure Layer (Postgres, Redis, LLMs, System Tools)
 ```
 
 ## Setup & Installation
@@ -57,13 +62,14 @@ Infrastructure Layer (Postgres, Gemini API, System Tools)
 **Prerequisites:**
 - Docker & Docker Compose
 - Python 3.11+ (if running locally without Docker)
-- Required API Keys (Gemini)
+- Required API Keys (Gemini, Groq)
 
 **Environment Variables:**
 Create a `.env` file referencing `.env.example`:
 - `ENV` (development/production)
-- `GEMINI_API_KEY` (Required)
+- `GEMINI_API_KEY`, `GROQ_API_KEY` (Required for LLMs)
 - `DATABASE_URL` (Optional override)
+- `REDIS_URL` (Optional override)
 - `WEATHER_API_KEY` , `NEWS_API_KEY` (Optional)
 
 **Dependency Installation (Local Run):**
@@ -72,7 +78,7 @@ Create a `.env` file referencing `.env.example`:
 
 **Running the Project via Docker:**
 ```bash
-# Start the development environment with PostgreSQL
+# Start the development environment with PostgreSQL and Redis
 docker-compose up --build
 ```
 For production:
@@ -82,43 +88,48 @@ docker-compose --profile prod up --build -d
 
 ## Usage
 
-Once running, the API server is available at `http://localhost:8000`.
+Once running, the API server is available at `http://localhost:8000`. 
+*(Note: Requires valid JWT tokens passed in Headers for protected endpoints).*
 
 **Chat Endpoint Example:**
 ```bash
-curl -X POST "http://localhost:8000/chat" \
+curl -X POST "http://localhost:8000/api/v1/chat" \
      -H "Content-Type: application/json" \
+     -H "Authorization: Bearer <JWT_TOKEN>" \
      -d '{"message": "Start a 25-minute Pomodoro timer", "source": "cli"}'
 ```
 
 **Conversation History:**
 ```bash
-curl -X GET "http://localhost:8000/chat/history?session_id=<SESSION_ID>"
+curl -X GET "http://localhost:8000/api/v1/chat/history?session_id=<SESSION_ID>" \
+     -H "Authorization: Bearer <JWT_TOKEN>"
 ```
 
 **List Available Tools:**
 ```bash
-curl -X GET "http://localhost:8000/chat/tools"
+curl -X GET "http://localhost:8000/api/v1/chat/tools" \
+     -H "Authorization: Bearer <JWT_TOKEN>"
 ```
 
 ## Project Structure
 
-- `src/api/`: Presentation layer, FastAPI routes (`chat.py`, `health.py`), and middleware.
-- `src/app/`: Application layer featuring the primary `AmadeusService`, `agent_loop.py`, and `tool_registry.py`.
-- `src/core/`: Domain layer with settings (`config.py`), base interfaces, and core domain models.
-- `src/infra/`: Infrastructure implementations corresponding to database repositories, `gemini_adapter.py`, and local system tools.
+- `src/api/`: Presentation layer, FastAPI routes (`chat.py`, `health.py`), standard middleware, and authentication validators.
+- `src/app/`: Application layer featuring `AmadeusService`, core `agent_loop.py`, and `tool_registry.py`.
+- `src/core/`: Domain layer with settings (`config.py`), base interface definitions, and core domain models.
+- `src/infra/`: Infrastructure implementations corresponding to database repositories, multi-LLM adapters, voice interfaces (`edge-tts`), caching services, and external APIs.
+- `.github/workflows/`: CI/CD automation pipelines.
 - `tests/`: End-to-end and unit testing utilities relying on pytest and testcontainers.
 
 ## Known Limitations
 
-- **Single LLM Provider**: Currently hard-coupled to `gemini_adapter.py` (Google Generative AI); lacking Anthropic/OpenAI fallback implementations despite internal architecture allowances.
-- **Authentication**: No explicit OAuth or structural user authentication middleware exposed on internal `/chat` routes (assumes private or internal-only API access).
+- **Frontend Interface Missing**: The system strictly operates as a backend daemon. Interaction currently relies on raw HTTP requests or custom shell clients.
+- **Resource Intensity**: Local TTS and Whisper models (`faster-whisper`) may consume significant CPU/RAM if running without hardware acceleration.
 
 ## Future Improvements
 
-- Provide provider-agnostic adapter subclasses to cleanly support OpenAI or local models.
-- Implement explicit API rate limiting or scoped API-key authorization middleware.
-- Extend CI/CD pipeline automation setup (e.g., GitHub Actions).
+- Add asynchronous long-running task processing via Celery or similar workers rather than generic `asyncio.sleep()`.
+- Implement native WebSocket support for streaming real-time LLM responses and TTS audio data directly to clients.
+- Add robust user registration and role-based access control (RBAC) to support multi-tenant usage.
 
 ## Screenshots / Demo
 
