@@ -246,3 +246,113 @@ class MessageORM(Base):
     def __repr__(self) -> str:
         return f"<Message(id={self.id}, role={self.role}, session={self.session_id[:8]}...)>"
 
+
+# =============================================================================
+# POMODORO MODELS
+# =============================================================================
+
+class PomodoroStateDB(str, enum.Enum):
+    """Pomodoro session state enum for database."""
+    IDLE = "idle"
+    WORKING = "working"
+    SHORT_BREAK = "short_break"
+    LONG_BREAK = "long_break"
+    COMPLETED = "completed"
+    PAUSED = "paused"
+
+
+class PomodoroSessionORM(Base):
+    """ORM model for Pomodoro timer sessions.
+
+    Each row represents one Pomodoro work session. Cycles accumulate
+    until the long break threshold is reached.
+    """
+
+    __tablename__ = "pomodoro_sessions"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    state = Column(
+        SAEnum(PomodoroStateDB),
+        default=PomodoroStateDB.IDLE,
+        nullable=False,
+        index=True,
+    )
+    task_description = Column(Text, default="")
+    started_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    work_duration_minutes = Column(Integer, default=25, nullable=False)
+    short_break_minutes = Column(Integer, default=5, nullable=False)
+    long_break_minutes = Column(Integer, default=15, nullable=False)
+    cycles_completed = Column(Integer, default=0, nullable=False)
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        index=True,
+        nullable=False,
+    )
+
+    __table_args__ = (
+        Index("idx_pomodoro_state_created", "state", "created_at"),
+        Index("idx_pomodoro_started_state", "started_at", "state"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<PomodoroSession(id={self.id}, state={self.state.value}, cycles={self.cycles_completed})>"
+
+
+# =============================================================================
+# PROCESSED EMAIL (State Tracking)
+# =============================================================================
+
+class ProcessedEmailORM(Base):
+    """
+    Tracks which emails the agent has already read and processed.
+
+    Indexed by RFC 822 Message-ID to prevent re-processing.
+    """
+
+    __tablename__ = "processed_emails"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    message_id = Column(String(512), unique=True, nullable=False, index=True)
+    subject = Column(String(1024), default="")
+    sender = Column(String(512), default="")
+    action_taken = Column(String(256), default="read")  # read | replied | ignored
+    processed_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    def __repr__(self) -> str:
+        return f"<ProcessedEmail(id={self.id}, message_id={self.message_id!r})>"
+
+
+# =============================================================================
+# CONVERSATION SUMMARY (Rolling Memory)
+# =============================================================================
+
+class ConversationSummaryORM(Base):
+    """
+    Stores rolling LLM-generated summaries of conversation history.
+
+    Each row represents a snapshot of the condensed conversation memory.
+    The latest row is injected into the LLM system prompt.
+    """
+
+    __tablename__ = "conversation_summaries"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String(256), nullable=True, index=True)
+    summary = Column(Text, nullable=False, default="")
+    messages_summarized = Column(Integer, default=0)
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+        index=True,
+    )
+
+    def __repr__(self) -> str:
+        return f"<ConversationSummary(id={self.id}, msgs={self.messages_summarized})>"
+

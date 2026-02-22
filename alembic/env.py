@@ -21,6 +21,9 @@ from src.infra.persistence.orm_models import (
     CalendarEventORM,
     InteractionLogORM,
     MessageORM,
+    PomodoroSessionORM,
+    ProcessedEmailORM,
+    ConversationSummaryORM,
 )
 
 # this is the Alembic Config object, which provides

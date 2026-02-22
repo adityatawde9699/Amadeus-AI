@@ -64,9 +64,11 @@ class EventStatus(str, Enum):
 class PomodoroState(str, Enum):
     """State of a Pomodoro session."""
     IDLE = "idle"
-    WORK = "work"
+    WORKING = "working"
     SHORT_BREAK = "short_break"
     LONG_BREAK = "long_break"
+    COMPLETED = "completed"
+    PAUSED = "paused"
 
 
 class AlertSeverity(str, Enum):
@@ -235,16 +237,17 @@ class PomodoroSession(BaseModel):
     state: PomodoroState = PomodoroState.IDLE
     task_description: str = ""
     started_at: datetime | None = None
+    completed_at: datetime | None = None
     work_duration_minutes: int = 25
     short_break_minutes: int = 5
     long_break_minutes: int = 15
     cycles_completed: int = 0
-    total_focus_time_minutes: int = 0
-    
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
     @property
     def is_running(self) -> bool:
         """Check if a session is currently active."""
-        return self.state != PomodoroState.IDLE
+        return self.state not in (PomodoroState.IDLE, PomodoroState.COMPLETED)
 
 
 # =============================================================================

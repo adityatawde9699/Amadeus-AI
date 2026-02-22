@@ -59,15 +59,46 @@ class GeminiAdapter(ILLMService):
         logger.info("Gemini API configured")
     
     def _sanitize_input(self, text: str) -> str:
-        """Sanitize user input before sending to LLM."""
+        """Sanitize user input before sending to LLM.
+
+        Detects prompt injection patterns and logs a structured warning.
+        Does NOT block — logging only, letting the LLM handle it naturally.
+        This prevents secret leakage in logs while maintaining observability.
+        """
         if not text:
             return ""
-        # Remove null bytes and non-printable chars (keep newlines and tabs)
-        text = "".join(char for char in text if char.isprintable() or char in "\n\t")
+
+        # Remove null bytes (can break tokenizers)
+        text = text.replace("\x00", "")
+
+        # Remove non-printable chars but keep newlines and tabs
+        text = "".join(c for c in text if c.isprintable() or c in "\n\t")
+
         # Limit excessive length
         max_length = self._settings.FILE_READ_MAX_CHARS or 10000
         if len(text) > max_length:
             text = text[:max_length] + "... [truncated]"
+
+        # Prompt injection detection (log only — do NOT block)
+        _INJECTION_PATTERNS = (
+            "ignore previous instructions",
+            "disregard your system prompt",
+            "you are now a",
+            "act as if you are",
+            "forget everything above",
+            "new instruction:",
+            "system prompt:",
+            "ignore all prior",
+        )
+        lower = text.lower()
+        for pattern in _INJECTION_PATTERNS:
+            if pattern in lower:
+                logger.warning(
+                    "prompt_injection_attempt_detected",
+                    extra={"pattern_prefix": pattern[:20]},
+                )
+                break  # Log once per input — no need to check further
+
         return text.strip()
 
     def _build_prompt_with_context(
