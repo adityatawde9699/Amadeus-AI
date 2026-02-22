@@ -60,7 +60,11 @@ LINUX_APPS = {
 
 
 def _get_app_executable(app_name: str) -> str | None:
-    """Get app executable name based on platform."""
+    """Get app executable name based on platform.
+    
+    Returns only apps from the predefined allow-list.
+    Returns None for unknown apps to prevent shell injection.
+    """
     app_dict = {
         "Windows": WINDOWS_APPS,
         "Darwin": MAC_APPS,
@@ -78,8 +82,8 @@ def _get_app_executable(app_name: str) -> str | None:
         if key in app_lower or app_lower in key:
             return value
     
-    # Return as-is for unknown apps
-    return app_name
+    # SECURITY: Return None for unknown apps — never pass raw user input to shell
+    return None
 
 
 # =============================================================================
@@ -100,20 +104,28 @@ def open_program(app_name: str | None = None, program_name: str | None = None, *
     
     app_exec = _get_app_executable(target_app)
     if not app_exec:
-        return f"Could not find application: {target_app}"
+        # SECURITY: Only allow apps in the predefined allow-list
+        available = ", ".join(sorted({
+            "Windows": WINDOWS_APPS,
+            "Darwin": MAC_APPS,
+            "Linux": LINUX_APPS,
+        }.get(platform.system(), {}).keys())[:10])
+        return f"Cannot open '{target_app}'. Not in allow-list. Try: {available}..."
     
     logger.info(f"Opening application: {target_app} ({app_exec})")
     
     try:
         if platform.system() == "Windows":
+            # Use os.startfile (no shell) or Popen with explicit list (no shell=True)
             try:
-                os.startfile(app_exec)
-            except FileNotFoundError:
-                subprocess.Popen(app_exec, shell=True)
+                os.startfile(app_exec)  # noqa: S606 — only allow-listed executables reach here
+            except (FileNotFoundError, OSError):
+                subprocess.Popen([app_exec], shell=False)  # noqa: S603
         elif platform.system() == "Darwin":
-            subprocess.Popen(["open", "-a", app_exec])
+            subprocess.Popen(["open", "-a", app_exec])  # noqa: S603
         elif platform.system() == "Linux":
-            subprocess.Popen(app_exec, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            # shell=False: app_exec is from allow-list, safe to pass as list
+            subprocess.Popen([app_exec], shell=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)  # noqa: S603
         else:
             return f"Unsupported operating system: {platform.system()}"
         

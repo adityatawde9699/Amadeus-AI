@@ -23,7 +23,11 @@ import structlog
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
+from src.api.middleware.audit_logger import AuditLoggerMiddleware
 from src.core.config import get_settings, validate_settings
 from src.core.exceptions import AmadeusError
 from src.infra.persistence.database import close_db, init_db
@@ -132,6 +136,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Audit logging middleware (request ID + timing headers)
+app.add_middleware(AuditLoggerMiddleware)
+
+# Rate limiting (60 req/min per IP)
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=[f"{settings.RATE_LIMIT_REQUESTS}/minute"],
+)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 # Prometheus Metrics
 from prometheus_fastapi_instrumentator import Instrumentator
 Instrumentator().instrument(app).expose(app, endpoint="/api/v1/metrics", tags=["System"])
@@ -202,12 +217,13 @@ async def root():
 # =============================================================================
 
 # Import and register route modules
-from src.api.routes import tasks, health, chat, voice  # noqa: E402
+from src.api.routes import tasks, health, chat, voice, llm  # noqa: E402
 from src.api.middleware.authentication import verify_jwt_token
 from fastapi import Depends
 
-# Disable auth for health, enable for everything else
+# Disable auth for health + LLM usage, enable for everything else
 app.include_router(health.router, prefix="/api/v1", tags=["System"])
+app.include_router(llm.router, prefix="/api/v1", tags=["LLM"])  # No auth — informational
 app.include_router(tasks.router, prefix="/api/v1", tags=["Tasks"], dependencies=[Depends(verify_jwt_token)])
 app.include_router(chat.router, prefix="/api/v1", tags=["Chat"], dependencies=[Depends(verify_jwt_token)])
 app.include_router(voice.router, prefix="/api/v1", tags=["Voice"], dependencies=[Depends(verify_jwt_token)])

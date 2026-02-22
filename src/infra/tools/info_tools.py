@@ -510,6 +510,37 @@ def parse_duration(duration_str: str) -> int:
     return total_seconds
 
 
+
+# =============================================================================
+# WEB SEARCH TOOL (via SearchRouter)
+# =============================================================================
+
+@tool(
+    name="web_search",
+    description="Search the web for current information. Trigger: 'search for', 'look up', 'find information about', 'what happened'",
+    category=ToolCategory.INFORMATION,
+    parameters={
+        "query": {"type": "string", "description": "Search query"},
+        "depth": {"type": "string", "description": "Search depth: 'quick' (default) or 'deep'"},
+    }
+)
+async def web_search_async(query: str, depth: str = "quick") -> str:
+    """Search the web using the tiered SearchRouter (DDG → Brave → Tavily)."""
+    if not query or not query.strip():
+        return "Error: No search query provided."
+
+    try:
+        from src.infra.search.search_router import SearchRouter
+        router = SearchRouter(
+            brave_api_key=settings.BRAVE_SEARCH_API_KEY,
+            tavily_api_key=settings.TAVILY_API_KEY,
+        )
+        return await router.search(query.strip(), depth=depth)
+    except Exception as e:
+        logger.error("web_search failed: %s", type(e).__name__)
+        return f"Search failed: {e}"
+
+
 # =============================================================================
 # TOOL COLLECTION
 # =============================================================================

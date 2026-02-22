@@ -12,11 +12,10 @@ logger = logging.getLogger(__name__)
 # Try to import faster_whisper, handle missing package
 try:
     from faster_whisper import WhisperModel
-    import pyttsx3
     WHISPER_AVAILABLE = True
 except ImportError:
     WHISPER_AVAILABLE = False
-    logger.warning("⚠️ faster-whisper or pyttsx3 not installed. Voice input will use fallback (Mock).")
+    logger.warning("⚠️ faster-whisper not installed. Voice input (STT) will be unavailable.")
 
 
 class WhisperVoiceInput(ISpeechToTextService):
@@ -32,16 +31,20 @@ class WhisperVoiceInput(ISpeechToTextService):
     def _initialize_model(self):
         logger.info("⏳ Loading Whisper model...")
         try:
-            device = self.settings.WHISPER_DEVICE
+            settings = get_settings()
+            device = settings.WHISPER_DEVICE
+            model_name = settings.WHISPER_MODEL or "small"
             WhisperVoiceInput._model_cache = WhisperModel(
-                self.settings.WHISPER_MODEL or "tiny", 
-                device=device, 
-                compute_type="int8"
+                model_name,
+                device=device,
+                compute_type="int8",
+                num_workers=2,
+                cpu_threads=4,
             )
-            logger.info(f"✅ Whisper model loaded on {device}")
+            logger.info("✅ Whisper model '%s' loaded on %s", model_name, device)
         except Exception as e:
-            logger.error(f"Failed to load Whisper: {e}")
-            # Keep cache as None to trigger fallback
+            logger.error("Failed to load Whisper: %s", e)
+            # Keep cache as None — transcribe() will raise a clear exception
 
     async def transcribe(self, audio_data: bytes, language: str = "en") -> str:
         """
@@ -49,8 +52,15 @@ class WhisperVoiceInput(ISpeechToTextService):
         We write to a temporary file since whisper expects a file path or numpy array.
         """
         if not WHISPER_AVAILABLE or WhisperVoiceInput._model_cache is None:
-            logger.warning("🎤 [Fallback] Whisper unavailable/failed. Using Mock.")
-            return "Hello Amadeus, what time is it?"
+            raise RuntimeError(
+                "STT unavailable: Whisper model not loaded. "
+                "Install faster-whisper and ensure model downloaded correctly."
+            )
+        
+        # Early return for silence / audio too short to transcribe
+        settings = get_settings()
+        if not audio_data or len(audio_data) < settings.SPEECH_MIN_AUDIO_LENGTH:
+            return ""  # Silence — not an error
             
         temp_path = tempfile.mktemp(suffix=".wav")
         try:
@@ -79,37 +89,12 @@ class WhisperVoiceInput(ISpeechToTextService):
         yield "Streaming not fully implemented"
 
 
-class Pyttsx3VoiceOutput(ITextToSpeechService):
-    """TTS Adapter: Returns BYTES, does not play audio."""
-    
+class _SilentTTSAdapter(ITextToSpeechService):
+    """Fallback TTS that returns empty bytes when edge-tts is not installed."""
+
     async def synthesize(self, text: str, voice_id: str | None = None) -> bytes:
-        if not WHISPER_AVAILABLE: # We tied pyttsx3 to similar check
-            return b""
-            
-        temp_path = tempfile.mktemp(suffix=".wav")
-        try:
-            loop = asyncio.get_running_loop()
-            
-            def _synthesize_sync():
-                engine = pyttsx3.init()
-                if voice_id:
-                    # simplistic voice setting mapping
-                    voices = engine.getProperty('voices')
-                    for voice in voices:
-                        if voice_id in voice.id:
-                            engine.setProperty('voice', voice.id)
-                            break
-                            
-                engine.save_to_file(text, temp_path)
-                engine.runAndWait()
-                with open(temp_path, "rb") as f:
-                    return f.read()
-                    
-            return await loop.run_in_executor(None, _synthesize_sync)
-            
-        except Exception as e:
-            logger.error(f"TTS error: {e}")
-            return b""
-        finally:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
+        logger.warning(
+            "TTS unavailable: edge-tts not installed. Returning empty bytes. "
+            "Install with: pip install edge-tts"
+        )
+        return b""

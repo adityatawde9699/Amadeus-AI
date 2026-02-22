@@ -66,6 +66,23 @@ class Settings(BaseSettings):
     NEWS_API_KEY: str | None = None
     OPENAI_API_KEY: str | None = None  # Reserved for future use
     
+    # Groq LLM (free tier: 14,400 req/day)
+    GROQ_API_KEY: str | None = None
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    
+    # Search APIs
+    BRAVE_SEARCH_API_KEY: str | None = None
+    TAVILY_API_KEY: str | None = None
+    
+    # Speech / Voice Keys
+    ELEVENLABS_API_KEY: str | None = None
+    EDGE_TTS_VOICE: str = "en-US-JennyNeural"
+    
+    # =========================================================================
+    # SECURITY
+    # =========================================================================
+    SECRET_KEY: str | None = None  # Required for JWT auth in production
+    
     # =========================================================================
     # OBSERVABILITY
     # =========================================================================
@@ -284,9 +301,15 @@ def validate_settings(settings: Settings | None = None) -> dict:
     if settings.is_production:
         if not settings.GEMINI_API_KEY:
             errors.append("GEMINI_API_KEY is required in production")
+        if not settings.SECRET_KEY:
+            errors.append("SECRET_KEY is required in production (generate with: openssl rand -hex 32)")
     else:
         if not settings.GEMINI_API_KEY:
             warnings.append("GEMINI_API_KEY not set - AI features will be limited")
+        if not settings.SECRET_KEY:
+            warnings.append("SECRET_KEY not set - JWT authentication will not work")
+        if not settings.GROQ_API_KEY:
+            warnings.append("GROQ_API_KEY not set - Groq LLM provider unavailable (free tier)")
     
     # Check threshold consistency
     if settings.CPU_WARNING_THRESHOLD >= settings.CPU_CRITICAL_THRESHOLD:

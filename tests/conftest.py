@@ -29,6 +29,7 @@ def get_test_settings() -> Settings:
         DEBUG=True,
         DATABASE_URL="sqlite:///./test_amadeus.db",
         GEMINI_API_KEY="test_key",
+        SECRET_KEY="test-secret-key-32-chars-minimum-xx",  # Required for JWT
         VOICE_ENABLED=False,
         SKIP_CONFIG_VALIDATION=True,
     )
@@ -44,7 +45,7 @@ def test_settings() -> Settings:
 # DATABASE FIXTURES
 # =============================================================================
 
-@pytest_asyncio.fixture(scope="session")
+@pytest.fixture(scope="session")
 def postgres_container():
     """Start a PostgreSQL container for the test session."""
     from testcontainers.postgres import PostgresContainer
@@ -122,10 +123,6 @@ async def async_client() -> AsyncGenerator[AsyncClient, None]:
 # =============================================================================
 # EVENT LOOP CONFIGURATION
 # =============================================================================
-
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create an event loop for the test session."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+# NOTE: event_loop fixture removed — deprecated in pytest-asyncio >= 0.23.
+# asyncio_default_fixture_loop_scope = "function" is set in pyproject.toml.
+# Each test function gets its own event loop automatically.
