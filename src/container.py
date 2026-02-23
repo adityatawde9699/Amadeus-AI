@@ -182,22 +182,13 @@ def get_voice_service() -> "VoiceService":
     settings = get_settings()
     stt = WhisperVoiceInput()
     
-    # Build TTS router: EdgeTTS (default) + ElevenLabs (critical priority)
+    # Build TTS router: EdgeTTS only
     try:
         from src.infra.speech.edge_tts_adapter import EdgeTTSAdapter
         from src.infra.speech.tts_router import TTSRouter
         edge_tts = EdgeTTSAdapter(voice=settings.EDGE_TTS_VOICE)
-        
-        elevenlabs_adapter = None
-        if settings.ELEVENLABS_API_KEY:
-            try:
-                from src.infra.speech.tts_router import ElevenLabsAdapter
-                elevenlabs_adapter = ElevenLabsAdapter(api_key=settings.ELEVENLABS_API_KEY)
-            except Exception as e:
-                logger.warning("ElevenLabs TTS unavailable: %s", e)
-        
-        tts = TTSRouter(edge_tts=edge_tts, elevenlabs=elevenlabs_adapter)
-        logger.info("TTSRouter initialized (EdgeTTS primary)")
+        tts = TTSRouter(edge_tts=edge_tts)
+        logger.info("TTSRouter initialized (EdgeTTS only - $0/month)")
     except ImportError:
         # Fallback: edge-tts not installed, use silent adapter
         logger.warning("edge-tts not installed, TTS will return empty bytes. Install: pip install edge-tts")
