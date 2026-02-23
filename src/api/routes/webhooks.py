@@ -88,7 +88,8 @@ async def telegram_webhook(
         )
 
     payload: dict[str, Any] = await request.json()
-    message = TelegramAdapter.parse_update(payload)
+    # BUG FIX: parse_update is an instance method — must call on `_telegram`, not the class
+    message = _telegram.parse_update(payload)
 
     if message is None:
         return {"status": "ignored"}

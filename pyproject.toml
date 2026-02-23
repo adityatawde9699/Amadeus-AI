@@ -203,7 +203,7 @@ exclude_lines = [
     "if TYPE_CHECKING:",
 ]
 show_missing = true
-fail_under = 70
+fail_under = 80
 
 [tool.black]
 line-length = 100

@@ -681,10 +681,4 @@ You may obtain a copy of the License at
 - Email: adityatawde9699@gmail.com
 - Repository: [github.com/adityatawde9699/Amadeus-AI](https://github.com/adityatawde9699/Amadeus-AI)
 
----
 
-## 17. Screenshots / Demo
-
-*Add demo recordings, architecture diagrams, or screenshots of the API in action here.*
-
-> For API exploration, run the server with `DEBUG=true` and visit `http://localhost:8000/docs` for the interactive OpenAPI interface.

@@ -428,7 +428,9 @@ Guidelines:
             
         except Exception as e:
             logger.error(f"Error handling command: {e}", exc_info=True)
-            return f"I encountered an error: {e}"
+            if self.debug_mode or self.settings.DEBUG:
+                return f"I encountered an error ({type(e).__name__}). Check the server logs for details."
+            return "I encountered an unexpected error. Please try again."
     
     def _is_multi_step_query(self, user_input: str) -> bool:
         """
