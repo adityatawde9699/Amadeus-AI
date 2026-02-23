@@ -28,7 +28,7 @@ class SearchRouter:
     """
 
     BRAVE_MONTHLY_LIMIT: int = 2000
-    BRAVE_DAILY_LIMIT: int = 66  # 2000 / 30 ≈ 66
+    BRAVE_DAILY_LIMIT: int = 60  # REDUCED from 66 for safety margin
 
     _FACTUAL_PATTERNS: tuple[str, ...] = (
         "who is", "who was", "what is", "what are", "define",
@@ -44,12 +44,14 @@ class SearchRouter:
         self._tavily_key = tavily_api_key
         self._brave_daily_count: int = 0
         self._count_date: date = date.today()
+        self._force_free_search: bool = False
 
     def _reset_if_new_day(self) -> None:
         today = date.today()
         if today != self._count_date:
             self._brave_daily_count = 0
             self._count_date = today
+            self._force_free_search = False
 
     def _is_factual(self, query: str) -> bool:
         """Check if query is encyclopedic (better served by Wikipedia)."""
@@ -69,6 +71,14 @@ class SearchRouter:
         """
         self._reset_if_new_day()
 
+        if self._brave_daily_count >= 50:
+            logger.warning(
+                f"Brave search quota approaching limit: {self._brave_daily_count}/{self.BRAVE_DAILY_LIMIT}"
+            )
+            
+        if self._brave_daily_count >= self.BRAVE_DAILY_LIMIT:
+            self._force_free_search = True
+
         # Tier 1: Wikipedia for factual/encyclopedic queries
         if self._is_factual(query):
             result = await self._wikipedia_search(query)
@@ -78,12 +88,12 @@ class SearchRouter:
 
         # Tier 2: DuckDuckGo Instant Answer (free, no key)
         ddg_result = await self._ddg_search(query)
-        if ddg_result and len(ddg_result) > 50:
+        if ddg_result and len(ddg_result) > 100:
             logger.debug("Search: DuckDuckGo hit for '%s...'", query[:30])
             return ddg_result
 
         # Tier 3: Brave Search (free: 2,000/month ≈ 66/day)
-        if self._brave_key and self._brave_daily_count < self.BRAVE_DAILY_LIMIT:
+        if self._brave_key and not self._force_free_search and self._brave_daily_count < self.BRAVE_DAILY_LIMIT:
             result = await self._brave_search(query)
             if result:
                 self._brave_daily_count += 1

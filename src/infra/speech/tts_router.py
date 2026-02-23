@@ -64,66 +64,26 @@ class ElevenLabsAdapter(ITextToSpeechService):
 
 
 class TTSRouter(ITextToSpeechService):
-    """
-    Routes TTS requests to appropriate provider based on priority and limits.
-
-    Priority routing:
-    - Normal: EdgeTTS (free, unlimited)
-    - Critical: ElevenLabs → EdgeTTS fallback (if ElevenLabs over limit or unavailable)
-    """
-
-    ELEVENLABS_FREE_LIMIT: int = 10_000  # chars/month
+    """Routes TTS requests - FREE TIER ONLY MODE"""
 
     def __init__(
         self,
         edge_tts: EdgeTTSAdapter,
-        elevenlabs: ElevenLabsAdapter | None = None,
     ) -> None:
         self.edge = edge_tts
-        self.elevenlabs = elevenlabs
-        self._elevenlabs_chars_this_month: int = 0
 
     async def synthesize(self, text: str, voice_id: str | None = None, priority: str = "normal") -> bytes:
-        """
-        Route synthesis request to best provider.
-
-        Args:
-            text: Text to synthesize
-            voice_id: Optional voice override
-            priority: "normal" (EdgeTTS) or "critical" (try ElevenLabs first)
-        """
+        """Route synthesis - EdgeTTS only."""
         if not text:
             return b""
 
-        # Critical priority: attempt ElevenLabs first (within free limit)
-        if priority == "critical" and self.elevenlabs:
-            chars_needed = len(text)
-            if self._elevenlabs_chars_this_month + chars_needed <= self.ELEVENLABS_FREE_LIMIT:
-                logger.debug("TTS: routing to ElevenLabs (priority=critical)")
-                audio = await self.elevenlabs.synthesize(text, voice_id)
-                if audio:
-                    self._elevenlabs_chars_this_month += chars_needed
-                    return audio
-                logger.warning("ElevenLabs returned empty audio, falling back to EdgeTTS")
-            else:
-                logger.warning(
-                    "ElevenLabs monthly limit reached (%d/%d chars). Using EdgeTTS.",
-                    self._elevenlabs_chars_this_month,
-                    self.ELEVENLABS_FREE_LIMIT,
-                )
-
-        # Default: EdgeTTS (always available)
-        logger.debug("TTS: routing to EdgeTTS (priority=%s)", priority)
+        # Always use EdgeTTS
         return await self.edge.synthesize(text, voice_id)
 
     def get_usage_report(self) -> dict:
         """Return TTS usage stats."""
         return {
-            "elevenlabs_chars_used": self._elevenlabs_chars_this_month,
-            "elevenlabs_chars_limit": self.ELEVENLABS_FREE_LIMIT,
-            "elevenlabs_chars_remaining": max(
-                0, self.ELEVENLABS_FREE_LIMIT - self._elevenlabs_chars_this_month
-            ),
             "edge_tts_cache_size": self.edge.cache_size(),
-            "elevenlabs_configured": self.elevenlabs is not None,
+            "provider": "edge_tts_only",
+            "monthly_cost": 0.0,
         }
