@@ -11,7 +11,7 @@
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 > **Tech Stack Highlights:**
-> `Python 3.11` · `FastAPI` · `SQLAlchemy` · `Gemini` · `Groq (Llama 3.3)` · `Redis` · `PostgreSQL` · `JWT Auth` · `faster-whisper` · `Edge TTS` · `Docker` · `GitHub Actions`
+> `Python 3.11` · `FastAPI` · `SQLAlchemy` · `Gemini` · `Groq (Llama 3.3)` · `OpenAI (GPT-4o-mini)` · `Redis` · `Qdrant` · `PostgreSQL` · `JWT Auth` · `SSE Streaming` · `faster-whisper` · `Edge TTS` · `Telegram` · `WhatsApp` · `Docker` · `GitHub Actions`
 
 </div>
 
@@ -32,10 +32,18 @@ Amadeus AI is a FastAPI-based backend service that orchestrates a conversational
 ## 3. Features
 
 ### Conversational AI
-- Multi-LLM routing: Groq (Llama 3.3 70B) as primary → Gemini 2.5 Flash → OpenAI (high-complexity fallback)
-- Daily quota tracking per provider with automatic midnight reset
+- Multi-LLM routing: Groq (Llama 3.3 70B) → Gemini 2.5 Flash → **OpenAI GPT-4o-mini** (emergency fallback)
+- **Redis-backed daily quota tracking** per provider — shared across all workers, auto-expires at midnight
+- **Semantic long-term memory** via Qdrant vector search — top-3 relevant memories injected into the agent prompt on every request
+- **Server-Sent Events (SSE) streaming**: `GET /api/v1/chat/stream` — native Gemini `stream=True` with word-by-word fallback for Groq
 - Persistent conversation memory with configurable context window
-- Semantic (long-term) memory via ChromaDB vector embeddings *(experimental)*
+- Concurrent request limiting (`asyncio.Semaphore` — default 20 simultaneous chats)
+
+### Messaging & Channels
+- **Inbound webhooks** — Telegram Bot API, WhatsApp Meta Cloud API (with challenge verification)
+- **Outbound messaging dispatch** — `POST /api/v1/messaging/send` routes to Telegram, WhatsApp, or Email from one endpoint
+- Email send/receive via SMTP (`aiosmtplib`) and IMAP (`imap_tools`)
+- `GET /api/v1/messaging/status` — live readiness check for all configured channels
 
 ### Voice Interface
 - Real-time bidirectional voice via WebSocket (`/api/v1/ws/voice`)
@@ -62,14 +70,15 @@ Amadeus AI is a FastAPI-based backend service that orchestrates a conversational
 - CPU, memory, disk, battery monitoring with configurable alert thresholds
 
 ### API & Security
-- JWT Bearer authentication on all protected routes (`/chat`, `/tasks`, `/voice`)
-- SlowAPI rate limiting (configurable, default 60 req/min per IP)
+- JWT Bearer authentication on all protected routes (`/chat`, `/tasks`, `/voice`, `/messaging`)
+- Per-user JWT rate limiting (`slowapi`) with IP fallback for unauthenticated requests
 - Request audit logging middleware (request IDs, latency headers)
 - Prometheus metrics endpoint (`/api/v1/metrics`)
 - Sentry error tracking integration
 
 ### Caching (Redis)
 - LLM responses: 1-hour TTL
+- **LLM daily usage quotas**: `llm_usage:{provider}:{date}` — 86400s TTL, shared across workers
 - TTS audio: 24-hour TTL
 - Tool results (stateless only): 5-minute TTL
 - Web search results: 30-minute TTL
@@ -78,6 +87,7 @@ Amadeus AI is a FastAPI-based backend service that orchestrates a conversational
 ### CI/CD & Deployment
 - GitHub Actions pipeline: lint (ruff), format check, type check (mypy), security scan (bandit), dependency audit (pip-audit)
 - Automated test run with real PostgreSQL service container
+- **Coverage threshold: 80%** enforced via `pyproject.toml`
 - Staging deploy to Railway on `develop` branch merge
 
 ---
@@ -136,16 +146,26 @@ cp .env.example .env
 
 | Variable | Description |
 |----------|-------------|
-| `OPENAI_API_KEY` | Emergency fallback LLM (paid) |
-| `REDIS_URL` | Redis for caching (default: `redis://localhost:6379/0`) |
+| `OPENAI_API_KEY` | Emergency fallback LLM (GPT-4o-mini, paid) |
+| `OPENAI_MODEL` | OpenAI model override (default: `gpt-4o-mini`) |
+| `REDIS_URL` | Redis for caching + quota tracking (default: `redis://localhost:6379/0`) |
 | `WEATHER_API_KEY` | OpenWeatherMap API key |
 | `NEWS_API_KEY` | NewsAPI key |
 | `BRAVE_SEARCH_API_KEY` | Brave Search (2,000 free/month) |
 | `TAVILY_API_KEY` | Tavily deep search |
 | `EDGE_TTS_VOICE` | Edge TTS voice name (default: `en-US-JennyNeural`) |
 | `SENTRY_DSN` | Sentry error tracking DSN |
-| `TELEGRAM_BOT_TOKEN` | Telegram bot integration |
-| `CHROMA_ENABLED` | Enable ChromaDB vector memory (default: `true`) |
+| `TELEGRAM_BOT_TOKEN` | Telegram bot token — required for Telegram channel |
+| `TELEGRAM_WEBHOOK_SECRET` | Secret header for Telegram webhook validation |
+| `WHATSAPP_ACCESS_TOKEN` | Meta WhatsApp Cloud API access token |
+| `WHATSAPP_PHONE_NUMBER_ID` | WhatsApp sender phone number ID |
+| `WHATSAPP_VERIFY_TOKEN` | Token for Meta webhook challenge verification |
+| `EMAIL_IMAP_SERVER` | IMAP server hostname (e.g. `imap.gmail.com`) |
+| `EMAIL_SMTP_SERVER` | SMTP server hostname (e.g. `smtp.gmail.com`) |
+| `EMAIL_SMTP_PORT` | SMTP port (default: `587`) |
+| `EMAIL_ADDRESS` | Sender email address |
+| `EMAIL_APP_PASSWORD` | Email app password (Gmail: generate in Account settings) |
+| `QDRANT_URL` | Qdrant server URL for semantic memory (e.g. `http://localhost:6333`) |
 | `ENV` | `development` / `staging` / `production` |
 
 ### Option A — Local Installation (without Docker)
@@ -207,9 +227,17 @@ There is no built-in user registration endpoint at this time. Tokens must be gen
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `POST` | `/api/v1/chat` | Yes | Send a message to the assistant |
+| `GET` | `/api/v1/chat/stream` | Yes | **SSE streaming** — real-time token-by-token response |
 | `GET` | `/api/v1/chat/history` | Yes | Retrieve conversation history by session |
 | `GET` | `/api/v1/chat/tools` | Yes | List all available tools by category |
 | `POST` | `/api/v1/chat/clear` | Yes | Clear conversation history |
+
+**SSE streaming example:**
+```bash
+curl -N -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8000/api/v1/chat/stream?message=Tell+me+a+joke"
+# Streams: data: {"delta": "Why"} ... data: [DONE]
+```
 
 **Chat request body:**
 ```json
@@ -228,6 +256,25 @@ There is no built-in user registration endpoint at this time. Tokens must be gen
   "source": "api",
   "session_id": "uuid-session-id",
   "tools_used": []
+}
+```
+
+#### Messaging
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/v1/messaging/send` | Yes | Send outbound message (Telegram / WhatsApp / Email) |
+| `GET` | `/api/v1/messaging/status` | No | Check which channels are configured |
+| `POST` | `/api/v1/webhooks/telegram` | Secret token | Receive inbound Telegram updates |
+| `GET` | `/api/v1/webhooks/whatsapp` | Verify token | Meta webhook challenge verification |
+| `POST` | `/api/v1/webhooks/whatsapp` | — | Receive inbound WhatsApp messages |
+
+**Send message request:**
+```json
+{
+  "channel": "telegram",
+  "to": "123456789",
+  "message": "Hello from Amadeus!"
 }
 ```
 
@@ -282,11 +329,11 @@ There is no built-in user registration endpoint at this time. Tokens must be gen
 - **Redis 5+** — caching layer (via `redis-py` async client)
 
 ### AI & LLM
-- **Google Generative AI (Gemini 2.5 Flash)** — secondary LLM
+- **Google Generative AI (Gemini 2.5 Flash)** — secondary LLM, supports native `stream=True`
 - **Groq API (Llama 3.3 70B)** — primary LLM (free tier)
-- **OpenAI** — emergency fallback (paid, optional)
-- **ChromaDB** — vector database for semantic memory *(experimental)*
-- **LLMRouter** — internal daily-quota-aware routing engine
+- **OpenAI GPT-4o-mini** — emergency fallback (paid, optional) via `openai_adapter.py`
+- **Qdrant** — vector database for semantic long-term memory
+- **LLMRouter** — Redis-backed daily-quota-aware routing engine with atomic `INCR`/`EXPIRE`
 
 ### Voice
 - **faster-whisper** — CTranslate2 Whisper STT (CPU/CUDA)
@@ -432,11 +479,40 @@ curl "http://localhost:8000/api/v1/chat/tools" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-### LLM Usage Report (no auth)
+### SSE Streaming
 
 ```bash
-curl "http://localhost:8000/api/v1/llm/usage"
-# Returns: provider usage counts, daily limits, remaining quota, estimated cost
+# Stream a response token-by-token
+curl -N -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8000/api/v1/chat/stream?message=Summarise+today%27s+news"
+```
+
+Each event is a JSON object. The stream ends with `[DONE]`:
+```
+data: {"delta": "Here"}
+data: {"delta": " are"}
+data: {"delta": " today's top news ..."}
+data: [DONE]
+```
+
+### Outbound Messaging
+
+```bash
+# Send a Telegram message
+curl -X POST http://localhost:8000/api/v1/messaging/send \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"channel": "telegram", "to": "123456789", "message": "Hello from Amadeus!"}'
+
+# Send an email
+curl -X POST http://localhost:8000/api/v1/messaging/send \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"channel": "email", "to": "user@example.com", "subject": "Daily Brief", "message": "Your briefing is ready."}'
+
+# Check channel status
+curl http://localhost:8000/api/v1/messaging/status
+# {"telegram": true, "whatsapp": false, "email": true}
 ```
 
 ### Voice via WebSocket (Python client example)
@@ -477,9 +553,12 @@ Amadeus-AI/
 │   │   ├── server.py             # FastAPI app, middleware, lifespan
 │   │   ├── middleware/
 │   │   │   ├── authentication.py # JWT Bearer token verification
+│   │   │   ├── rbac.py           # Role-based access control helpers
 │   │   │   └── audit_logger.py   # Request ID + timing middleware
 │   │   └── routes/
-│   │       ├── chat.py           # POST /chat, GET /history, GET /tools
+│   │       ├── chat.py           # POST /chat, GET /chat/stream (SSE), /history, /tools
+│   │       ├── messaging.py      # POST /messaging/send, GET /messaging/status
+│   │       ├── webhooks.py       # Telegram + WhatsApp inbound webhooks
 │   │       ├── voice.py          # WebSocket /ws/voice
 │   │       ├── tasks.py          # CRUD /tasks
 │   │       ├── health.py         # GET /health/detailed
@@ -487,7 +566,7 @@ Amadeus-AI/
 │   ├── app/
 │   │   └── services/
 │   │       ├── amadeus_service.py # Main orchestrator
-│   │       ├── agent_loop.py      # LLM ↔ tool execution loop
+│   │       ├── agent_loop.py      # LLM ↔ tool loop (memory-aware)
 │   │       ├── tool_registry.py   # Tool discovery and dispatch
 │   │       └── voice_service.py   # STT → LLM → TTS pipeline
 │   ├── core/
@@ -499,9 +578,14 @@ Amadeus-AI/
 │   │       └── repositories.py   # Abstract repository interfaces
 │   └── infra/
 │       ├── llm/
-│       │   ├── router.py         # Multi-LLM routing with daily quota tracking
-│       │   ├── gemini_adapter.py # Google Gemini adapter
-│       │   └── groq_adapter.py   # Groq adapter
+│       │   ├── router.py         # Multi-LLM routing + Redis quota tracking
+│       │   ├── gemini_adapter.py # Google Gemini adapter (supports stream=True)
+│       │   ├── groq_adapter.py   # Groq adapter
+│       │   └── openai_adapter.py # OpenAI adapter (emergency fallback)
+│       ├── messaging/
+│       │   ├── telegram_adapter.py  # Telegram Bot API send + parse
+│       │   ├── whatsapp_adapter.py  # Meta WhatsApp Cloud API
+│       │   └── email_adapter.py     # SMTP (send) + IMAP (fetch unread)
 │       ├── cache/
 │       │   └── cache_service.py  # Redis cache (LLM, TTS, tool, search)
 │       ├── persistence/
@@ -522,7 +606,11 @@ Amadeus-AI/
 │           └── system_tools.py   # File ops, app launch, system commands
 ├── tests/
 │   ├── conftest.py               # Pytest fixtures (async DB session, DI container)
-│   └── unit/                     # Unit test modules
+│   ├── unit/                     # Unit tests
+│   │   ├── test_openai_adapter.py
+│   │   └── test_memory_agent_integration.py
+│   └── integration/
+│       └── test_llm_routing_fallback.py
 ├── Dockerfile                    # Multi-stage build (builder → model_cache → runtime)
 ├── docker-compose.yml            # Development and production profiles
 ├── pyproject.toml                # Project metadata, dependencies, tool configs
@@ -560,7 +648,7 @@ pytest tests/ -m "not slow" -v
 
 ### Coverage Threshold
 
-The project enforces a minimum of 40% coverage in CI (enforced via `--cov-fail-under=40` in GitHub Actions). The `pyproject.toml` locally reports `fail_under = 70` as a target.
+The project enforces a minimum of **80% coverage** via `fail_under = 80` in `pyproject.toml` and `--cov-fail-under=40` in the GitHub Actions CI baseline.
 
 ### Integration Tests
 
@@ -632,26 +720,20 @@ alembic upgrade head && uvicorn src.api.server:app --host 0.0.0.0 --port 8000 --
 ## 13. Known Limitations
 
 - **No user registration or RBAC**: JWT tokens must be generated externally. There is no `/register` or `/login` endpoint. All authenticated users share the same assistant context unless `session_id` is explicitly scoped.
-- **Single-instance agent loop**: The `LLMRouter` usage counters are stored in memory and reset on process restart. Running multiple workers without a shared Redis counter will cause quota tracking inconsistencies.
-- **Voice WebSocket — no auth on upgrade**: WebSocket JWT enforcement is dependent on proper implementation in the client handshake; the current server accepts connections and errors downstream if token is missing.
-- **ChromaDB semantic memory — experimental**: The vector memory (`CHROMA_ENABLED=true`) is not integrated into the core agent loop response pipeline. It exists as infrastructure but is not queried during inference.
-- **Messaging integrations (Telegram, WhatsApp, Email) — not yet implemented**: Configuration variables exist in `.env.example` but no corresponding route or handler code was found in the scanned source.
-- **OpenAI adapter**: Listed in `LLMRouter` and `.env.example` but no `openai_adapter.py` was found in `src/infra/llm/`. The fallback will log an error if triggered.
-- **Test coverage below target**: GitHub Actions enforces 40% coverage. The local `pyproject.toml` sets a target of 70%, which is not currently met based on prior test run analysis.
+- **Voice WebSocket — no auth on upgrade**: WebSocket JWT enforcement depends on the client handshake; the current server accepts connections and errors downstream if the token is missing.
 - **Local TTS/STT resource usage**: Running `faster-whisper` (`small` model) and Edge TTS simultaneously on a single CPU core may cause response latency of 1–5 seconds per voice round-trip.
+- **Semantic memory — Qdrant must be running**: If `QDRANT_URL` is not configured or Qdrant is unreachable, memory retrieval is silently skipped — the agent continues without memories.
 
 ---
 
 ## 14. Future Improvements
 
-- **OpenAI adapter implementation**: Complete the `openai_adapter.py` to enable the emergency fallback route in `LLMRouter`.
-- **User authentication system**: Implement `/auth/register`, `/auth/login`, and `/auth/refresh` endpoints with user-scoped session isolation.
-- **Shared quota tracking**: Move `LLMRouter` daily counters to Redis to support multi-worker production deployments correctly.
-- **ChromaDB integration into agent loop**: Wire the semantic memory layer into the `AgentLoop` context-building step to enable long-term recall during inference.
-- **Messaging integrations**: Implement Telegram, WhatsApp (Meta Cloud API), and email channel handlers referenced in `.env.example`.
-- **Streaming LLM responses**: Replace batch LLM responses with server-sent events (SSE) or WebSocket streaming for lower time-to-first-token.
-- **Improve test coverage**: Add integration tests for tool execution, LLM routing fallback behavior, and the voice pipeline to reach the 70% coverage target.
+- **User authentication system**: Implement `/auth/register`, `/auth/login`, and `/auth/refresh` endpoints with persistent user-scoped session isolation.
 - **RBAC**: Add role-based access control to support multi-tenant usage with per-user tool restrictions.
+- **WebSocket JWT enforcement**: Move token validation to the WebSocket upgrade handshake rather than relying on downstream checks.
+- **Voice streaming**: Support streaming TTS back over the WebSocket as audio chunks arrive (rather than waiting for the full synthesis).
+- **Proactive agents**: Background observation loop for autonomous task scheduling without user prompting.
+- **Mobile / browser SDK**: Thin client library for the SSE streaming and voice WebSocket endpoints.
 
 ---
 
