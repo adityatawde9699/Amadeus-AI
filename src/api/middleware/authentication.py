@@ -2,9 +2,11 @@
 JWT Authentication Middleware for FastAPI.
 
 Validates JWT bearer tokens to secure endpoints.
+Tokens must carry both `exp` (expiry) and `iat` (issued-at) claims.
 """
 
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Mapping
 
 from fastapi import Depends, HTTPException, status
@@ -15,6 +17,38 @@ from src.core.config import get_settings
 
 
 logger = logging.getLogger(__name__)
+
+# Default token lifetime if not overridden in settings
+_DEFAULT_EXPIRY_HOURS = 24
+
+
+def create_access_token(subject: str, extra_claims: dict | None = None) -> str:
+    """
+    Create a signed JWT access token with mandatory `exp` and `iat` claims.
+
+    Args:
+        subject:      The `sub` claim — typically a user ID or username.
+        extra_claims: Additional payload fields (e.g. `role`, `email`).
+
+    Returns:
+        Signed JWT string using HS256.
+
+    Raises:
+        RuntimeError: If SECRET_KEY is not configured.
+    """
+    settings = get_settings()
+    if not settings.SECRET_KEY:
+        raise RuntimeError("SECRET_KEY is not configured — cannot issue tokens")
+
+    expiry_hours = getattr(settings, "JWT_EXPIRY_HOURS", _DEFAULT_EXPIRY_HOURS)
+    now = datetime.now(tz=timezone.utc)
+    payload: dict = {
+        "sub": subject,
+        "iat": now,
+        "exp": now + timedelta(hours=expiry_hours),
+        **(extra_claims or {}),
+    }
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
 
 # Security scheme for FastAPI OpenAPI docs
 security = HTTPBearer()
@@ -37,12 +71,26 @@ def verify_jwt_token(credentials: HTTPAuthorizationCredentials = Depends(securit
         )
         
     try:
-        # Assuming HS256 algorithm by default for JWT
+        # python-jose automatically validates `exp` when present in the token.
+        # Tokens without `exp` are accepted only when DEBUG=True (dev tokens).
         payload = jwt.decode(
-            token, 
-            settings.SECRET_KEY, 
-            algorithms=["HS256"]
+            token,
+            settings.SECRET_KEY,
+            algorithms=["HS256"],
+            options={
+                # Require exp in production; allow missing exp in dev
+                "require_exp": settings.is_production,
+            },
         )
+
+        # Extra guard: reject tokens missing exp in production
+        if settings.is_production and "exp" not in payload:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token missing expiry claim",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
         return payload
     except JWTError as e:
         logger.warning(f"JWT verification failed: {e}")

@@ -116,6 +116,8 @@ def get_llm_router() -> "LLMRouter":
     Get the LLM Router singleton.
 
     Chains: Groq (free, 14.4K/day) → Gemini (free, 1.5K/day) → OpenAI (paid, emergency)
+    Daily usage counters are stored in Redis when available (multi-worker safe),
+    falling back to in-memory counters for single-instance deployments.
     """
     from src.infra.llm.router import LLMRouter
     from src.infra.llm.gemini_adapter import GeminiAdapter
@@ -139,11 +141,26 @@ def get_llm_router() -> "LLMRouter":
         except Exception as e:
             logger.warning("Failed to configure Gemini adapter: %s", e)
 
-    router = LLMRouter(groq=groq_adapter, gemini=gemini_adapter)
-    logger.info(
-        "LLMRouter initialized with providers: %s",
-        [k for k, v in {"groq": groq_adapter, "gemini": gemini_adapter}.items() if v]
+    openai_adapter = None
+    if getattr(settings, "OPENAI_API_KEY", None):
+        try:
+            from src.infra.llm.openai_adapter import OpenAIAdapter
+            openai_adapter = OpenAIAdapter(api_key=settings.OPENAI_API_KEY)
+            logger.info("OpenAI adapter configured as emergency fallback LLM")
+        except Exception as e:
+            logger.warning("Failed to configure OpenAI adapter: %s", e)
+
+    # Pass Redis URL so LLMRouter can use shared counters in multi-worker deployments
+    redis_url = getattr(settings, "REDIS_URL", None)
+
+    router = LLMRouter(
+        groq=groq_adapter,
+        gemini=gemini_adapter,
+        openai=openai_adapter,
+        redis_url=redis_url,
     )
+    active = [k for k, v in {"groq": groq_adapter, "gemini": gemini_adapter, "openai": openai_adapter}.items() if v]
+    logger.info("LLMRouter initialized with providers: %s", active)
     return router
 
 

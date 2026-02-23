@@ -103,12 +103,15 @@ class ReActAgent:
         llm_generate: Callable[[str], str] | None = None,
         max_iterations: int = 5,
         verbose: bool = False,
+        memory_service: object | None = None,
     ):
         self.tool_registry = tool_registry
         self.tool_executor = tool_executor
         self.llm_generate = llm_generate
         self.max_iterations = max_iterations
         self.verbose = verbose
+        # Optional semantic memory service (QdrantMemoryService or compatible)
+        self.memory_service = memory_service
     
     async def run(self, task: str, context: str = "") -> AgentResult:
         """
@@ -304,6 +307,7 @@ class ReActAgent:
     ) -> tuple[str, str, dict]:
         """
         Use LLM for sophisticated reasoning.
+        Injects top-k semantic memories into the prompt when memory_service is set.
         """
         # Get available tools
         tool_descriptions = []
@@ -311,10 +315,22 @@ class ReActAgent:
             tool = self.tool_registry.get(name)
             if tool:
                 tool_descriptions.append(f"- {name}: {tool.description}")
-        
+
+        # Retrieve relevant memories for long-term recall
+        memory_block = ""
+        if self.memory_service is not None:
+            try:
+                memories = await self.memory_service.retrieve(task, top_k=3)  # type: ignore[union-attr]
+                if memories:
+                    formatted = self.memory_service.format_for_prompt(memories)  # type: ignore[union-attr]
+                    if formatted:
+                        memory_block = f"Relevant past context:\n{formatted}\n\n"
+            except Exception as mem_err:
+                logger.debug("Memory retrieval skipped: %s", mem_err)
+
         prompt = f"""You are an AI assistant executing a multi-step task.
 
-Task: {task}
+{memory_block}Task: {task}
 {f"Context: {context}" if context else ""}
 
 Available Tools:
@@ -331,7 +347,7 @@ Action: [tool_name or FINISH]
 Action Input: {{"param": "value"}}
 
 Your response:"""
-        
+
         try:
             response = self.llm_generate(prompt)
             return self._parse_llm_response(response)
@@ -433,18 +449,20 @@ class AgentOrchestrator:
         tool_registry: ToolRegistry,
         tool_executor: ToolExecutor,
         llm_generate: Callable[[str], str] | None = None,
+        memory_service: object | None = None,
     ):
         self.tool_registry = tool_registry
         self.tool_executor = tool_executor
         self.llm_generate = llm_generate
+        self.memory_service = memory_service
         
         self.queue: asyncio.Queue[tuple[str, str, asyncio.Future]] = asyncio.Queue()
         
-        # Initialize Sub-Agents
+        # Initialize Sub-Agents (all share the same memory_service)
         self.agents = {
             "system": SystemAgent(tool_registry, tool_executor, llm_generate),
             "research": ResearchAgent(tool_registry, tool_executor, llm_generate),
-            "general": ReActAgent(tool_registry, tool_executor, llm_generate, max_iterations=4),
+            "general": ReActAgent(tool_registry, tool_executor, llm_generate, max_iterations=4, memory_service=memory_service),
         }
         
         # Try loading SVM model for intent routing

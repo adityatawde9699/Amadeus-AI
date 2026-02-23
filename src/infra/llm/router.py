@@ -9,6 +9,7 @@ Routes requests across providers to stay within $7/month budget:
 Usage tracking resets daily at midnight (UTC).
 """
 
+import asyncio
 import logging
 from collections import defaultdict
 from datetime import date
@@ -22,6 +23,69 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# REDIS COUNTER BACKEND
+# =============================================================================
+
+class _RedisCounterBackend:
+    """
+    Redis-backed daily usage counters for multi-worker LLMRouter deployments.
+
+    Key pattern: ``llm_usage:{provider}:{YYYY-MM-DD}``
+    TTL: 86400 seconds (auto-expiry at end of day).
+
+    Falls back gracefully to None so callers can use in-memory fallback.
+    """
+
+    def __init__(self, redis_url: str) -> None:
+        self._redis_url = redis_url
+        self._client: object | None = None
+
+    async def _get_client(self) -> object | None:
+        if self._client is not None:
+            return self._client
+        try:
+            import redis.asyncio as aioredis
+            client = aioredis.from_url(self._redis_url, decode_responses=True)
+            # Verify connectivity
+            await client.ping()  # type: ignore[union-attr]
+            self._client = client
+            logger.info("LLMRouter connected to Redis for shared quota tracking")
+        except Exception as e:
+            logger.warning("Redis unavailable for LLM quota tracking (%s) — using in-memory fallback", type(e).__name__)
+            self._client = None
+        return self._client
+
+    def _key(self, provider: str) -> str:
+        return f"llm_usage:{provider}:{date.today().isoformat()}"
+
+    async def get(self, provider: str) -> int:
+        """Return today's usage count for a provider (0 if Redis unavailable)."""
+        client = await self._get_client()
+        if client is None:
+            return 0
+        try:
+            val = await client.get(self._key(provider))  # type: ignore[union-attr]
+            return int(val) if val else 0
+        except Exception:
+            return 0
+
+    async def increment(self, provider: str) -> None:
+        """Atomically increment and set TTL for a provider's daily counter."""
+        client = await self._get_client()
+        if client is None:
+            return
+        try:
+            key = self._key(provider)
+            pipe = client.pipeline()  # type: ignore[union-attr]
+            await pipe.incr(key)  # type: ignore[union-attr]
+            await pipe.expire(key, 86400)  # type: ignore[union-attr]
+            await pipe.execute()  # type: ignore[union-attr]
+        except Exception as e:
+            logger.debug("Redis increment failed: %s", e)
+
 
 
 class LLMRouter:
@@ -50,6 +114,7 @@ class LLMRouter:
         groq: "GroqAdapter | None" = None,
         gemini: "GeminiAdapter | None" = None,
         openai: object | None = None,
+        redis_url: str | None = None,
     ) -> None:
         self._providers: dict[str, object] = {}
         if groq:
@@ -59,8 +124,16 @@ class LLMRouter:
         if openai:
             self._providers["openai"] = openai
 
+        # In-memory counters (always present; Redis supplements these)
         self._usage: dict[str, int] = defaultdict(int)
         self._usage_date: date = date.today()
+        # asyncio.Lock protects _usage from concurrent coroutine interleaving
+        self._lock: asyncio.Lock = asyncio.Lock()
+
+        # Redis backend for shared quota tracking across multiple workers
+        self._redis: _RedisCounterBackend | None = (
+            _RedisCounterBackend(redis_url) if redis_url else None
+        )
 
     def _reset_if_new_day(self) -> None:
         """Reset daily counters if the date has changed."""
@@ -108,7 +181,15 @@ class LLMRouter:
                 continue
 
             limit = self.DAILY_LIMITS.get(provider_name, 0)
-            if self._usage[provider_name] >= limit:
+
+            # Use Redis count when available; in-memory otherwise
+            if self._redis:
+                redis_count = await self._redis.get(provider_name)
+                current_usage = max(self._usage[provider_name], redis_count)
+            else:
+                current_usage = self._usage[provider_name]
+
+            if current_usage >= limit:
                 logger.warning(
                     "Provider %s at daily limit (%d). Trying next.",
                     provider_name, limit,
@@ -123,7 +204,11 @@ class LLMRouter:
                     temperature=temperature,
                     max_tokens=max_tokens,
                 )
-                self._usage[provider_name] += 1
+                async with self._lock:
+                    self._usage[provider_name] += 1
+                # Persist to Redis so other workers see the updated count
+                if self._redis:
+                    await self._redis.increment(provider_name)
 
                 logger.debug(
                     "LLM request routed to %s (daily: %d/%d)",

@@ -23,6 +23,7 @@ import structlog
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from jose import jwt as _jose_jwt
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -53,6 +54,30 @@ structlog.configure(
 
 logger = structlog.get_logger(__name__)
 settings = get_settings()
+
+
+def get_rate_limit_key(request: Request) -> str:
+    """
+    Rate-limiting key function: use JWT `sub` claim (user ID) when present,
+    falling back to remote IP for unauthenticated requests.
+
+    This prevents a single user behind a shared IP from being blocked by
+    another user's traffic, and stops single users from abusing shared IPs.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+        try:
+            # Decode WITHOUT verification — we only need the `sub` claim
+            # as a stable key. The actual signature check happens in the
+            # authentication middleware.
+            payload = _jose_jwt.get_unverified_claims(token)
+            sub = payload.get("sub")
+            if sub:
+                return f"user:{sub}"
+        except Exception:
+            pass  # Fall through to IP-based key
+    return get_remote_address(request)
 
 if settings.SENTRY_DSN:
     sentry_sdk.init(
@@ -180,9 +205,9 @@ app.add_middleware(
 # Audit logging middleware (request ID + timing headers)
 app.add_middleware(AuditLoggerMiddleware)
 
-# Rate limiting (60 req/min per IP)
+# Rate limiting — per user (JWT sub) with IP fallback
 limiter = Limiter(
-    key_func=get_remote_address,
+    key_func=get_rate_limit_key,
     default_limits=[f"{settings.RATE_LIMIT_REQUESTS}/minute"],
 )
 app.state.limiter = limiter
@@ -258,7 +283,7 @@ async def root():
 # =============================================================================
 
 # Import and register route modules
-from src.api.routes import tasks, health, chat, voice, llm, webhooks, websocket, system_admin  # noqa: E402
+from src.api.routes import tasks, health, chat, voice, llm, webhooks, websocket, system_admin, messaging  # noqa: E402
 from src.api.middleware.authentication import verify_jwt_token
 from src.api.middleware.rbac import RequireUser
 from fastapi import Depends
@@ -278,6 +303,9 @@ app.include_router(system_admin.router, prefix="/api/v1", tags=["Admin System"])
 
 # Webhooks use their own secret-token validation — no JWT
 app.include_router(webhooks.router, prefix="/api/v1", tags=["Webhooks"])
+
+# Outbound messaging dispatch (requires JWT auth)
+app.include_router(messaging.router, prefix="/api/v1", tags=["Messaging"], dependencies=[Depends(verify_jwt_token)])
 
 # WebSocket Endpoint (no HTTP prefix usually needed)
 app.include_router(websocket.router, tags=["Realtime"])
