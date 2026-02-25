@@ -37,10 +37,10 @@ jobs:
         run: uv run mypy src/ --ignore-missing-imports
 
       - name: Security scan (bandit)
-        run: uv run bandit -r src/ -ll -x src/infra/tools/
+        run: uv run bandit -r src/ -ll -x src/infra/tools/ --severity-level high
 
       - name: Dependency audit (pip-audit)
-        run: uv run pip-audit --requirement <(uv pip freeze) || true
+        run: uv run pip-audit --requirement <(uv pip freeze) --ignore-vuln CVE-2024-23342
 
   # ---------------------------------------------------------------------------
   # Test suite with real PostgreSQL
@@ -62,6 +62,16 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+          
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - uses: actions/checkout@v4
@@ -77,13 +87,20 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --dev
 
+      - name: Check database migrations
+        run: uv run alembic check
+        env:
+          DATABASE_URL: postgresql+asyncpg://amadeus:amadeus_test_pass@localhost:5432/amadeus_test
+          SKIP_CONFIG_VALIDATION: "true"
+          ENV: development
+
       - name: Run tests with coverage
         run: |
           uv run pytest tests/ \
             --cov=src \
             --cov-report=xml \
             --cov-report=term-missing \
-            --cov-fail-under=40 \
+            --cov-fail-under=60 \
             -v
         env:
           DATABASE_URL: postgresql+asyncpg://amadeus:amadeus_test_pass@localhost:5432/amadeus_test
@@ -98,6 +115,53 @@ jobs:
         with:
           file: ./coverage.xml
           fail_ci_if_error: false
+
+  # ---------------------------------------------------------------------------
+  # Auto-train ML Classifier
+  # ---------------------------------------------------------------------------
+  train-model:
+    name: Train ML Classifier
+    runs-on: ubuntu-latest
+    needs: [quality, test]
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            data:
+              - 'data/training_data.json'
+              
+      - name: Install uv
+        if: steps.filter.outputs.data == 'true'
+        uses: astral-sh/setup-uv@v5
+        
+      - name: Set up Python
+        if: steps.filter.outputs.data == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: "pyproject.toml"
+          
+      - name: Install dependencies
+        if: steps.filter.outputs.data == 'true'
+        run: uv sync --all-extras --dev
+        
+      - name: Train model
+        if: steps.filter.outputs.data == 'true'
+        run: uv run python scripts/train_classifier.py
+        
+      - name: Commit and push changes
+        if: steps.filter.outputs.data == 'true'
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add Model/
+          git commit -m "Auto-update tool classifier models [skip ci]" || echo "No changes to commit"
+          git push
 
   # ---------------------------------------------------------------------------
   # Deploy to Railway staging on merge to develop

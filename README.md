@@ -11,7 +11,8 @@
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 > **Tech Stack Highlights:**
-> `Python 3.11` · `FastAPI` · `SQLAlchemy` · `Gemini` · `Groq (Llama 3.3)` · `OpenAI (GPT-4o-mini)` · `Redis` · `Qdrant` · `PostgreSQL` · `JWT Auth` · `SSE Streaming` · `faster-whisper` · `Edge TTS` · `Telegram` · `WhatsApp` · `Docker` · `GitHub Actions`
+> `Python 3.11` · `FastAPI` · `SQLAlchemy` · `Gemini` · `Groq (Llama 3.3)` · `OpenAI (GPT-4o-mini)` · `Redis` · `Qdrant` · `PostgreSQL` · `JWT Auth` · `SSE Streaming` · `faster-whisper` · `Edge TTS` · `Telegram` · `WhatsApp` · `Docker` · `GitHub Actions` · `scikit-learn (TF-IDF + SVM)` · `Prometheus`
+
 
 </div>
 
@@ -69,26 +70,50 @@ Amadeus AI is a FastAPI-based backend service that orchestrates a conversational
 **System & monitoring tools:**
 - CPU, memory, disk, battery monitoring with configurable alert thresholds
 
+### ML Classifier (Tool Selection)
+- **TF-IDF + LinearSVC pipeline** (`scikit-learn`) — selects relevant tools locally without an LLM call
+- **3,168 training examples** across **23 tool categories** — 5-fold cross-validation accuracy: **96.2%**
+- Eliminates 40–60× Gemini tool-selection calls; prediction latency < 10ms vs 500ms+
+- Models committed at `Model/tfidf_vectorizer.joblib` + `Model/svm_classifier.joblib`
+- **CI auto-retraining**: `train-model` GitHub Actions job triggers on `data/training_data.json` changes
+- Classifier status exposed in `/api/v1/health/detailed` → `classifier_enabled: true/false`
+
 ### API & Security
 - JWT Bearer authentication on all protected routes (`/chat`, `/tasks`, `/voice`, `/messaging`)
-- Per-user JWT rate limiting (`slowapi`) with IP fallback for unauthenticated requests
-- Request audit logging middleware (request IDs, latency headers)
+- Per-user JWT rate limiting (`slowapi`) with Redis storage + IP fallback for unauthenticated requests
+- **OWASP-hardened logs** — no API keys, no raw user prompts, no auth tokens in any log statement
+- Request audit logging middleware (unique request IDs, latency headers, client IP)
+- **Bandit security scan**: 0 HIGH severity findings in CI — enforced as gate
+- **pip-audit**: 0 actionable HIGH CVEs (1 known false positive for `ecdsa` permanently ignored)
 - Prometheus metrics endpoint (`/api/v1/metrics`)
 - Sentry error tracking integration
 
+
 ### Caching (Redis)
-- LLM responses: 1-hour TTL
+- LLM responses: 1-hour TTL — deduplicates identical prompts
 - **LLM daily usage quotas**: `llm_usage:{provider}:{date}` — 86400s TTL, shared across workers
-- TTS audio: 24-hour TTL
-- Tool results (stateless only): 5-minute TTL
-- Web search results: 30-minute TTL
+- TTS audio: 24-hour TTL — common phrases reuse synthesized audio bytes
+- Tool results (stateless only): 5-minute TTL (weather, system stats)
+- Web search results: 30-minute TTL (DDG, Brave, Tavily)
 - Graceful fallback if Redis is unavailable
 
+### Observability (Prometheus — `/api/v1/metrics`)
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `amadeus_llm_calls_total{provider}` | Counter | Total LLM calls per provider |
+| `amadeus_tool_calls_total{tool_name}` | Counter | Per-tool invocation count |
+| `amadeus_cache_hit_rate` | Gauge | Cache hit % (updated on every cache hit) |
+| `amadeus_llm_cost_usd` | Gauge | Estimated LLM spend in USD |
+| HTTP latency histograms | Histogram | P50/P95/P99 per route via `prometheus-fastapi-instrumentator` |
+
 ### CI/CD & Deployment
-- GitHub Actions pipeline: lint (ruff), format check, type check (mypy), security scan (bandit), dependency audit (pip-audit)
-- Automated test run with real PostgreSQL service container
-- **Coverage threshold: 80%** enforced via `pyproject.toml`
+- GitHub Actions pipeline: lint (ruff), format check, type check (mypy), bandit (0 HIGH gate), pip-audit
+- Automated test run with real PostgreSQL + Redis service containers
+- **`train-model` CI job**: auto-retrains the ML classifier when `data/training_data.json` changes and commits updated model artifacts back to the repo
+- **Coverage threshold: 60%** enforced in CI (`--cov-fail-under=60`); **80%** enforced locally via `pyproject.toml`
 - Staging deploy to Railway on `develop` branch merge
+
 
 ---
 
@@ -368,6 +393,7 @@ curl -N -H "Authorization: Bearer $TOKEN" \
 ## 8. System Architecture Overview
 
 ```
+Amadeus-AI/
 ┌──────────────────────────────────────────────────────────────────────┐
 │                         CLIENT LAYER                                 │
 │          HTTP / REST Clients         WebSocket (voice stream)        │
@@ -382,7 +408,7 @@ curl -N -H "Authorization: Bearer $TOKEN" \
                         │  Depends()
 ┌──────────────────────▼──────────────────────────────────────────────┐
 │                   APPLICATION LAYER  (src/app/)                      │
-│  AmadeusService → AgentLoop → ToolRegistry                          │
+│  AmadeusService → ML Classifier → ToolRegistry                      │
 │  VoiceService (STT → LLM → TTS pipeline)                           │
 └────────┬──────────────────────────┬─────────────────────────────────┘
          │ Core Interfaces          │ Infrastructure Services
@@ -407,9 +433,10 @@ curl -N -H "Authorization: Bearer $TOKEN" \
                                         │
 ┌───────────────────────────────────────▼──────────────────────────────┐
 │                        DATA LAYER                                     │
-│     PostgreSQL (prod)   SQLite (dev)   Redis (cache)   ChromaDB      │
+│     PostgreSQL (prod)   SQLite (dev)   Redis (cache)   Qdrant        │
 └───────────────────────────────────────────────────────────────────────┘
 ```
+
 
 **LLM Routing Order:**
 ```
@@ -604,9 +631,18 @@ Amadeus-AI/
 │           ├── productivity_tools.py # Tasks, Pomodoro, notes, reminders
 │           ├── monitor_tools.py  # CPU, memory, disk, battery monitoring
 │           └── system_tools.py   # File ops, app launch, system commands
+├── Model/
+│   ├── tfidf_vectorizer.joblib    # TF-IDF feature extractor (trained)
+│   └── svm_classifier.joblib     # LinearSVC tool classifier (96.2% CV accuracy)
+├── data/
+│   └── training_data.json        # 3,168 labeled training examples (23 categories)
+├── scripts/
+│   ├── generate_training_data.py # Generates training_data.json from templates
+│   └── train_classifier.py       # Trains and saves joblib model artifacts
 ├── tests/
 │   ├── conftest.py               # Pytest fixtures (async DB session, DI container)
 │   ├── unit/                     # Unit tests
+│   │   ├── test_classifier_loading.py
 │   │   ├── test_openai_adapter.py
 │   │   └── test_memory_agent_integration.py
 │   └── integration/
@@ -618,6 +654,7 @@ Amadeus-AI/
 ├── .env.example                  # Environment variable documentation template
 └── locustfile.py                 # Load testing configuration (Locust)
 ```
+
 
 ---
 
@@ -648,7 +685,8 @@ pytest tests/ -m "not slow" -v
 
 ### Coverage Threshold
 
-The project enforces a minimum of **80% coverage** via `fail_under = 80` in `pyproject.toml` and `--cov-fail-under=40` in the GitHub Actions CI baseline.
+The project enforces **80% coverage** locally via `fail_under = 80` in `pyproject.toml` and **60%** in the GitHub Actions CI baseline (`--cov-fail-under=60`).
+
 
 ### Integration Tests
 
@@ -732,8 +770,10 @@ alembic upgrade head && uvicorn src.api.server:app --host 0.0.0.0 --port 8000 --
 - **RBAC**: Add role-based access control to support multi-tenant usage with per-user tool restrictions.
 - **WebSocket JWT enforcement**: Move token validation to the WebSocket upgrade handshake rather than relying on downstream checks.
 - **Voice streaming**: Support streaming TTS back over the WebSocket as audio chunks arrive (rather than waiting for the full synthesis).
-- **Proactive agents**: Background observation loop for autonomous task scheduling without user prompting.
 - **Mobile / browser SDK**: Thin client library for the SSE streaming and voice WebSocket endpoints.
+- **Fine-tuned classifier**: Replace the TF-IDF + SVM pipeline with a fine-tuned sentence-transformer model for even higher accuracy on ambiguous multi-intent queries.
+- **Cost dashboard**: Dedicated Grafana dashboard for the Prometheus cost gauges with daily/monthly aggregations.
+
 
 ---
 

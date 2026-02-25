@@ -4,21 +4,26 @@ Health and system status API routes.
 
 import psutil
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from src.core.config import get_settings
 from src.core.domain.models import SystemStatus, HealthResponse, SystemStatusResponse
-
+from src.container import get_amadeus_service
+from src.app.services.amadeus_service import AmadeusService
 
 router = APIRouter()
 settings = get_settings()
 
 
 @router.get("/health/detailed", response_model=HealthResponse, tags=["Health"])
-async def detailed_health():
+async def detailed_health(amadeus: AmadeusService = Depends(get_amadeus_service)):
     """
     Detailed health check with component status.
     """
+    cache_stats = None
+    if amadeus.cache_service:
+        cache_stats = amadeus.cache_service.get_stats()
+        
     return HealthResponse(
         status="healthy",
         service=settings.ASSISTANT_NAME,
@@ -26,6 +31,8 @@ async def detailed_health():
         environment=settings.ENV,
         database="connected" if settings.DATABASE_URL else "not configured",
         voice_enabled=settings.VOICE_ENABLED,
+        classifier_enabled=getattr(amadeus, 'classifier_enabled', False),
+        cache_stats=cache_stats,
     )
 
 

@@ -16,7 +16,10 @@ import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from functools import partial
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.infra.cache.cache_service import CacheService
 
 import google.generativeai as genai
 import joblib
@@ -191,9 +194,11 @@ class AmadeusService:
         conversation_repo: "IConversationRepository | None" = None,
         session_id: str | None = None,
         debug_mode: bool = False,
+        cache_service: "CacheService | None" = None,
     ):
         self.settings = settings or get_settings()
         self.debug_mode = debug_mode
+        self.cache_service = cache_service
         
         # Session management
         import uuid
@@ -537,6 +542,21 @@ Guidelines:
         # Step 4: Get Gemini declarations for relevant tools only
         tools_config = self.tool_registry.build_gemini_tools(relevant_tools)
         
+        # Check LLM cache BEFORE calling Gemini
+        if self.cache_service:
+            cached_llm = await self.cache_service.get_llm(user_input, "gemini")
+            if cached_llm:
+                logger.info("LLM cache hit (%d chars)", len(user_input))
+                # Update cache hit rate gauge
+                try:
+                    from src.api.server import amadeus_cache_hit_rate
+                    stats = self.cache_service.get_stats()
+                    amadeus_cache_hit_rate.set(stats["hit_rate_pct"])
+                except Exception:
+                    pass
+                return (cached_llm, None)
+
+                
         # Step 5: Call Gemini
         try:
             response = self.model.generate_content(
@@ -560,15 +580,26 @@ Guidelines:
             
             # No function call - return text response
             text = response.text if hasattr(response, "text") else str(response)
+
+            # Increment Prometheus LLM call counter (conversational, no tool)
+            try:
+                from src.api.server import amadeus_llm_calls_total
+                amadeus_llm_calls_total.labels(provider="gemini").inc()
+            except Exception:
+                pass
+
+            if self.cache_service:
+                await self.cache_service.set_llm(user_input, text, "gemini")
             return (text, None)
+
             
         except Exception as e:
-            logger.error(f"Gemini API error type: {type(e)}")
-            logger.error(f"Gemini API error repr: {repr(e)}")
-            logger.error(f"Gemini API error args: {e.args}")
+            logger.error("Gemini API error type: %s", type(e).__name__)
+            logger.error("Gemini API error: %s", repr(e))
             import traceback
-            logger.error(f"Traceback: {traceback.format_exc()}")
+            logger.error("Traceback: %s", traceback.format_exc())
             return (f"I had trouble processing that: {e}", None)
+
     
     async def _process_without_gemini(self, user_input: str) -> tuple[str, str | None]:
         """Fallback processing when Gemini is not available."""
@@ -612,6 +643,28 @@ Guidelines:
         tool_name = function_call.name
         args = dict(function_call.args) if function_call.args else {}
         
+        # Increment Prometheus tool call counter
+        try:
+            from src.api.server import amadeus_tool_calls_total
+            amadeus_tool_calls_total.labels(tool_name=tool_name).inc()
+        except Exception:
+            pass  # metrics unavailable in test / CLI context
+
+        # Check tool cache
+        if self.cache_service:
+            cached_result = await self.cache_service.get_tool_result(tool_name, args)
+            if cached_result:
+                logger.debug("Tool cache hit for '%s'", tool_name)
+                # Update cache hit rate gauge
+                try:
+                    from src.api.server import amadeus_cache_hit_rate
+                    stats = self.cache_service.get_stats()
+                    amadeus_cache_hit_rate.set(stats["hit_rate_pct"])
+                except Exception:
+                    pass
+                return cached_result
+
+                
         tool = self.tool_registry.get(tool_name)
         if not tool:
             return f"Tool '{tool_name}' not found"
@@ -619,7 +672,10 @@ Guidelines:
         result = await self.tool_executor.execute(tool, args)
         
         if result.success:
-            return str(result.result)
+            result_str = str(result.result)
+            if self.cache_service:
+                await self.cache_service.set_tool_result(tool_name, args, result_str)
+            return result_str
         return result.error_message or "Tool execution failed"
     
     async def _generate_conversational_response(self, user_input: str) -> str:
