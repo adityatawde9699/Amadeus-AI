@@ -800,7 +800,6 @@ You may obtain a copy of the License at
 **Aditya Tawde**
 
 - GitHub: [@adityatawde9699](https://github.com/adityatawde9699)
-- Email: adityatawde9699@gmail.com
 - Repository: [github.com/adityatawde9699/Amadeus-AI](https://github.com/adityatawde9699/Amadeus-AI)
 
 
