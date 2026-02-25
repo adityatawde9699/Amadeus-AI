@@ -157,11 +157,12 @@ Guidelines:
             cache_key = None
             if self._redis:
                 key_str = f"gemini:response:{full_prompt}:{temperature}:{max_tokens}"
-                cache_key = hashlib.md5(key_str.encode()).hexdigest()
+                cache_key = hashlib.md5(key_str.encode(), usedforsecurity=False).hexdigest()  # nosec B324
                 cached = await self._redis.get(cache_key)
                 if cached:
-                    logger.debug(f"Cache hit for Gemini response: {cache_key}")
+                    logger.debug("Cache hit for Gemini response")
                     return cached
+
             
             generation_config = genai.GenerationConfig(
                 temperature=temperature,
@@ -215,11 +216,12 @@ Guidelines:
             cache_key = None
             if self._redis and not tools:
                 key_str = f"gemini:tools:{full_prompt}"
-                cache_key = hashlib.md5(key_str.encode()).hexdigest()
+                cache_key = hashlib.md5(key_str.encode(), usedforsecurity=False).hexdigest()  # nosec B324
                 cached = await self._redis.get(cache_key)
                 if cached:
-                    logger.debug(f"Cache hit for Gemini tool response: {cache_key}")
+                    logger.debug("Cache hit for Gemini tool response")
                     return cached, None
+
             
             response = self._model.generate_content(
                 [self._get_system_prompt(), full_prompt],

@@ -100,10 +100,12 @@ def get_amadeus_service() -> AmadeusService:
     """
     settings = get_settings()
     registry = get_tool_registry()
+    cache_service = get_cache_service()
     
     service = AmadeusService(
         settings=settings,
         tool_registry=registry,
+        cache_service=cache_service,
     )
     
     logger.info("AmadeusService singleton initialized")
@@ -203,7 +205,8 @@ def get_voice_service() -> "VoiceService":
     try:
         from src.infra.speech.edge_tts_adapter import EdgeTTSAdapter
         from src.infra.speech.tts_router import TTSRouter
-        edge_tts = EdgeTTSAdapter(voice=settings.EDGE_TTS_VOICE)
+        cache_service = get_cache_service()
+        edge_tts = EdgeTTSAdapter(voice=settings.EDGE_TTS_VOICE, cache_service=cache_service)
         tts = TTSRouter(edge_tts=edge_tts)
         logger.info("TTSRouter initialized (EdgeTTS only - $0/month)")
     except ImportError:
@@ -236,16 +239,54 @@ def get_redis_client() -> "redis.asyncio.Redis | None":
     settings = get_settings()
     
     try:
-        client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        client = redis.from_url(settings.REDIS_URL, decode_responses=False) # Wait, cache service expects bytes for tts? Actually it gets decoded in CacheService based on isinstance(bytes). Actually decode_responses=False is safer for bytes.
         logger.info("Redis cache client configured")
         return client
     except Exception as e:
         logger.error(f"Failed to configure Redis client: {e}")
         return None
 
+@lru_cache()
+def get_cache_service() -> "CacheService | None":
+    """
+    Get the CacheService singleton.
+    Provides Redis-backed caching for LLM, TTS, tools, and search.
+    Returns None if Redis is unavailable.
+    """
+    from src.infra.cache.cache_service import CacheService
+    redis_client = get_redis_client()
+    if not redis_client:
+        return None
+    return CacheService(redis=redis_client)
+
+
 # =============================================================================
-# CLEANUP
+# SEARCH ROUTER
 # =============================================================================
+
+@lru_cache()
+def get_search_router() -> "SearchRouter":
+    """
+    Get the SearchRouter singleton.
+
+    Routing order (cost-optimised, free-first):
+      1. DuckDuckGo Instant Answer API  — always free, no key
+      2. Brave Search API               — 2 000 req/month free (key optional)
+      3. Tavily Search API              — deep/AI search, paid (key optional)
+    """
+    from src.infra.search.search_router import SearchRouter
+    settings = get_settings()
+    router = SearchRouter(
+        brave_api_key=getattr(settings, "BRAVE_SEARCH_API_KEY", None),
+        tavily_api_key=getattr(settings, "TAVILY_API_KEY", None),
+    )
+    logger.info(
+        "SearchRouter initialised — Brave=%s, Tavily=%s",
+        bool(getattr(settings, "BRAVE_SEARCH_API_KEY", None)),
+        bool(getattr(settings, "TAVILY_API_KEY", None)),
+    )
+    return router
+
 
 async def shutdown_services() -> None:
     """
@@ -258,6 +299,7 @@ async def shutdown_services() -> None:
     get_amadeus_service.cache_clear()
     get_voice_service.cache_clear()
     get_llm_router.cache_clear()
+    get_search_router.cache_clear()
     
     # Close Redis connection if active
     redis_client = get_redis_client()

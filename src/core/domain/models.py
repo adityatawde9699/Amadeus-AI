@@ -379,6 +379,8 @@ class HealthResponse(BaseModel):
     environment: str
     database: str
     voice_enabled: bool
+    classifier_enabled: bool
+    cache_stats: dict | None = None
     
     model_config = {
         "json_schema_extra": {
@@ -388,7 +390,8 @@ class HealthResponse(BaseModel):
                 "version": "2.0.0",
                 "environment": "production",
                 "database": "connected",
-                "voice_enabled": True
+                "voice_enabled": True,
+                "classifier_enabled": True
             }
         }
     }

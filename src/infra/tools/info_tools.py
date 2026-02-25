@@ -530,11 +530,8 @@ async def web_search_async(query: str, depth: str = "quick") -> str:
         return "Error: No search query provided."
 
     try:
-        from src.infra.search.search_router import SearchRouter
-        router = SearchRouter(
-            brave_api_key=settings.BRAVE_SEARCH_API_KEY,
-            tavily_api_key=settings.TAVILY_API_KEY,
-        )
+        from src.container import get_search_router
+        router = get_search_router()
         return await router.search(query.strip(), depth=depth)
     except Exception as e:
         logger.error("web_search failed: %s", type(e).__name__)

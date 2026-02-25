@@ -13,9 +13,12 @@ Key advantages over pyttsx3:
 
 import io
 import logging
-from typing import ClassVar
+from typing import ClassVar, TYPE_CHECKING
 
 from src.core.interfaces.speech_service import ITextToSpeechService
+
+if TYPE_CHECKING:
+    from src.infra.cache.cache_service import CacheService
 
 
 logger = logging.getLogger(__name__)
@@ -33,8 +36,9 @@ class EdgeTTSAdapter(ITextToSpeechService):
     _cache: ClassVar[dict[str, bytes]] = {}
     _MAX_CACHE_ENTRIES: int = 200  # Cap memory usage (~200 phrases)
 
-    def __init__(self, voice: str = "en-US-JennyNeural") -> None:
+    def __init__(self, voice: str = "en-US-JennyNeural", cache_service: "CacheService | None" = None) -> None:
         self.default_voice = voice
+        self.cache_service = cache_service
 
     async def synthesize(self, text: str, voice_id: str | None = None) -> bytes:
         """
@@ -58,10 +62,17 @@ class EdgeTTSAdapter(ITextToSpeechService):
 
         voice = voice_id or self.default_voice
         cache_key = f"{voice}:{hash(text)}"
+        
+        # 1. Try Redis cache
+        if self.cache_service:
+            cached_audio = await self.cache_service.get_tts(text, voice)
+            if cached_audio:
+                logger.debug("Redis TTS cache hit for: %s...", text[:30])
+                return cached_audio
 
-        # Return cached result if available
+        # 2. Try in-memory cache
         if cache_key in self._cache:
-            logger.debug("TTS cache hit for: %s...", text[:30])
+            logger.debug("In-memory TTS cache hit for: %s...", text[:30])
             return self._cache[cache_key]
 
         try:
@@ -84,6 +95,11 @@ class EdgeTTSAdapter(ITextToSpeechService):
                 del self._cache[oldest_key]
 
             self._cache[cache_key] = audio_bytes
+            
+            # Store in Redis
+            if self.cache_service:
+                await self.cache_service.set_tts(text, voice, audio_bytes)
+                
             logger.debug("TTS synthesized %d bytes for: %s...", len(audio_bytes), text[:30])
             return audio_bytes
 

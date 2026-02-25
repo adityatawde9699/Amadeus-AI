@@ -206,15 +206,26 @@ app.add_middleware(
 app.add_middleware(AuditLoggerMiddleware)
 
 # Rate limiting — per user (JWT sub) with IP fallback
-limiter = Limiter(
-    key_func=get_rate_limit_key,
-    default_limits=[f"{settings.RATE_LIMIT_REQUESTS}/minute"],
-)
+limiter_kwargs = {
+    "key_func": get_rate_limit_key,
+    "default_limits": [f"{settings.RATE_LIMIT_REQUESTS}/minute"],
+}
+if settings.REDIS_URL:
+    limiter_kwargs["storage_uri"] = settings.REDIS_URL
+
+limiter = Limiter(**limiter_kwargs)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Prometheus Metrics
 from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_client import Counter, Gauge
+
+amadeus_llm_calls_total = Counter("amadeus_llm_calls_total", "Total LLM calls", ["provider"])
+amadeus_llm_cost_usd = Gauge("amadeus_llm_cost_usd", "Estimated LLM cost in USD")
+amadeus_cache_hit_rate = Gauge("amadeus_cache_hit_rate", "Cache hit rate percentage")
+amadeus_tool_calls_total = Counter("amadeus_tool_calls_total", "Total tool calls", ["tool_name"])
+
 Instrumentator().instrument(app).expose(app, endpoint="/api/v1/metrics", tags=["System"])
 
 
