@@ -22,8 +22,6 @@ from src.infra.tools.base import Tool, ToolCategory, tool
 
 logger = logging.getLogger(__name__)
 
-
-from src.app.services.container import get_container
 from src.infra.system.app_registry import AppRegistry
 
 # Initialize global registry locally for tools since tool execution happens statically

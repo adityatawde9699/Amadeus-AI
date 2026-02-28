@@ -103,6 +103,13 @@ class Settings(BaseSettings):
     WHATSAPP_PHONE_NUMBER_ID: str | None = None
     
     # =========================================================================
+    # PROACTIVE MESSAGING (Master Users)
+    # =========================================================================
+    MASTER_TELEGRAM_CHAT_ID: str | None = None
+    MASTER_WHATSAPP_NUMBER: str | None = None
+    PROACTIVE_CHECK_INTERVAL_MINUTES: int = Field(default=30, ge=1, le=1440)
+    
+    # =========================================================================
     # EMAIL (IMAP / SMTP)
     # =========================================================================
     EMAIL_IMAP_SERVER: str = "imap.gmail.com"

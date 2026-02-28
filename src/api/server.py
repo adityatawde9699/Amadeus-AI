@@ -113,25 +113,23 @@ async def lifespan(app: FastAPI):
     # Initialize database
     await init_db()
     
+    # Initialize Telegram Long Polling
+    logger.info("Initializing Telegram Long Polling...")
+    from src.api.routes.webhooks import _telegram
+    await _telegram.start_polling()
+    
     # Initialize and start APScheduler
     logger.info("Initializing background task scheduler...")
     
-    # Example: Registering a sample job (replace 'example_user_id' with real IDs retrieved from DB)
-    from src.app.services.amadeus_service import AmadeusService
+    from src.app.services.proactive_service import run_proactive_checks
     
-    async def sample_morning_greeting():
-        """A sample cron job to send proactive morning greetings."""
-        logger.info("Executing scheduled job: sample_morning_greeting")
-        # In a real scenario, loop through active user IDs from the database
-        # svc = AmadeusService()
-        # await svc.send_outbound_message(user_id="example_telegram_id", platform="telegram", message="Good morning! Here is your daily briefing.")
-    
+    # Run proactive checks periodically (e.g. every 30 minutes)
+    interval_minutes = settings.PROACTIVE_CHECK_INTERVAL_MINUTES
     scheduler.add_job(
-        sample_morning_greeting, 
-        'cron', 
-        hour=8, 
-        minute=0, 
-        id="morning_greeting_job",
+        run_proactive_checks, 
+        'interval', 
+        minutes=interval_minutes, 
+        id="proactive_checks_job",
         replace_existing=True
     )
     
@@ -152,9 +150,12 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("Shutting down API...")
-    observation_loop.stop()
     if scheduler.running:
         scheduler.shutdown(wait=False)
+        
+    await _telegram.stop_polling()
+    
+    observation_loop.stop()
     await close_db()
     logger.info("Shutdown complete")
 
@@ -221,10 +222,13 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Counter, Gauge
 
-amadeus_llm_calls_total = Counter("amadeus_llm_calls_total", "Total LLM calls", ["provider"])
-amadeus_llm_cost_usd = Gauge("amadeus_llm_cost_usd", "Estimated LLM cost in USD")
-amadeus_cache_hit_rate = Gauge("amadeus_cache_hit_rate", "Cache hit rate percentage")
-amadeus_tool_calls_total = Counter("amadeus_tool_calls_total", "Total tool calls", ["tool_name"])
+try:
+    amadeus_llm_calls_total = Counter("amadeus_llm_calls_total", "Total LLM calls", ["provider"])
+    amadeus_llm_cost_usd = Gauge("amadeus_llm_cost_usd", "Estimated LLM cost in USD")
+    amadeus_cache_hit_rate = Gauge("amadeus_cache_hit_rate", "Cache hit rate percentage")
+    amadeus_tool_calls_total = Counter("amadeus_tool_calls_total", "Total tool calls", ["tool_name"])
+except ValueError:
+    pass  # Already registered (e.g. during uvicorn reload)
 
 Instrumentator().instrument(app).expose(app, endpoint="/api/v1/metrics", tags=["System"])
 
@@ -294,7 +298,7 @@ async def root():
 # =============================================================================
 
 # Import and register route modules
-from src.api.routes import tasks, health, chat, voice, llm, webhooks, websocket, system_admin, messaging  # noqa: E402
+from src.api.routes import tasks, health, chat, voice, llm, webhooks, websocket, system_admin, messaging, ipc  # noqa: E402
 from src.api.middleware.authentication import verify_jwt_token
 from src.api.middleware.rbac import RequireUser
 from fastapi import Depends
@@ -320,6 +324,9 @@ app.include_router(messaging.router, prefix="/api/v1", tags=["Messaging"], depen
 
 # WebSocket Endpoint (no HTTP prefix usually needed)
 app.include_router(websocket.router, tags=["Realtime"])
+
+# Inter-Process Communication (IPC) for localhost GUI System Tray
+app.include_router(ipc.router, prefix="/api/v1", tags=["IPC"])
 
 
 # =============================================================================

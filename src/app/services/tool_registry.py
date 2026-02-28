@@ -24,8 +24,8 @@ from src.infra.tools.base import Tool, ToolCategory
 
 # Try to import Gemini SDK types (High-Level)
 try:
-    import google.generativeai as genai
-    from google.generativeai.types import FunctionDeclaration, Tool as GenAITool
+    from google import genai
+    from google.genai.types import FunctionDeclaration, Tool as GenAITool
     HAS_GENAI = True
 except ImportError:
     HAS_GENAI = False

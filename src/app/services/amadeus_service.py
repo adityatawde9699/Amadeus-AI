@@ -21,7 +21,8 @@ from typing import Any, TYPE_CHECKING
 if TYPE_CHECKING:
     from src.infra.cache.cache_service import CacheService
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import joblib
 import numpy as np
 
@@ -231,9 +232,12 @@ class AmadeusService:
         # Initialize Agent Orchestrator (holds the background worker loop)
         from src.app.services.agent_loop import AgentOrchestrator
         llm_generate = None
-        if self.model:
+        if hasattr(self, 'client') and self.client:
             def _generate(prompt: str) -> str:
-                response = self.model.generate_content(prompt)
+                response = self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=prompt,
+                )
                 return response.text if hasattr(response, "text") else str(response)
             llm_generate = _generate
 
@@ -257,12 +261,12 @@ class AmadeusService:
         """Load and configure API keys."""
         if not self.settings.GEMINI_API_KEY:
             logger.warning("GEMINI_API_KEY not found - AI features will be limited")
-            self.model = None
+            self.client = None
             return
         
-        genai.configure(api_key=self.settings.GEMINI_API_KEY)
-        self.model = genai.GenerativeModel(self.settings.GEMINI_MODEL)
-        logger.info(f"Gemini API configured with model: {self.settings.GEMINI_MODEL}")
+        self.client = genai.Client(api_key=self.settings.GEMINI_API_KEY)
+        self.model_name = self.settings.GEMINI_MODEL
+        logger.info(f"Gemini API configured with model: {self.model_name}")
     
     def _load_tool_classifier(self) -> None:
         """
@@ -511,7 +515,7 @@ Guidelines:
             Tuple of (response_text, tool_used_name or None)
         """
         # Check if Gemini is available
-        if self.model is None:
+        if not getattr(self, 'client', None):
             # Without Gemini, try to execute tools directly based on keywords
             return await self._process_without_gemini(user_input)
         
@@ -559,24 +563,27 @@ Guidelines:
                 
         # Step 5: Call Gemini
         try:
-            response = self.model.generate_content(
-                [system_prompt, user_input],
-                tools=tools_config,
+            config = types.GenerateContentConfig(
+                tools=tools_config if tools_config else None,
+            )
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=[system_prompt, user_input],
+                config=config,
             )
             
             # Step 6: Check for function calls
-            if response.candidates and response.candidates[0].content.parts:
-                for part in response.candidates[0].content.parts:
-                    if hasattr(part, "function_call") and part.function_call:
-                        tool_name = part.function_call.name
-                        # Execute the function call
-                        result = await self._execute_function_call(part.function_call)
-                        
-                        # Generate a response incorporating the result
-                        final_response = await self._generate_response_with_result(
-                            user_input, tool_name, result
-                        )
-                        return (final_response, tool_name)
+            if response.function_calls:
+                fc = response.function_calls[0]
+                tool_name = fc.name
+                # Execute the function call
+                result = await self._execute_function_call(fc)
+                
+                # Generate a response incorporating the result
+                final_response = await self._generate_response_with_result(
+                    user_input, tool_name, result
+                )
+                return (final_response, tool_name)
             
             # No function call - return text response
             text = response.text if hasattr(response, "text") else str(response)
@@ -641,7 +648,7 @@ Guidelines:
     async def _execute_function_call(self, function_call: Any) -> str:
         """Execute a Gemini function call."""
         tool_name = function_call.name
-        args = dict(function_call.args) if function_call.args else {}
+        args = dict(function_call.args) if getattr(function_call, "args", None) else {}
         
         # Increment Prometheus tool call counter
         try:
@@ -702,7 +709,10 @@ User: {user_input}
 Respond naturally and conversationally. Be concise."""
 
         try:
-            response = self.model.generate_content(prompt)
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+            )
             return response.text if hasattr(response, "text") else str(response)
         except Exception as e:
             logger.error(f"Error generating response: {e}")
@@ -720,7 +730,10 @@ Tool result: {result}
 Provide a natural, concise response that incorporates this result. Don't just repeat the result - present it helpfully."""
         
         try:
-            response = self.model.generate_content(prompt)
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+            )
             return response.text if hasattr(response, "text") else result
         except Exception:
             return result  # Fallback to raw result
