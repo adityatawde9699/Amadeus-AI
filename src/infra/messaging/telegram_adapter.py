@@ -2,16 +2,16 @@
 Telegram Bot Adapter for Amadeus AI — powered by python-telegram-bot v20+.
 
 Responsibilities:
-  - Register a webhook URL with Telegram (called once on deploy).
-  - Parse incoming Update payloads using the library's native Update.de_json().
+  - Run a long-polling loop in the background (no webhooks).
+  - Parse incoming Updates and pass them to AmadeusService.
   - Send text replies with optional inline keyboards.
   - Send voice/audio replies.
 
 Why python-telegram-bot v20+?
   - Fully async (asyncio-native) — perfect for FastAPI.
-  - Native Update parsing with type safety, no manual dict crawling.
+  - Native Update parsing with type safety.
   - Built-in Markdown/HTML parse-mode helpers.
-  - InlineKeyboardMarkup support for interactive bot UIs.
+  - Runs perfectly behind a home NAT without ngrok via Long Polling.
 """
 
 from __future__ import annotations
@@ -51,19 +51,18 @@ class TelegramAdapter:
 
     Usage:
         adapter = TelegramAdapter()
+        
+        # Start polling (e.g., in FastAPI lifespan):
+        await adapter.start_polling()
 
-        # Register webhook (call once at server startup):
-        await adapter.set_webhook("https://your-domain.com/api/v1/messaging/telegram")
-
-        # In your FastAPI route that receives POST payloads from Telegram:
-        msg = adapter.parse_update(request_body_dict)
-        if msg:
-            await adapter.send_message(msg.chat_id, "Hello!")
+        # Stop polling (e.g., in FastAPI shutdown):
+        await adapter.stop_polling()
     """
 
     def __init__(self, bot_token: str | None = None) -> None:
         settings = get_settings()
         self._token = bot_token or settings.TELEGRAM_BOT_TOKEN
+        self._application: Any = None
         self._bot: Any = None
 
         if not self._token:
@@ -72,67 +71,104 @@ class TelegramAdapter:
             )
             return
 
-        self._init_bot()
+        self._init_application()
 
-    def _init_bot(self) -> None:
-        """Initialize a python-telegram-bot Bot instance."""
+    def _init_application(self) -> None:
+        """Initialize a python-telegram-bot Application instance for polling."""
         try:
-            from telegram import Bot  # type: ignore[import-untyped]
-            self._bot = Bot(token=self._token)
-            logger.info("python-telegram-bot Bot instance created (async-ready)")
+            from telegram.ext import ApplicationBuilder, MessageHandler, filters # type: ignore[import-untyped]
+            
+            # Using ApplicationBuilder is required for v20+ polling
+            self._application = ApplicationBuilder().token(self._token).build()
+            self._bot = self._application.bot
+            
+            # Register the main message handler
+            self._application.add_handler(
+                MessageHandler(filters.TEXT & (~filters.COMMAND), self._handle_message)
+            )
+            
+            logger.info("python-telegram-bot Application instance created for long polling")
         except ImportError:
             logger.error(
                 "python-telegram-bot is not installed. "
-                "Run: pip install 'python-telegram-bot[webhooks]>=20.7'"
+                "Run: pip install 'python-telegram-bot>=20.7'"
             )
+            self._application = None
             self._bot = None
 
     # -----------------------------------------------------------------------
-    # Inbound — parse raw webhook payload
+    # Inbound — Polling loop handlers
     # -----------------------------------------------------------------------
 
-    def parse_update(self, payload: dict[str, Any]) -> TelegramMessage | None:
+    async def _handle_message(self, update: Any, context: Any) -> None:
         """
-        Parse a raw Telegram Update JSON into a TelegramMessage.
-
-        Uses python-telegram-bot's native Update.de_json() for reliable
-        deserialization, then falls back to manual parsing if the library
-        is unavailable.
-
-        Returns None for non-text updates (stickers, edits, voice, etc.).
+        Callback for python-telegram-bot to process incoming text messages.
+        Passes the extracted information directly to the AmadeusService.
         """
-        # -- Library path (preferred) ----------------------------------------
-        if self._bot is not None:
-            try:
-                from telegram import Update, Bot  # type: ignore[import-untyped]
-                update = Update.de_json(payload, self._bot)
-                if update is None or update.message is None or update.message.text is None:
-                    return None
-                msg = update.message
-                return TelegramMessage(
-                    chat_id=msg.chat_id,
-                    text=msg.text,
-                    message_id=msg.message_id,
-                    from_user_id=msg.from_user.id if msg.from_user else 0,
-                    from_username=msg.from_user.username if msg.from_user else None,
-                )
-            except Exception as exc:
-                logger.warning("Update.de_json failed, falling back to manual parse: %s", exc)
+        if not update.message or not update.message.text:
+            return
 
-        # -- Fallback: manual dict traversal (no library) --------------------
-        message = payload.get("message")
-        if not message or "text" not in message:
-            return None
+        msg = update.message
+        chat_id = msg.chat_id
+        text = msg.text
+        
+        logger.info(f"Received telegram message from chat_id={chat_id}")
+        
+        try:
+            from src.app.services.amadeus_service import AmadeusService
+            # Instantiate AmadeusService isolated to this user session (chat_id)
+            service = AmadeusService(session_id=str(chat_id))
+            await service.initialize()
+            
+            # Handle command
+            response = await service.handle_command(text, source="telegram")
+            reply_text = response if isinstance(response, str) else str(response)
+            
+            # Send the reply back
+            await self.send_message(chat_id, reply_text)
+        except Exception as exc:
+            logger.exception("telegram_polling_processing_failed")
+            await self.send_message(chat_id, "⚠️ Sorry, something went wrong processing your request.")
 
-        chat = message.get("chat", {})
-        from_user = message.get("from", {})
-        return TelegramMessage(
-            chat_id=chat.get("id", 0),
-            text=message["text"],
-            message_id=message.get("message_id", 0),
-            from_user_id=from_user.get("id", 0),
-            from_username=from_user.get("username"),
-        )
+    async def start_polling(self) -> bool:
+        """
+        Start the background long-polling loop.
+        Call this in the FastAPI lifespan startup event.
+        """
+        if not self._application:
+            return False
+            
+        try:
+            # Initialize and start the application
+            await self._application.initialize()
+            await self._application.start()
+            # Start fetching updates
+            await self._application.updater.start_polling()
+            logger.info("Telegram long polling started successfully")
+            return True
+        except Exception as exc:
+            logger.error(f"Failed to start telegram polling: {exc}")
+            return False
+
+    async def stop_polling(self) -> bool:
+        """
+        Stop the background long-polling loop cleanly.
+        Call this in the FastAPI lifespan shutdown event.
+        """
+        if not self._application:
+            return False
+            
+        try:
+            # Stop the updater and application
+            if self._application.updater:
+                await self._application.updater.stop()
+            await self._application.stop()
+            await self._application.shutdown()
+            logger.info("Telegram long polling stopped successfully")
+            return True
+        except Exception as exc:
+            logger.error(f"Failed to stop telegram polling: {exc}")
+            return False
 
     # -----------------------------------------------------------------------
     # Outbound — send replies
@@ -249,70 +285,6 @@ class TelegramAdapter:
             return True
         except Exception as exc:
             logger.error("telegram_voice_send_failed chat_id=%s error=%s", chat_id, exc)
-            return False
-
-    # -----------------------------------------------------------------------
-    # Webhook management
-    # -----------------------------------------------------------------------
-
-    async def set_webhook(
-        self,
-        webhook_url: str,
-        secret_token: str | None = None,
-        allowed_updates: list[str] | None = None,
-    ) -> bool:
-        """
-        Register the webhook URL with Telegram.
-
-        Call this ONCE at server startup (or on deploy). Telegram will send
-        all updates to this URL as HTTP POST requests.
-
-        Args:
-            webhook_url: Public HTTPS URL of your FastAPI endpoint, e.g.
-                         https://your-domain.com/api/v1/messaging/telegram
-            secret_token: Optional header token Telegram uses to sign requests
-                          (X-Telegram-Bot-Api-Secret-Token). Use TELEGRAM_WEBHOOK_SECRET.
-            allowed_updates: List of update types to receive. Defaults to all.
-
-        Returns:
-            True if Telegram acknowledged the webhook, False otherwise.
-        """
-        if self._bot is None:
-            logger.error("Cannot set webhook — Telegram bot not initialized")
-            return False
-
-        try:
-            kwargs: dict[str, Any] = {"url": webhook_url}
-            if secret_token:
-                kwargs["secret_token"] = secret_token
-            if allowed_updates:
-                kwargs["allowed_updates"] = allowed_updates
-
-            await self._bot.set_webhook(**kwargs)
-            logger.info("telegram_webhook_registered url=%s", webhook_url)
-            return True
-        except Exception as exc:
-            logger.error("telegram_webhook_set_failed error=%s", exc)
-            return False
-
-    async def delete_webhook(self) -> bool:
-        """
-        Remove the registered webhook (switches bot to polling mode).
-
-        Useful for local development where you don't have a public HTTPS URL.
-
-        Returns:
-            True on success, False on failure.
-        """
-        if self._bot is None:
-            return False
-
-        try:
-            await self._bot.delete_webhook(drop_pending_updates=True)
-            logger.info("telegram_webhook_deleted (polling mode active)")
-            return True
-        except Exception as exc:
-            logger.error("telegram_webhook_delete_failed error=%s", exc)
             return False
 
     @property

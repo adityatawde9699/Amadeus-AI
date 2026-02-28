@@ -10,7 +10,8 @@ import json
 import logging
 from typing import Any
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 from src.core.config import get_settings
 from src.core.domain.models import (
@@ -42,7 +43,8 @@ class GeminiAdapter(ILLMService):
         self._settings = get_settings()
         self._api_key = api_key or self._settings.GEMINI_API_KEY
         self._redis = redis_client
-        self._model = None
+        self._client = None
+        self._model_name = "gemini-2.5-flash"
         self._configured = False
     
     def _configure(self) -> None:
@@ -53,10 +55,9 @@ class GeminiAdapter(ILLMService):
         if not self._api_key:
             raise MissingAPIKeyError("GEMINI_API_KEY")
         
-        genai.configure(api_key=self._api_key)
-        self._model = genai.GenerativeModel("gemini-2.5-flash")
+        self._client = genai.Client(api_key=self._api_key)
         self._configured = True
-        logger.info("Gemini API configured")
+        logger.info("Gemini API configured (google.genai SDK)")
     
     def _sanitize_input(self, text: str) -> str:
         """Sanitize user input before sending to LLM.
@@ -163,15 +164,16 @@ Guidelines:
                     logger.debug("Cache hit for Gemini response")
                     return cached
 
-            
-            generation_config = genai.GenerationConfig(
+            config = types.GenerateContentConfig(
                 temperature=temperature,
                 max_output_tokens=max_tokens or 1024,
+                system_instruction=self._get_system_prompt(),
             )
             
-            response = self._model.generate_content(
-                [self._get_system_prompt(), full_prompt],
-                generation_config=generation_config,
+            response = self._client.models.generate_content(
+                model=self._model_name,
+                contents=full_prompt,
+                config=config,
             )
             
             if not response.text:
@@ -183,11 +185,11 @@ Guidelines:
                 
             return response.text
             
-        except genai.types.BlockedPromptException as e:
-            logger.warning(f"Prompt blocked: {e}")
-            raise LLMResponseError("Content was blocked by safety filters")
         except Exception as e:
             error_str = str(e).lower()
+            if "block" in error_str or "safety" in error_str:
+                logger.warning(f"Prompt blocked: {e}")
+                raise LLMResponseError("Content was blocked by safety filters")
             if "429" in error_str or "rate" in error_str:
                 raise LLMRateLimitError("Gemini", retry_after=60)
             if "connection" in error_str or "network" in error_str:
@@ -222,22 +224,25 @@ Guidelines:
                     logger.debug("Cache hit for Gemini tool response")
                     return cached, None
 
-            
-            response = self._model.generate_content(
-                [self._get_system_prompt(), full_prompt],
+            config = types.GenerateContentConfig(
+                system_instruction=self._get_system_prompt(),
                 tools=gemini_tools if gemini_tools else None,
             )
             
+            response = self._client.models.generate_content(
+                model=self._model_name,
+                contents=full_prompt,
+                config=config,
+            )
+            
             # Check if the model wants to call a function
-            if response.candidates and response.candidates[0].content.parts:
-                for part in response.candidates[0].content.parts:
-                    if hasattr(part, "function_call") and part.function_call:
-                        fc = part.function_call
-                        return None, ToolExecutionResult(
-                            tool_name=fc.name,
-                            success=True,
-                            result={"args": dict(fc.args)},
-                        )
+            if response.function_calls:
+                fc = response.function_calls[0]
+                return None, ToolExecutionResult(
+                    tool_name=fc.name,
+                    success=True,
+                    result={"args": dict(fc.args) if fc.args else {}},
+                )
             
             # No function call, return text response
             return response.text, None

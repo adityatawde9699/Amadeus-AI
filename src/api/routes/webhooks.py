@@ -33,11 +33,12 @@ _whatsapp = WhatsAppAdapter()
 async def _process_and_reply_telegram(chat_id: int, user_text: str) -> None:
     """Background task: send user text through AmadeusService, reply via Telegram."""
     try:
-        # Late import to avoid circular dependency with container
-        from src.container import get_amadeus_service
+        from src.app.services.amadeus_service import AmadeusService
 
-        service = get_amadeus_service()
-        response = await service.process_message(user_text)
+        service = AmadeusService(session_id=str(chat_id))
+        await service.initialize()
+        
+        response = await service.handle_command(user_text, source="telegram")
         reply_text = response if isinstance(response, str) else str(response)
         await _telegram.send_message(chat_id, reply_text)
     except Exception:
@@ -48,10 +49,12 @@ async def _process_and_reply_telegram(chat_id: int, user_text: str) -> None:
 async def _process_and_reply_whatsapp(phone: str, user_text: str, message_id: str) -> None:
     """Background task: send user text through AmadeusService, reply via WhatsApp."""
     try:
-        from src.container import get_amadeus_service
+        from src.app.services.amadeus_service import AmadeusService
 
-        service = get_amadeus_service()
-        response = await service.process_message(user_text)
+        service = AmadeusService(session_id=phone)
+        await service.initialize()
+        
+        response = await service.handle_command(user_text, source="whatsapp")
         reply_text = response if isinstance(response, str) else str(response)
         await _whatsapp.send_message(phone, reply_text)
         await _whatsapp.mark_as_read(message_id)
@@ -61,46 +64,8 @@ async def _process_and_reply_whatsapp(phone: str, user_text: str, message_id: st
 
 
 # ==========================================================================
-# TELEGRAM WEBHOOK
+# (TELEGRAM WEBHOOK REMOVED - USING LONG POLLING INSTEAD)
 # ==========================================================================
-
-@router.post("/telegram", status_code=status.HTTP_200_OK)
-async def telegram_webhook(
-    request: Request,
-    background_tasks: BackgroundTasks,
-    x_telegram_bot_api_secret_token: str | None = Header(default=None),
-) -> dict[str, str]:
-    """
-    Receive Telegram Bot API updates.
-
-    Security: validates ``X-Telegram-Bot-Api-Secret-Token`` header.
-    Processing is offloaded to a background task so Telegram gets an
-    immediate 200 OK (required within 60 s).
-    """
-    settings = get_settings()
-
-    # --- Token validation ---
-    expected = settings.TELEGRAM_WEBHOOK_SECRET
-    if expected and x_telegram_bot_api_secret_token != expected:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid secret token",
-        )
-
-    payload: dict[str, Any] = await request.json()
-    # BUG FIX: parse_update is an instance method — must call on `_telegram`, not the class
-    message = _telegram.parse_update(payload)
-
-    if message is None:
-        return {"status": "ignored"}
-
-    logger.info(
-        "telegram_update_received",
-        extra={"chat_id": message.chat_id, "user": message.from_username},
-    )
-
-    background_tasks.add_task(_process_and_reply_telegram, message.chat_id, message.text)
-    return {"status": "ok"}
 
 
 # ==========================================================================

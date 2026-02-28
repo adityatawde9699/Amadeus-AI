@@ -137,8 +137,8 @@ class QdrantMemoryService:
             return
 
         try:
-            import google.generativeai as genai  # type: ignore[import-untyped]
-            genai.configure(api_key=self._settings.GEMINI_API_KEY)
+            from google import genai
+            self._genai_client = genai.Client(api_key=self._settings.GEMINI_API_KEY)
             self._embed_model = self._settings.MEMORY_EMBED_MODEL
             logger.info("Gemini embedding model ready: %s", self._embed_model)
         except Exception as exc:
@@ -155,13 +155,13 @@ class QdrantMemoryService:
             return None
         
         def _sync_embed():
-            import google.generativeai as genai  # type: ignore[import-untyped]
-            result = genai.embed_content(
+            from google.genai import types
+            result = self._genai_client.models.embed_content(
                 model=self._embed_model,
-                content=text,
-                task_type=task_type,
+                contents=text,
+                config=types.EmbedContentConfig(task_type=task_type)
             )
-            return result["embedding"]
+            return result.embeddings[0].values
 
         try:
             loop = asyncio.get_running_loop()
