@@ -112,6 +112,18 @@ async def lifespan(app: FastAPI):
     
     # Initialize database
     await init_db()
+
+    # Initialize HITL Confirmation callback singleton.
+    # Stored on app.state so the /confirm route handler can access it
+    # via the get_confirmation_callback dependency.
+    from src.infra.tools.confirmation import APIConfirmationCallback
+    from src.container import inject_confirmation_callback
+    confirmation_callback = APIConfirmationCallback(
+        timeout_seconds=60  # User has 60s to approve/deny before auto-deny
+    )
+    app.state.confirmation_callback = confirmation_callback
+    inject_confirmation_callback(confirmation_callback)
+    logger.info("HITL confirmation gate initialized (timeout=60s)")
     
     # Initialize Telegram Long Polling
     logger.info("Initializing Telegram Long Polling...")
@@ -218,17 +230,14 @@ limiter = Limiter(**limiter_kwargs)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Prometheus Metrics
+# Prometheus Metrics (imported from infra layer — single source of truth)
 from prometheus_fastapi_instrumentator import Instrumentator
-from prometheus_client import Counter, Gauge
-
-try:
-    amadeus_llm_calls_total = Counter("amadeus_llm_calls_total", "Total LLM calls", ["provider"])
-    amadeus_llm_cost_usd = Gauge("amadeus_llm_cost_usd", "Estimated LLM cost in USD")
-    amadeus_cache_hit_rate = Gauge("amadeus_cache_hit_rate", "Cache hit rate percentage")
-    amadeus_tool_calls_total = Counter("amadeus_tool_calls_total", "Total tool calls", ["tool_name"])
-except ValueError:
-    pass  # Already registered (e.g. during uvicorn reload)
+from src.infra.metrics import (
+    amadeus_llm_calls_total,  # noqa: F401 — imported for re-export / side-effect registration
+    amadeus_llm_cost_usd,
+    amadeus_cache_hit_rate,
+    amadeus_tool_calls_total,
+)
 
 Instrumentator().instrument(app).expose(app, endpoint="/api/v1/metrics", tags=["System"])
 
@@ -252,7 +261,7 @@ async def generic_exception_handler(request: Request, exc: Exception):
     """Handle unexpected exceptions."""
     logger.error(f"Unexpected error: {exc}", exc_info=True)
     
-    if settings.DEBUG:
+    if getattr(settings, "ALLOW_DEBUG_RESPONSES", False):
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"error": "InternalError", "message": str(exc)},
@@ -298,7 +307,7 @@ async def root():
 # =============================================================================
 
 # Import and register route modules
-from src.api.routes import tasks, health, chat, voice, llm, webhooks, websocket, system_admin, messaging, ipc  # noqa: E402
+from src.api.routes import tasks, health, chat, voice, llm, webhooks, websocket, system_admin, messaging, ipc, confirm  # noqa: E402
 from src.api.middleware.authentication import verify_jwt_token
 from src.api.middleware.rbac import RequireUser
 from fastapi import Depends
@@ -327,6 +336,14 @@ app.include_router(websocket.router, tags=["Realtime"])
 
 # Inter-Process Communication (IPC) for localhost GUI System Tray
 app.include_router(ipc.router, prefix="/api/v1", tags=["IPC"])
+
+# HITL Confirmation endpoint — requires JWT auth (user must be authenticated to approve/deny)
+app.include_router(
+    confirm.router,
+    prefix="/api/v1",
+    tags=["Confirmation"],
+    dependencies=[Depends(verify_jwt_token)],
+)
 
 
 # =============================================================================

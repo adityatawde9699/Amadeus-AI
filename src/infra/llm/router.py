@@ -1,11 +1,13 @@
 """
 LLM Request Router for Amadeus AI.
 
-Routes requests across providers to stay within $7/month budget:
-- Groq:   free tier (14,400 req/day) — PRIMARY
-- Gemini: free tier (1,500 req/day)  — SECONDARY
-- OpenAI: paid ($0.005/req)          — EMERGENCY for high complexity only
+Routing priority (local-first):
+- Ollama: unlimited local inference (phi3:mini default) — PRIMARY (free, offline)
+- Groq:   free tier (14,400 req/day)                  — SECONDARY
+- Gemini: free tier (1,500 req/day)                   — TERTIARY
+- OpenAI: paid ($0.005/req)                           — EMERGENCY
 
+When LOCAL_ONLY_MODE=true, only Ollama is used. No cloud calls.
 Usage tracking resets daily at midnight (UTC).
 """
 
@@ -20,6 +22,7 @@ from src.core.exceptions import LLMRateLimitError
 if TYPE_CHECKING:
     from src.infra.llm.gemini_adapter import GeminiAdapter
     from src.infra.llm.groq_adapter import GroqAdapter
+    from src.infra.llm.ollama_adapter import OllamaAdapter
 
 
 logger = logging.getLogger(__name__)
@@ -97,13 +100,15 @@ class LLMRouter:
     """
 
     DAILY_LIMITS: dict[str, int] = {
-        "groq": 14400,   # Free tier — Llama 3.3 70B
-        "gemini": 1500,  # Free tier — Gemini 2.5 Flash
-        "openai": 100,   # Paid — $0.50/month safety buffer
+        "ollama": 999_999,  # Local — effectively unlimited
+        "groq": 14400,      # Free tier — Llama 3.3 70B
+        "gemini": 1500,     # Free tier — Gemini 2.5 Flash
+        "openai": 100,      # Paid — $0.50/month safety buffer
     }
 
     # Cost per request in USD (for cost tracking)
     COST_PER_REQUEST: dict[str, float] = {
+        "ollama": 0.0,    # Free — runs locally on your machine
         "groq": 0.0,      # Free
         "gemini": 0.0,    # Free tier
         "openai": 0.005,  # Paid
@@ -111,18 +116,31 @@ class LLMRouter:
 
     def __init__(
         self,
+        ollama: "OllamaAdapter | None" = None,
         groq: "GroqAdapter | None" = None,
         gemini: "GeminiAdapter | None" = None,
         openai: object | None = None,
         redis_url: str | None = None,
+        local_only_mode: bool = False,
     ) -> None:
         self._providers: dict[str, object] = {}
-        if groq:
-            self._providers["groq"] = groq
-        if gemini:
-            self._providers["gemini"] = gemini
-        if openai:
-            self._providers["openai"] = openai
+        # Ollama is always first — local, unlimited, zero-cost
+        if ollama:
+            self._providers["ollama"] = ollama
+        if not local_only_mode:
+            if groq:
+                self._providers["groq"] = groq
+            if gemini:
+                self._providers["gemini"] = gemini
+            if openai:
+                self._providers["openai"] = openai
+
+        self._local_only_mode = local_only_mode
+        if local_only_mode:
+            logger.info(
+                "LLMRouter: LOCAL_ONLY_MODE active — "
+                "cloud providers disabled, Ollama only"
+            )
 
         # In-memory counters (always present; Redis supplements these)
         self._usage: dict[str, int] = defaultdict(int)
@@ -172,8 +190,9 @@ class LLMRouter:
         """
         self._reset_if_new_day()
 
-        providers_order = ["groq", "gemini"]
-        if complexity == "high":
+        # Build provider priority: Ollama (local) first, then cloud
+        providers_order = ["ollama", "groq", "gemini"]
+        if complexity == "high" and not self._local_only_mode:
             providers_order.append("openai")
 
         for provider_name in providers_order:

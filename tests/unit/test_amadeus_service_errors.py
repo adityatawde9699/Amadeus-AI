@@ -23,12 +23,13 @@ for _mod in ("joblib", "numpy", "numpy.core"):
     if _mod not in sys.modules:
         sys.modules[_mod] = MagicMock()
 
-if "google.generativeai" not in sys.modules:
-    _genai = types.ModuleType("google.generativeai")
-    _genai.configure = MagicMock()
-    _genai.GenerativeModel = MagicMock()
-    sys.modules["google.generativeai"] = _genai
+if "google.genai" not in sys.modules:
+    _genai = types.ModuleType("google.genai")
+    _genai.Client = MagicMock()
+    sys.modules["google.genai"] = _genai
+    sys.modules["google.genai.types"] = MagicMock()
     sys.modules["google"] = sys.modules.get("google") or types.ModuleType("google")
+    sys.modules["google"].genai = _genai
 
 
 # ---------------------------------------------------------------------------
@@ -57,6 +58,7 @@ def _make_service(debug: bool = False) -> "AmadeusService":  # noqa: F821
         mock_settings = MagicMock()
         mock_settings.GEMINI_API_KEY = None
         mock_settings.DEBUG = debug
+        mock_settings.ALLOW_DEBUG_RESPONSES = debug
         mock_settings.ASSISTANT_NAME = "Amadeus"
         mock_settings.ASSISTANT_PERSONALITY = "helpful"
         mock_settings.GEMINI_MODEL = "gemini-flash"

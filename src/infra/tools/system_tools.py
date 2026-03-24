@@ -132,94 +132,64 @@ def terminate_program(process_name: str | None = None, app_name: str | None = No
     parameters={"file_name": {"type": "string", "description": "File name or pattern to search"}}
 )
 def search_file(file_name: str | None = None, name: str | None = None, **kwargs: Any) -> str:
-    """Search for files using glob patterns."""
+    """
+    Search for files using glob patterns within the configured allowlist only.
+
+    The search is restricted to ``settings.SEARCH_ALLOWED_DIRS`` (default:
+    ~/Documents, ~/Desktop, ~/Downloads).  Hidden directories — any directory
+    component whose name starts with '.' — are always skipped to prevent
+    sensitive paths like ~/.ssh or ~/.aws from leaking into the LLM context.
+    """
     target = file_name or name or kwargs.get("query")
     if not target:
         return "Error: No file name provided."
-    
-    try:
-        search_dir = Path.home()
-        logger.info(f"Searching for '{target}' in {search_dir}")
-        
-        found_files = []
-        pattern = f"*{target}*" if "*" not in target else target
-        
+
+    from src.core.config import get_settings
+    settings = get_settings()
+    max_results = settings.FILE_SEARCH_MAX_RESULTS
+    pattern = f"*{target}*" if "*" not in target else target
+
+    # Expand each allowed directory (handles ~)
+    search_roots = [Path(d).expanduser() for d in settings.SEARCH_ALLOWED_DIRS]
+    # Only keep roots that actually exist on this system
+    search_roots = [r for r in search_roots if r.is_dir()]
+
+    if not search_roots:
+        return (
+            "Search is restricted to configured directories, but none of them exist "
+            f"on this system. Check SEARCH_ALLOWED_DIRS in your .env file."
+        )
+
+    logger.info("Searching for '%s' across %d allowed dirs", target, len(search_roots))
+
+    found_files: list[Path] = []
+
+    for root in search_roots:
         try:
-            for file_path in search_dir.rglob(pattern):
-                found_files.append(file_path)
-                if len(found_files) >= 10:
-                    break
+            for file_path in root.rglob(pattern):
+                # Skip any path that has a hidden directory component
+                if any(part.startswith(".") for part in file_path.parts):
+                    continue
+                if file_path.is_file():
+                    found_files.append(file_path)
+                    if len(found_files) >= max_results:
+                        break
         except PermissionError:
             pass
-        
-        if found_files:
-            result = f"Found {len(found_files)} file(s):\n"
-            for f in found_files[:5]:
-                result += f"  - {f}\n"
-            if len(found_files) > 5:
-                result += f"  ... and {len(found_files) - 5} more"
-            return result
-        
-        return f"No files found matching '{target}'"
-        
-    except Exception as e:
-        logger.error(f"Error searching for '{target}': {e}")
-        return f"Error searching for file: {e}"
+
+        if len(found_files) >= max_results:
+            break
+
+    if not found_files:
+        return f"No files found matching '{target}' in the allowed search directories."
+
+    result_lines = [f"Found {len(found_files)} file(s) matching '{target}':"]
+    for f in found_files:
+        result_lines.append(f"  - {f}")
+    return "\n".join(result_lines)
 
 
-@tool(
-    name="read_file",
-    description="Open and display file contents (.txt/.pdf/.json). Trigger: 'read file', 'show content'",
-    category=ToolCategory.SYSTEM,
-    parameters={"file_path": {"type": "string", "description": "Path to file to read"}}
-)
-def read_file(file_path: str | None = None, path: str | None = None, **kwargs: Any) -> str:
-    """Read various file types and return content."""
-    target = file_path or path or kwargs.get("file")
-    if not target:
-        return "Error: No file path provided."
-    
-    try:
-        file_path_obj = Path(target).resolve()
-        
-        if not file_path_obj.is_file():
-            return f"File does not exist: {target}"
-        
-        extension = file_path_obj.suffix.lower()
-        max_chars = 5000
-        
-        if extension == ".txt":
-            with open(file_path_obj, 'r', encoding='utf-8', errors='replace') as f:
-                content = f.read(max_chars)
-                if len(content) >= max_chars:
-                    content += "\n\n... (content truncated)"
-                return content
-        
-        elif extension == ".json":
-            import json
-            with open(file_path_obj, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                return json.dumps(data, indent=2)[:max_chars]
-        
-        elif extension == ".pdf":
-            try:
-                from PyPDF2 import PdfReader
-                reader = PdfReader(file_path_obj)
-                content = []
-                for i, page in enumerate(reader.pages[:5]):
-                    text = page.extract_text()
-                    if text:
-                        content.append(f"--- Page {i+1} ---\n{text}")
-                return "\n\n".join(content)[:max_chars]
-            except ImportError:
-                return "PyPDF2 not installed. Install with: pip install PyPDF2"
-        
-        else:
-            return f"Unsupported file type: {extension}"
-            
-    except Exception as e:
-        logger.error(f"Error reading file: {e}")
-        return f"Error reading file: {e}"
+
 
 
 @tool(
@@ -355,54 +325,7 @@ def create_folder(folder_name: str | None = None, name: str | None = None, **kwa
         return f"Error creating folder: {e}"
 
 
-@tool(
-    name="list_directory",
-    description="List files in folder. Trigger: 'ls', 'dir', 'what's in folder'",
-    category=ToolCategory.SYSTEM,
-    parameters={"directory_path": {"type": "string", "description": "Directory path to list"}}
-)
-def list_directory(directory_path: str | None = None, path: str | None = None, **kwargs: Any) -> str:
-    """List contents of a directory."""
-    target = directory_path or path or kwargs.get("dir") or "."
-    
-    try:
-        dir_path = Path(target).resolve()
-        
-        if not dir_path.exists():
-            return f"Directory does not exist: {target}"
-        
-        if not dir_path.is_dir():
-            return f"Path is not a directory: {target}"
-        
-        items = list(dir_path.iterdir())
-        files = sorted([i for i in items if i.is_file()])
-        dirs = sorted([i for i in items if i.is_dir()])
-        
-        result = f"Contents of {dir_path}:\n\n"
-        
-        if dirs:
-            result += "📁 Directories:\n"
-            for d in dirs[:10]:
-                result += f"  {d.name}/\n"
-            if len(dirs) > 10:
-                result += f"  ... and {len(dirs) - 10} more\n"
-        
-        if files:
-            result += "\n📄 Files:\n"
-            for f in files[:10]:
-                size_kb = f.stat().st_size / 1024
-                result += f"  {f.name} ({size_kb:.1f} KB)\n"
-            if len(files) > 10:
-                result += f"  ... and {len(files) - 10} more\n"
-        
-        if not items:
-            result += "(empty directory)"
-        
-        return result
-        
-    except Exception as e:
-        logger.error(f"Error listing directory: {e}")
-        return f"Error listing directory: {e}"
+
 
 
 # =============================================================================

@@ -7,7 +7,8 @@ system tray interface.
 """
 
 import logging
-from fastapi import APIRouter, status
+import logging
+from fastapi import APIRouter, status, Depends, Header, HTTPException
 from pydantic import BaseModel
 
 from src.core.config import get_settings
@@ -15,7 +16,21 @@ from src.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/ipc", tags=["IPC"])
+async def verify_ipc_token(x_ipc_token: str = Header(..., description="Secret token for inter-process communication")) -> None:
+    settings = get_settings()
+    if not settings.IPC_SECRET_TOKEN:
+        return
+    if x_ipc_token != settings.IPC_SECRET_TOKEN:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid IPC token",
+        )
+
+router = APIRouter(
+    prefix="/ipc", 
+    tags=["IPC"],
+    dependencies=[Depends(verify_ipc_token)],
+)
 
 
 class DaemonStatus(BaseModel):

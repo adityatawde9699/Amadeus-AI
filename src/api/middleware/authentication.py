@@ -99,3 +99,18 @@ def verify_jwt_token(credentials: HTTPAuthorizationCredentials = Depends(securit
             detail="Invalid authentication credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+
+def get_optional_jwt_payload(
+    credentials: HTTPAuthorizationCredentials | None = Depends(HTTPBearer(auto_error=False))
+) -> Mapping | None:
+    """
+    Extract the JWT payload if a token is present, otherwise return None.
+    Does not enforce authentication.
+    """
+    if not credentials:
+        return None
+    try:
+        return verify_jwt_token(credentials)
+    except HTTPException:
+        return None

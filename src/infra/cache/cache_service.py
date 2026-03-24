@@ -21,7 +21,8 @@ Usage:
 import hashlib
 import json
 import logging
-from typing import TYPE_CHECKING
+import pickle
+from typing import Optional, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -47,9 +48,11 @@ CACHEABLE_TOOLS: frozenset[str] = frozenset({
 
 class CacheService:
     """
-    Unified Redis-backed cache for Amadeus AI services.
+    Unified cache for Amadeus AI services.
 
-    Thread-safe and async-native. Falls back gracefully if Redis is unavailable.
+    If a Redis client is provided, it acts as a distributed Redis cache.
+    If Redis is unavailable (Local Zero-Dependency Mode), it falls back seamlessly 
+    to a thread-safe in-memory dictionary cache.
     """
 
     NAMESPACES: dict[str, int] = {
@@ -59,15 +62,61 @@ class CacheService:
         "search": 1800,  # 30 minutes
     }
 
-    def __init__(self, redis: "Redis") -> None:
+    def __init__(self, redis: "Redis | None" = None) -> None:
         self._redis = redis
         self._hits = 0
         self._misses = 0
+        
+        # In-Memory Fallback Cache: dict[key, tuple[expiry_timestamp, value]]
+        self._local_cache: dict[str, tuple[float, Any]] = {}
 
     def _key(self, namespace: str, content: str) -> str:
-        """Generate a namespaced Redis key using a SHA-256 hash of content."""
+        """Generate a namespaced key using a SHA-256 hash of content."""
         content_hash = hashlib.sha256(content.encode()).hexdigest()[:16]
         return f"amadeus:{namespace}:{content_hash}"
+
+    # -------------------------------------------------------------------------
+    # Core Cache Implementation (Routing between Redis and Local)
+    # -------------------------------------------------------------------------
+    
+    async def _get(self, key: str) -> Any | None:
+        if self._redis:
+            try:
+                result = await self._redis.get(key)
+                if result:
+                    self._hits += 1
+                    return result
+                self._misses += 1
+                return None
+            except Exception as e:
+                logger.debug("Redis cache GET failed: %s. Falling back to miss.", type(e).__name__)
+                self._misses += 1
+                return None
+        else:
+            # Local Cache Logic
+            import time
+            if key in self._local_cache:
+                expiry, value = self._local_cache[key]
+                if time.time() < expiry:
+                    self._hits += 1
+                    return value
+                else:
+                    # Evict expired key
+                    del self._local_cache[key]
+            self._misses += 1
+            return None
+
+    async def _set(self, key: str, value: Any, ttl_seconds: int) -> None:
+        if self._redis:
+            try:
+                await self._redis.setex(key, ttl_seconds, value)
+            except Exception as e:
+                logger.debug("Redis cache SET failed: %s", type(e).__name__)
+        else:
+            # Local Cache Logic
+            import time
+            expiry = time.time() + ttl_seconds
+            self._local_cache[key] = (expiry, value)
 
     # -------------------------------------------------------------------------
     # LLM Response Cache
@@ -76,24 +125,15 @@ class CacheService:
     async def get_llm(self, prompt: str, provider: str = "") -> str | None:
         """Retrieve cached LLM response for a prompt."""
         key = self._key("llm", f"{provider}:{prompt}")
-        try:
-            result = await self._redis.get(key)
-            if result:
-                self._hits += 1
-                return result.decode() if isinstance(result, bytes) else result
-            self._misses += 1
-            return None
-        except Exception as e:
-            logger.debug("Cache get_llm failed: %s", type(e).__name__)
-            return None
+        result = await self._get(key)
+        if result is not None:
+             return result.decode() if isinstance(result, bytes) else result
+        return None
 
     async def set_llm(self, prompt: str, response: str, provider: str = "") -> None:
         """Cache an LLM response."""
         key = self._key("llm", f"{provider}:{prompt}")
-        try:
-            await self._redis.setex(key, self.NAMESPACES["llm"], response)
-        except Exception as e:
-            logger.debug("Cache set_llm failed: %s", type(e).__name__)
+        await self._set(key, response, self.NAMESPACES["llm"])
 
     # -------------------------------------------------------------------------
     # TTS Audio Cache
@@ -102,26 +142,14 @@ class CacheService:
     async def get_tts(self, text: str, voice: str) -> bytes | None:
         """Retrieve cached TTS audio bytes."""
         key = self._key("tts", f"{voice}:{text}")
-        try:
-            result = await self._redis.get(key)
-            if result:
-                self._hits += 1
-                return result
-            self._misses += 1
-            return None
-        except Exception as e:
-            logger.debug("Cache get_tts failed: %s", type(e).__name__)
-            return None
+        return await self._get(key)
 
     async def set_tts(self, text: str, voice: str, audio: bytes) -> None:
         """Cache TTS audio bytes."""
         if not audio:
             return
         key = self._key("tts", f"{voice}:{text}")
-        try:
-            await self._redis.setex(key, self.NAMESPACES["tts"], audio)
-        except Exception as e:
-            logger.debug("Cache set_tts failed: %s", type(e).__name__)
+        await self._set(key, audio, self.NAMESPACES["tts"])
 
     # -------------------------------------------------------------------------
     # Tool Result Cache
@@ -132,26 +160,17 @@ class CacheService:
         if tool_name not in CACHEABLE_TOOLS:
             return None
         key = self._key("tool", f"{tool_name}:{json.dumps(args, sort_keys=True)}")
-        try:
-            result = await self._redis.get(key)
-            if result:
-                self._hits += 1
-                return result.decode() if isinstance(result, bytes) else result
-            self._misses += 1
-            return None
-        except Exception as e:
-            logger.debug("Cache get_tool_result failed: %s", type(e).__name__)
-            return None
+        result = await self._get(key)
+        if result is not None:
+            return result.decode() if isinstance(result, bytes) else result
+        return None
 
     async def set_tool_result(self, tool_name: str, args: dict, result: str) -> None:
         """Cache a tool result (only for safe, stateless tools)."""
         if tool_name not in CACHEABLE_TOOLS:
             return
         key = self._key("tool", f"{tool_name}:{json.dumps(args, sort_keys=True)}")
-        try:
-            await self._redis.setex(key, self.NAMESPACES["tool"], result)
-        except Exception as e:
-            logger.debug("Cache set_tool_result failed: %s", type(e).__name__)
+        await self._set(key, result, self.NAMESPACES["tool"])
 
     # -------------------------------------------------------------------------
     # Search Result Cache
@@ -160,24 +179,15 @@ class CacheService:
     async def get_search(self, query: str) -> str | None:
         """Retrieve cached search results."""
         key = self._key("search", query)
-        try:
-            result = await self._redis.get(key)
-            if result:
-                self._hits += 1
-                return result.decode() if isinstance(result, bytes) else result
-            self._misses += 1
-            return None
-        except Exception as e:
-            logger.debug("Cache get_search failed: %s", type(e).__name__)
-            return None
+        result = await self._get(key)
+        if result is not None:
+            return result.decode() if isinstance(result, bytes) else result
+        return None
 
     async def set_search(self, query: str, result: str) -> None:
         """Cache search results."""
         key = self._key("search", query)
-        try:
-            await self._redis.setex(key, self.NAMESPACES["search"], result)
-        except Exception as e:
-            logger.debug("Cache set_search failed: %s", type(e).__name__)
+        await self._set(key, result, self.NAMESPACES["search"])
 
     # -------------------------------------------------------------------------
     # Stats
@@ -192,4 +202,5 @@ class CacheService:
             "misses": self._misses,
             "total": total,
             "hit_rate_pct": round(hit_rate, 2),
+            "backend": "redis" if self._redis else "local_memory"
         }
