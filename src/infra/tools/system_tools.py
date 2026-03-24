@@ -332,10 +332,20 @@ def create_folder(folder_name: str | None = None, name: str | None = None, **kwa
 # TOOL COLLECTION
 # =============================================================================
 
+from src.infra.tools.office_tools import get_office_tools
+from src.infra.tools.slack_tools import get_slack_tools
+
 def get_system_tools() -> list[Tool]:
     """Get all system tools for manual registration."""
     tools = []
+    # Collect tools from this module (system_tools.py)
     for name, obj in globals().items():
         if hasattr(obj, "_tool_metadata"):
             tools.append(obj._tool_metadata)
+    
+    # Collect from office and slack sub-modules
+    tools.extend(get_office_tools())
+    tools.extend(get_slack_tools())
+    
     return tools
+

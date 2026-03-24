@@ -75,6 +75,15 @@ class Tool:
     requires_confirmation: bool = False
     is_async: bool = False
     
+    def get_preview(self, args: dict[str, Any]) -> str:
+        """
+        Generate a human-readable preview of what this tool will do.
+        Overridden by specific tools for better detail.
+        """
+        params = ", ".join(f"{k}={v}" for k, v in args.items())
+        return f"Execute {self.name}({params})"
+
+    
     def __post_init__(self):
         """Auto-detect if function is async."""
         self.is_async = asyncio.iscoroutinefunction(self.function)
@@ -291,10 +300,12 @@ class ToolExecutor:
                     execution_time_ms=0.0,
                 )
 
+            preview = tool.get_preview(args)
             approved = await self.confirmation_callback.request_approval(
                 tool_name=tool.name,
                 args=args,
                 request_id=request_id,
+                preview=preview,
             )
             if not approved:
                 logger.info("Tool '%s' execution denied by user (request_id=%s)", tool.name, request_id)
@@ -304,6 +315,7 @@ class ToolExecutor:
                     error_message=f"User denied execution of '{tool.name}'.",
                     execution_time_ms=(datetime.now() - start_time).total_seconds() * 1000,
                 )
+
 
         for attempt in range(self.max_retries + 1):
             try:

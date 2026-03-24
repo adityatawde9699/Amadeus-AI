@@ -473,3 +473,45 @@ class IPomodoroRepository(ABC):
     async def count_completed_today(self) -> int:
         """Count Pomodoro cycles completed today (UTC)."""
         pass
+
+
+# =============================================================================
+# KNOWLEDGE GRAPH REPOSITORY
+# =============================================================================
+
+
+class IKnowledgeGraphRepository(ABC):
+    """Repository interface for Knowledge Graph (Episodic Memory)."""
+
+    @abstractmethod
+    async def upsert_entity(self, name: str, entity_type: str | None = None, description: str | None = None) -> int:
+        """
+        Create or update an entity by name.
+        
+        Returns:
+            The entity ID.
+        """
+        pass
+
+    @abstractmethod
+    async def add_relationship(self, subject_id: int, predicate: str, object_id: int) -> None:
+        """
+        Add or strengthen a relationship between two entities.
+        """
+        pass
+
+    @abstractmethod
+    async def find_relationships_by_entity(self, entity_name: str) -> list[dict]:
+        """
+        Find all relationships where the given entity is either subject or object.
+        
+        Returns:
+            List of triples: {"subject": str, "predicate": str, "object": str}
+        """
+        pass
+
+    @abstractmethod
+    async def get_entity_by_name(self, name: str) -> dict | None:
+        """Get entity details by name."""
+        pass
+

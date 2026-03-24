@@ -39,8 +39,10 @@ class PendingConfirmation:
     request_id: str
     tool_name: str
     args: dict[str, Any]
+    preview: str = ""
     created_at: datetime = field(default_factory=datetime.now)
     future: asyncio.Future[bool] = field(default_factory=lambda: asyncio.get_event_loop().create_future())
+
 
 
 # =============================================================================
@@ -61,7 +63,9 @@ class ConfirmationCallback(ABC):
         tool_name: str,
         args: dict[str, Any],
         request_id: str,
+        preview: str = "",
     ) -> bool:
+
         """
         Ask for user approval.
 
@@ -95,10 +99,12 @@ class TerminalConfirmationCallback(ConfirmationCallback):
         tool_name: str,
         args: dict[str, Any],
         request_id: str,
+        preview: str = "",
     ) -> bool:
         print(
             f"\n⚠️  CONFIRMATION REQUIRED\n"
             f"   Tool:      {tool_name}\n"
+            f"   Preview:   {preview}\n"
             f"   Arguments: {args}\n"
             f"   Request ID: {request_id}\n"
         )
@@ -111,6 +117,7 @@ class TerminalConfirmationCallback(ConfirmationCallback):
             extra={"tool": tool_name, "request_id": request_id, "approved": approved},
         )
         return approved
+
 
 
 # =============================================================================
@@ -151,15 +158,18 @@ class APIConfirmationCallback(ConfirmationCallback):
         tool_name: str,
         args: dict[str, Any],
         request_id: str,
+        preview: str = "",
     ) -> bool:
         loop = asyncio.get_running_loop()
         confirmation = PendingConfirmation(
             request_id=request_id,
             tool_name=tool_name,
             args=args,
+            preview=preview,
             future=loop.create_future(),
         )
         self._pending[request_id] = confirmation
+
 
         logger.info(
             "confirmation_pending",
@@ -217,10 +227,12 @@ class APIConfirmationCallback(ConfirmationCallback):
                 "request_id": p.request_id,
                 "tool_name": p.tool_name,
                 "args": p.args,
+                "preview": p.preview,
                 "created_at": p.created_at.isoformat(),
             }
             for p in self._pending.values()
         ]
+
 
 
 # =============================================================================
