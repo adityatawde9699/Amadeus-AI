@@ -36,6 +36,7 @@ Amadeus AI is a FastAPI-based backend service that orchestrates a conversational
 - Multi-LLM routing: Groq (Llama 3.3 70B) → Gemini 2.5 Flash → **OpenAI GPT-4o-mini** (emergency fallback)
 - **Redis-backed daily quota tracking** per provider — shared across all workers, auto-expires at midnight
 - **Semantic long-term memory** via Qdrant vector search — top-3 relevant memories injected into the agent prompt on every request
+- **Episodic memory (Knowledge Graph)** — LLM-driven entity extraction stores relationships (Subject-Predicate-Object) in PostgreSQL for precision context recall
 - **Server-Sent Events (SSE) streaming**: `GET /api/v1/chat/stream` — native Gemini `stream=True` with word-by-word fallback for Groq
 - Persistent conversation memory with configurable context window
 - Concurrent request limiting (`asyncio.Semaphore` — default 20 simultaneous chats)
@@ -66,6 +67,8 @@ Amadeus AI is a FastAPI-based backend service that orchestrates a conversational
 - Pomodoro timer (start, stop, status)
 - Notes (create, list, retrieve)
 - Reminders (set, list — with natural language time parsing via `dateparser`)
+- **Office Integrations**: Microsoft Office adapters for creating and reading Word/Excel documents and Outlook emails (requires Windows + `pywin32`)
+- **Slack Integration**: Read channels, and send or read messages via `slack-sdk`
 
 **System & monitoring tools:**
 - CPU, memory, disk, battery monitoring with configurable alert thresholds
@@ -80,7 +83,7 @@ Amadeus AI is a FastAPI-based backend service that orchestrates a conversational
 
 ### API & Security
 - **Permission Profiles**: Supports `READ_ONLY` and `SYSTEM_FULL` JWT claims to explicitly block destructive tool executions on unprivileged accounts.
-- **Human-in-the-Loop (HITL) Validation**: Destructive actions (like terminating processes) now pause agent execution and wait for human approval before proceeding.
+- **Human-in-the-Loop (HITL) Validation**: Destructive or communicative actions pause agent execution, providing detailed **Action Previews** before waiting for human approval.
 - **Isolated Filesystem Sandbox**: File operations restrict LLM execution strictly to `data/agent_workspace`, preventing path traversal vulnerabilities.
 - **Agent Queue Backpressure**: The orchestrator enforces strict concurrency limits via `maxsize`, safely shedding excess loads with `HTTP 429` (Too Many Requests).
 - **IPC Authentication**: Background RPC calls require an `X-IPC-Token` to prevent unauthenticated local access loops.
@@ -363,6 +366,7 @@ curl -N -H "Authorization: Bearer $TOKEN" \
 - **Groq API (Llama 3.3 70B)** — primary LLM (free tier)
 - **OpenAI GPT-4o-mini** — emergency fallback (paid, optional) via `openai_adapter.py`
 - **Qdrant** — vector database for semantic long-term memory
+- **Knowledge Graph** — structured entity relationship storage via SQLAlchemy/PostgreSQL
 - **LLMRouter** — Redis-backed daily-quota-aware routing engine with atomic `INCR`/`EXPIRE`
 
 ### Voice

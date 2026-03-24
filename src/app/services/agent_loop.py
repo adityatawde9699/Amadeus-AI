@@ -230,7 +230,10 @@ class ReActAgent:
                 await self.queue.put(AgentState.END)
                 
             elif state == AgentState.END:
+                # 3. Learning Step - Extract entities/relationships from this interaction
+                await self._learn_from_interaction(self.task, final_answer)
                 break
+
                 
         return AgentResult(
             success=success,
@@ -322,7 +325,7 @@ class ReActAgent:
     ) -> tuple[str, str, dict]:
         """
         Use LLM for sophisticated reasoning.
-        Injects top-k semantic memories into the prompt when memory_service is set.
+        Injects top-k semantic memories AND Knowledge Graph facts into the prompt.
         """
         # Get available tools
         tool_descriptions = []
@@ -331,7 +334,7 @@ class ReActAgent:
             if tool:
                 tool_descriptions.append(f"- {name}: {tool.description}")
 
-        # Retrieve relevant memories for long-term recall
+        # 1. Retrieve semantic memories (Qdrant)
         memory_block = ""
         if self.memory_service is not None:
             try:
@@ -339,13 +342,44 @@ class ReActAgent:
                 if memories:
                     formatted = self.memory_service.format_for_prompt(memories)  # type: ignore[union-attr]
                     if formatted:
-                        memory_block = f"Relevant past context:\n{formatted}\n\n"
+                        memory_block = f"Past Context (Semantic):\n{formatted}\n\n"
             except Exception as mem_err:
                 logger.debug("Memory retrieval skipped: %s", mem_err)
 
+        # 2. Retrieve Graph Facts (Episodic)
+        graph_block = ""
+        # Check if graph_repo is available (we'll need to inject this or get from service)
+        graph_repo = getattr(self, "graph_repo", None)
+        if graph_repo:
+            try:
+                # Extract potential entity names from task using LLM
+                potential_entities = []
+                if self.llm_generate:
+                    try:
+                        extract_prompt = f"Extract all named entities (people, places, projects, things) from the following text. Return ONLY a comma-separated list of names (no explanation).\\nText: {task}"
+                        extracted = await self.llm_generate(extract_prompt)
+                        potential_entities = [e.strip(" '\\\"") for e in extracted.split(",") if e.strip()]
+                    except Exception as e:
+                        logger.debug(f"Entity extraction failed, falling back to heuristic: {e}")
+                
+                if not potential_entities:
+                    words = task.split()
+                    potential_entities = [w.strip("?,.!") for w in words if w and w[0].isupper()]
+                
+                facts = []
+                for entity in potential_entities:
+                    rel_triples = await graph_repo.find_relationships_by_entity(entity)
+                    for t in rel_triples:
+                        facts.append(f"{t['subject']} {t['predicate']} {t['object']}")
+                
+                if facts:
+                    graph_block = "Known Facts (Relationships):\\n- " + "\\n- ".join(list(set(facts))[:10]) + "\\n\\n"
+            except Exception as graph_err:
+                logger.debug("Graph fact retrieval skipped: %s", graph_err)
+
         prompt = f"""You are an AI assistant executing a multi-step task.
 
-{memory_block}Task: {task}
+{memory_block}{graph_block}Task: {task}
 {f"Context: {context}" if context else ""}
 
 Available Tools:
@@ -370,6 +404,7 @@ Your response:"""
             logger.error(f"LLM reasoning error: {e}")
             # Fallback to keywords
             return await self._think_with_keywords(task, observations)
+
     
     def _parse_llm_response(self, response: str) -> tuple[str, str, dict]:
         """Parse LLM response into thought, action, input."""
@@ -400,7 +435,49 @@ Your response:"""
         
         return (thought, action, action_input)
     
+    async def _learn_from_interaction(self, task: str, answer: str) -> None:
+        """
+        Extract new entities and relationships from the user task and assistant response.
+        Updates the Knowledge Graph repository.
+        """
+        graph_repo = getattr(self, "graph_repo", None)
+        if not graph_repo or not self.llm_generate:
+            return
+
+        learn_prompt = f"""Extract relationships (Subject, Predicate, Object) from this interaction.
+User: {task}
+Assistant: {answer}
+
+Respond ONLY with a JSON list of triples, or an empty list [].
+Example: [{{"subject": "Sarah", "predicate": "is_boss_of", "object": "User", "type": "person"}}]
+
+Relationships:"""
+        
+        try:
+            response = await self.llm_generate(learn_prompt)
+            import json
+            import re
+            
+            # Clean JSON from markdown if present
+            match = re.search(r"\[.*\]", response, re.DOTALL)
+            if match:
+                triples = json.loads(match.group(0))
+                for t in triples:
+                    sub = t.get("subject")
+                    pred = t.get("predicate")
+                    obj = t.get("object")
+                    e_type = t.get("type", "unknown")
+                    
+                    if sub and pred and obj:
+                        sub_id = await graph_repo.upsert_entity(sub, entity_type=e_type)
+                        obj_id = await graph_repo.upsert_entity(obj)
+                        await graph_repo.add_relationship(sub_id, pred, obj_id)
+                        logger.info(f"Learned relationship: {sub} -> {pred} -> {obj}")
+        except Exception as e:
+            logger.debug("Learning step failed: %s", e)
+
     async def _synthesize_answer(self, task: str, observations: list[str]) -> str:
+
         """Combine observations into a final answer."""
         if not observations:
             return "I couldn't find relevant information for your request."

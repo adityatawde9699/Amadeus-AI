@@ -33,6 +33,7 @@ class ConfirmStatusResponse(BaseModel):
     request_id: str
     tool_name: str
     args: dict
+    preview: str
     status: str  # "pending" | "approved" | "denied" | "not_found"
 
 
@@ -109,8 +110,10 @@ async def get_confirmation_status(
         request_id=pending.request_id,
         tool_name=pending.tool_name,
         args=pending.args,
+        preview=pending.preview,
         status="pending",
     )
+
 
 
 @router.get(

@@ -390,3 +390,71 @@ class ConversationSummaryORM(Base):
     def __repr__(self) -> str:
         return f"<ConversationSummary(id={self.id}, msgs={self.messages_summarized})>"
 
+
+# =============================================================================
+# KNOWLEDGE GRAPH (Episodic Memory)
+# =============================================================================
+
+class EntityORM(Base):
+    """
+    ORM model for entities in the Knowledge Graph.
+    Entities represent people, places, objects, or concepts the user mentions.
+    """
+    __tablename__ = "graph_entities"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(256), nullable=False, index=True)
+    entity_type = Column(String(64), index=True)  # person, place, project, etc.
+    description = Column(Text, default="")
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index("idx_entity_name_type", "name", "entity_type"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<Entity(name='{self.name}', type='{self.entity_type}')>"
+
+
+class RelationshipORM(Base):
+    """
+    ORM model for relationships in the Knowledge Graph (SPO Triples).
+    Subject -> Predicate -> Object
+    """
+    __tablename__ = "graph_relationships"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    subject_id = Column(Integer, index=True, nullable=False)  # Links to EntityORM.id
+    predicate = Column(String(128), index=True, nullable=False) # is_boss_of, works_on, etc.
+    object_id = Column(Integer, index=True, nullable=False)   # Links to EntityORM.id
+    
+    strength = Column(Integer, default=1) # To handle recurring mentions
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index("idx_rel_triple", "subject_id", "predicate", "object_id"),
+        Index("idx_rel_predicate", "predicate"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<Relationship(sub={self.subject_id}, pred='{self.predicate}', obj={self.object_id})>"
+
+
