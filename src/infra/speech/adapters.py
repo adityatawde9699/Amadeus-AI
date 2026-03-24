@@ -33,7 +33,10 @@ class WhisperVoiceInput(ISpeechToTextService):
         try:
             settings = get_settings()
             device = settings.WHISPER_DEVICE
-            model_name = settings.WHISPER_MODEL or "small"
+            
+            # Use tiny.en for drastic memory and CPU improvements on low-spec hardware
+            model_name = settings.WHISPER_MODEL or "tiny.en"
+            
             WhisperVoiceInput._model_cache = WhisperModel(
                 model_name,
                 device=device,

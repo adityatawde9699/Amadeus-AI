@@ -79,6 +79,11 @@ Amadeus AI is a FastAPI-based backend service that orchestrates a conversational
 - Classifier status exposed in `/api/v1/health/detailed` → `classifier_enabled: true/false`
 
 ### API & Security
+- **Permission Profiles**: Supports `READ_ONLY` and `SYSTEM_FULL` JWT claims to explicitly block destructive tool executions on unprivileged accounts.
+- **Human-in-the-Loop (HITL) Validation**: Destructive actions (like terminating processes) now pause agent execution and wait for human approval before proceeding.
+- **Isolated Filesystem Sandbox**: File operations restrict LLM execution strictly to `data/agent_workspace`, preventing path traversal vulnerabilities.
+- **Agent Queue Backpressure**: The orchestrator enforces strict concurrency limits via `maxsize`, safely shedding excess loads with `HTTP 429` (Too Many Requests).
+- **IPC Authentication**: Background RPC calls require an `X-IPC-Token` to prevent unauthenticated local access loops.
 - JWT Bearer authentication on all protected routes (`/chat`, `/tasks`, `/voice`, `/messaging`)
 - Per-user JWT rate limiting (`slowapi`) with Redis storage + IP fallback for unauthenticated requests
 - **OWASP-hardened logs** — no API keys, no raw user prompts, no auth tokens in any log statement

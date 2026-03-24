@@ -14,8 +14,11 @@ from fastapi.responses import StreamingResponse
 
 from src.container import get_amadeus_service, get_db_session
 from src.app.services.amadeus_service import AmadeusService
+from src.app.services.agent_loop import QueueFullError
+from src.api.middleware.authentication import get_optional_jwt_payload
 from src.infra.persistence.repositories.conversation_repository import SQLConversationRepository
-from src.core.domain.models import ChatRequest, ChatResponse, ToolListResponse, MessageResponse, HistoryResponse
+from src.core.domain.models import ChatRequest, ChatResponse, ToolListResponse, MessageResponse, HistoryResponse, PermissionProfile
+from typing import Mapping
 
 
 logger = logging.getLogger(__name__)
@@ -23,7 +26,7 @@ router = APIRouter(prefix="/chat", tags=["Chat"])
 
 # Limit concurrent chat requests to prevent event-loop saturation / DoS.
 # Callers that exceed this receive HTTP 503 rather than queuing indefinitely.
-_MAX_CONCURRENT_CHATS = 20
+_MAX_CONCURRENT_CHATS = 5
 _chat_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_CHATS)
 
 
@@ -35,6 +38,7 @@ _chat_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_CHATS)
 async def chat(
     request: ChatRequest,
     amadeus: AmadeusService = Depends(get_amadeus_service),
+    jwt_payload: Mapping | None = Depends(get_optional_jwt_payload),
 ) -> ChatResponse:
     """
     Main chat endpoint.
@@ -52,12 +56,23 @@ async def chat(
             if request.session_id:
                 amadeus.session_id = request.session_id
 
-            response = await amadeus.handle_command(
-                user_input=request.message,
-                source=request.source,
-                request_id=request.request_id,
-            )
+            # Extract Permission Profile
+            profile = PermissionProfile.SYSTEM_FULL
+            if jwt_payload:
+                role = jwt_payload.get("role", "guest").lower()
+                if role == "guest":
+                    profile = PermissionProfile.READ_ONLY
 
+            try:
+                response = await amadeus.handle_command(
+                    user_input=request.message,
+                    source=request.source,
+                    request_id=request.request_id,
+                    permission_profile=profile,
+                )
+            except QueueFullError as e:
+                raise HTTPException(status_code=429, detail=str(e))
+                
         return ChatResponse(
             response=response,
             source=request.source,
@@ -132,6 +147,7 @@ async def chat_stream(
     session_id: str | None = Query(default=None, description="Optional session ID for context"),
     source: str = Query(default="api", description="Request source identifier"),
     amadeus: AmadeusService = Depends(get_amadeus_service),
+    jwt_payload: Mapping | None = Depends(get_optional_jwt_payload),
 ) -> StreamingResponse:
     """
     Stream the Amadeus response as Server-Sent Events (SSE).
@@ -167,10 +183,21 @@ async def chat_stream(
 
             # --- Fallback: batch response chunked word-by-word ---
             async with _chat_semaphore:
-                response_text = await amadeus.handle_command(
-                    user_input=message,
-                    source=source,
-                )
+                # Extract Permission Profile
+                profile = PermissionProfile.SYSTEM_FULL
+                if jwt_payload:
+                    role = jwt_payload.get("role", "guest").lower()
+                    if role == "guest":
+                        profile = PermissionProfile.READ_ONLY
+
+                try:
+                    response_text = await amadeus.handle_command(
+                        user_input=message,
+                        source=source,
+                        permission_profile=profile,
+                    )
+                except QueueFullError as e:
+                    raise HTTPException(status_code=429, detail=str(e))
 
             words = response_text.split(" ")
             for i, word in enumerate(words):

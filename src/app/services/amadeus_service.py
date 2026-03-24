@@ -29,6 +29,7 @@ import numpy as np
 from src.core.config import Settings, get_settings
 from src.app.services.tool_registry import ToolRegistry
 from src.infra.tools.base import Tool, ToolCategory, ToolExecutor
+from src.core.domain.models import PermissionProfile
 from src.infra.memory_service import QdrantMemoryService
 from src.infra.messaging.telegram_adapter import TelegramAdapter
 from src.infra.messaging.whatsapp_adapter import WhatsAppAdapter
@@ -131,11 +132,9 @@ class ConversationManager:
             logger.error(f"Failed to load conversation history: {e}")
     
     def _trim_cache(self) -> None:
-        """Keep cache within limits."""
+        """Keep cache within limits — always preserves the most recent messages."""
         if len(self._cache) > self.max_context:
-            # Keep recent messages with important ones (tool usage)
-            important = [m for m in self._cache[:-10] if m.tool_used]
-            self._cache = important[-3:] + self._cache[-10:]
+            self._cache = self._cache[-self.max_context:]
     
     def get_messages(self) -> list[ConversationMessage]:
         """Get cached messages."""
@@ -231,14 +230,22 @@ class AmadeusService:
         
         # Initialize Agent Orchestrator (holds the background worker loop)
         from src.app.services.agent_loop import AgentOrchestrator
+
+        # Build an async llm_generate closure that wraps the synchronous
+        # Gemini SDK call in run_in_executor so it never blocks the event loop.
         llm_generate = None
-        if hasattr(self, 'client') and self.client:
-            def _generate(prompt: str) -> str:
-                response = self.client.models.generate_content(
-                    model=self.model_name,
-                    contents=prompt,
+        if hasattr(self, "client") and self.client:
+            async def _generate(prompt: str) -> str:  # noqa: E306
+                loop = asyncio.get_running_loop()
+                response = await loop.run_in_executor(
+                    None,
+                    lambda: self.client.models.generate_content(
+                        model=self.model_name,
+                        contents=prompt,
+                    ),
                 )
                 return response.text if hasattr(response, "text") else str(response)
+
             llm_generate = _generate
 
         self.orchestrator = AgentOrchestrator(
@@ -300,6 +307,7 @@ class AmadeusService:
             from src.infra.tools.monitor_tools import get_monitor_tools
             from src.infra.tools.productivity_tools import get_productivity_tools
             from src.infra.tools.agent_tools import get_agent_tools
+            from src.infra.tools.filesystem_tools import build_filesystem_tools
             
             for tool in get_info_tools():
                 self.tool_registry.register(tool)
@@ -310,6 +318,8 @@ class AmadeusService:
             for tool in get_productivity_tools():
                 self.tool_registry.register(tool)
             for tool in get_agent_tools():
+                self.tool_registry.register(tool)
+            for tool in build_filesystem_tools():
                 self.tool_registry.register(tool)
             
             logger.info(f"Registered {len(self.tool_registry)} tools from modules")
@@ -397,6 +407,7 @@ Guidelines:
         user_input: str,
         source: str = "text",
         request_id: str | None = None,
+        permission_profile: PermissionProfile = PermissionProfile.SYSTEM_FULL,
     ) -> str:
         """
         Main entry point for processing user commands.
@@ -405,6 +416,7 @@ Guidelines:
             user_input: The user's input text
             source: Source of input (voice, text, api)
             request_id: Optional request ID for tracing
+            permission_profile: Security clearance for this execution
             
         Returns:
             Assistant's response as string
@@ -421,11 +433,17 @@ Guidelines:
 
             # Check if this is a multi-step query that needs the agent
             if self._is_multi_step_query(user_input):
-                response, tools_used = await self._process_with_agent(user_input)
+                response, tools_used = await self._process_with_agent(
+                    user_input, 
+                    permission_profile=permission_profile
+                )
                 tool_used = ", ".join(tools_used) if tools_used else None
             else:
                 # Single-step processing
-                response, tool_used = await self._process_command_internal(user_input)
+                response, tool_used = await self._process_command_internal(
+                    user_input,
+                    permission_profile=permission_profile,
+                )
             
             # Add assistant response (unified - goes to both cache and DB)
             await self.conversation_manager.add("assistant", response, tool_used=tool_used)
@@ -436,8 +454,12 @@ Guidelines:
             return response
             
         except Exception as e:
+            from src.app.services.agent_loop import QueueFullError
+            if isinstance(e, QueueFullError):
+                raise  # Let backpressure errors propagate up to the API layer
+            
             logger.error(f"Error handling command: {e}", exc_info=True)
-            if self.debug_mode or self.settings.DEBUG:
+            if self.debug_mode or getattr(self.settings, 'ALLOW_DEBUG_RESPONSES', False):
                 return f"I encountered an error ({type(e).__name__}). Check the server logs for details."
             return "I encountered an unexpected error. Please try again."
     
@@ -472,14 +494,22 @@ Guidelines:
         
         return has_conjunction and intent_count >= 2
     
-    async def _process_with_agent(self, user_input: str) -> tuple[str, list[str]]:
+    async def _process_with_agent(
+        self, 
+        user_input: str,
+        permission_profile: PermissionProfile = PermissionProfile.SYSTEM_FULL,
+    ) -> tuple[str, list[str]]:
         """
         Process a multi-step query using the Agent Orchestrator.
         """
         context = self.conversation_manager.get_context_summary()
         
         # Submit task to the background Orchestrator queue
-        result = await self.orchestrator.execute(task=user_input, context=context)
+        result = await self.orchestrator.execute(
+            task=user_input,
+            context=context,
+            permission_profile=permission_profile,
+        )
         
         if result.success:
             return (result.final_answer, result.tools_used)
@@ -500,7 +530,11 @@ Guidelines:
             logger.error(f"Error handling background event: {e}")
     
     
-    async def _process_command_internal(self, user_input: str) -> tuple[str, str | None]:
+    async def _process_command_internal(
+        self,
+        user_input: str,
+        permission_profile: PermissionProfile = PermissionProfile.SYSTEM_FULL,
+    ) -> tuple[str, str | None]:
         """
         Internal command processing with ML-powered tool selection.
         
@@ -517,7 +551,7 @@ Guidelines:
         # Check if Gemini is available
         if not getattr(self, 'client', None):
             # Without Gemini, try to execute tools directly based on keywords
-            return await self._process_without_gemini(user_input)
+            return await self._process_without_gemini(user_input, permission_profile=permission_profile)
         
         # Step 1: Predict relevant tools
         relevant_tools = self._predict_relevant_tools(user_input)
@@ -551,9 +585,8 @@ Guidelines:
             cached_llm = await self.cache_service.get_llm(user_input, "gemini")
             if cached_llm:
                 logger.info("LLM cache hit (%d chars)", len(user_input))
-                # Update cache hit rate gauge
                 try:
-                    from src.api.server import amadeus_cache_hit_rate
+                    from src.infra.metrics import amadeus_cache_hit_rate
                     stats = self.cache_service.get_stats()
                     amadeus_cache_hit_rate.set(stats["hit_rate_pct"])
                 except Exception:
@@ -577,7 +610,7 @@ Guidelines:
                 fc = response.function_calls[0]
                 tool_name = fc.name
                 # Execute the function call
-                result = await self._execute_function_call(fc)
+                result = await self._execute_function_call(fc, permission_profile=permission_profile)
                 
                 # Generate a response incorporating the result
                 final_response = await self._generate_response_with_result(
@@ -590,7 +623,7 @@ Guidelines:
 
             # Increment Prometheus LLM call counter (conversational, no tool)
             try:
-                from src.api.server import amadeus_llm_calls_total
+                from src.infra.metrics import amadeus_llm_calls_total
                 amadeus_llm_calls_total.labels(provider="gemini").inc()
             except Exception:
                 pass
@@ -608,7 +641,11 @@ Guidelines:
             return (f"I had trouble processing that: {e}", None)
 
     
-    async def _process_without_gemini(self, user_input: str) -> tuple[str, str | None]:
+    async def _process_without_gemini(
+        self, 
+        user_input: str,
+        permission_profile: PermissionProfile = PermissionProfile.SYSTEM_FULL,
+    ) -> tuple[str, str | None]:
         """Fallback processing when Gemini is not available."""
         lower_input = user_input.lower()
         
@@ -616,7 +653,7 @@ Guidelines:
         if any(kw in lower_input for kw in ["time", "date", "day"]):
             tool = self.tool_registry.get("get_datetime_info")
             if tool:
-                result = await self.tool_executor.execute(tool, {"query": user_input})
+                result = await self.tool_executor.execute(tool, {"query": user_input}, permission_profile=permission_profile)
                 if result.success:
                     return (result.result, "get_datetime_info")
                 return ("Could not get time info.", None)
@@ -625,7 +662,7 @@ Guidelines:
         if any(kw in lower_input for kw in ["system", "cpu", "memory", "status"]):
             tool = self.tool_registry.get("system_status")
             if tool:
-                result = await self.tool_executor.execute(tool, {})
+                result = await self.tool_executor.execute(tool, {}, permission_profile=permission_profile)
                 if result.success:
                     return (result.result, "system_status")
                 return ("Could not get system status.", None)
@@ -634,7 +671,7 @@ Guidelines:
         if "task" in lower_input and any(kw in lower_input for kw in ["list", "show", "what"]):
             tool = self.tool_registry.get("list_tasks")
             if tool:
-                result = await self.tool_executor.execute(tool, {})
+                result = await self.tool_executor.execute(tool, {}, permission_profile=permission_profile)
                 if result.success:
                     return (result.result, "list_tasks")
                 return ("Could not list tasks.", None)
@@ -645,14 +682,18 @@ Guidelines:
             None
         )
     
-    async def _execute_function_call(self, function_call: Any) -> str:
+    async def _execute_function_call(
+        self, 
+        function_call: Any,
+        permission_profile: PermissionProfile = PermissionProfile.SYSTEM_FULL,
+    ) -> str:
         """Execute a Gemini function call."""
         tool_name = function_call.name
         args = dict(function_call.args) if getattr(function_call, "args", None) else {}
         
         # Increment Prometheus tool call counter
         try:
-            from src.api.server import amadeus_tool_calls_total
+            from src.infra.metrics import amadeus_tool_calls_total
             amadeus_tool_calls_total.labels(tool_name=tool_name).inc()
         except Exception:
             pass  # metrics unavailable in test / CLI context
@@ -664,7 +705,7 @@ Guidelines:
                 logger.debug("Tool cache hit for '%s'", tool_name)
                 # Update cache hit rate gauge
                 try:
-                    from src.api.server import amadeus_cache_hit_rate
+                    from src.infra.metrics import amadeus_cache_hit_rate
                     stats = self.cache_service.get_stats()
                     amadeus_cache_hit_rate.set(stats["hit_rate_pct"])
                 except Exception:
@@ -676,7 +717,7 @@ Guidelines:
         if not tool:
             return f"Tool '{tool_name}' not found"
         
-        result = await self.tool_executor.execute(tool, args)
+        result = await self.tool_executor.execute(tool, args, permission_profile=permission_profile)
         
         if result.success:
             result_str = str(result.result)

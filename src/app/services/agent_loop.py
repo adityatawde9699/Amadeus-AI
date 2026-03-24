@@ -19,9 +19,13 @@ Example:
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable
+from typing import Any, Callable, Awaitable
+
+class QueueFullError(Exception):
+    """Raised when the AgentOrchestrator queue is full and cannot accept new requests."""
 
 from src.infra.tools.base import Tool, ToolExecutor
+from src.core.domain.models import PermissionProfile
 from src.app.services.tool_registry import ToolRegistry
 
 
@@ -100,7 +104,7 @@ class ReActAgent:
         self,
         tool_registry: ToolRegistry,
         tool_executor: ToolExecutor,
-        llm_generate: Callable[[str], str] | None = None,
+        llm_generate: Callable[[str], Awaitable[str]] | None = None,
         max_iterations: int = 5,
         verbose: bool = False,
         memory_service: object | None = None,
@@ -113,19 +117,26 @@ class ReActAgent:
         # Optional semantic memory service (QdrantMemoryService or compatible)
         self.memory_service = memory_service
     
-    async def run(self, task: str, context: str = "") -> AgentResult:
+    async def run(
+        self,
+        task: str,
+        context: str = "",
+        permission_profile: PermissionProfile = PermissionProfile.SYSTEM_FULL,
+    ) -> AgentResult:
         """
         Execute a task using the async State Machine built on asyncio.Queue.
         
         Args:
             task: The user's request
             context: Additional context
+            permission_profile: Security clearance for this specific request
             
         Returns:
             AgentResult with final answer and execution trace
         """
         self.task = task
         self.context = context
+        self.permission_profile = permission_profile
         self.steps: list[AgentStep] = []
         self.tools_used: list[str] = []
         self.observations: list[str] = []
@@ -193,7 +204,11 @@ class ReActAgent:
                     continue
                 
                 try:
-                    result = await self.tool_executor.execute(tool, action_input)
+                    result = await self.tool_executor.execute(
+                        tool,
+                        action_input,
+                        permission_profile=self.permission_profile,
+                    )
                     self.current_observation = str(result.result) if result.success else f"Error: {result.error_message}"
                     self.tools_used.append(action)
                 except Exception as e:
@@ -349,7 +364,7 @@ Action Input: {{"param": "value"}}
 Your response:"""
 
         try:
-            response = self.llm_generate(prompt)
+            response = await self.llm_generate(prompt)
             return self._parse_llm_response(response)
         except Exception as e:
             logger.error(f"LLM reasoning error: {e}")
@@ -413,7 +428,7 @@ class SystemAgent(ReActAgent):
     """
     Specialized agent for OS-level interactions and system controls.
     """
-    def __init__(self, tool_registry: ToolRegistry, tool_executor: ToolExecutor, llm_generate: Callable[[str], str] | None = None):
+    def __init__(self, tool_registry: ToolRegistry, tool_executor: ToolExecutor, llm_generate: Callable[[str], Awaitable[str]] | None = None):
         super().__init__(
             tool_registry=tool_registry,
             tool_executor=tool_executor,
@@ -426,7 +441,7 @@ class ResearchAgent(ReActAgent):
     Specialized agent for gathering information, checking the weather,
     getting news, and analyzing documents.
     """
-    def __init__(self, tool_registry: ToolRegistry, tool_executor: ToolExecutor, llm_generate: Callable[[str], str] | None = None):
+    def __init__(self, tool_registry: ToolRegistry, tool_executor: ToolExecutor, llm_generate: Callable[[str], Awaitable[str]] | None = None):
         super().__init__(
             tool_registry=tool_registry,
             tool_executor=tool_executor,
@@ -448,15 +463,17 @@ class AgentOrchestrator:
         self,
         tool_registry: ToolRegistry,
         tool_executor: ToolExecutor,
-        llm_generate: Callable[[str], str] | None = None,
+        llm_generate: Callable[[str], Awaitable[str]] | None = None,
         memory_service: object | None = None,
+        max_queue_size: int = 50,
     ):
         self.tool_registry = tool_registry
         self.tool_executor = tool_executor
         self.llm_generate = llm_generate
         self.memory_service = memory_service
+        self.max_queue_size = max_queue_size
         
-        self.queue: asyncio.Queue[tuple[str, str, asyncio.Future]] = asyncio.Queue()
+        self.queue: asyncio.Queue[tuple[str, str, PermissionProfile, asyncio.Future]] = asyncio.Queue(maxsize=self.max_queue_size)
         
         # Initialize Sub-Agents (all share the same memory_service)
         self.agents = {
@@ -522,7 +539,7 @@ class AgentOrchestrator:
         logger.info("AgentOrchestrator worker loop started.")
         while True:
             try:
-                task, context, future = await self.queue.get()
+                task, context, permission_profile, future = await self.queue.get()
                 
                 intent = self._predict_intent(task)
                 target_agent = self.agents.get(intent, self.agents["general"])
@@ -530,7 +547,7 @@ class AgentOrchestrator:
                 logger.debug(f"Orchestrator executing task via {intent} agent...")
                 
                 try:
-                    result = await target_agent.run(task, context)
+                    result = await target_agent.run(task, context, permission_profile=permission_profile)
                     if not future.done():
                         future.set_result(result)
                 except Exception as e:
@@ -545,14 +562,24 @@ class AgentOrchestrator:
             except Exception as e:
                 logger.error(f"Error in orchestrator loop: {e}")
 
-    async def execute(self, task: str, context: str = "") -> AgentResult:
+    async def execute(
+        self,
+        task: str,
+        context: str = "",
+        permission_profile: PermissionProfile = PermissionProfile.SYSTEM_FULL,
+    ) -> AgentResult:
         """
         Public endpoint: Submits a task to the orchestrator queue and awaits the result.
+        Returns a QueueFullError if the system is drowning in requests.
         """
         loop = asyncio.get_running_loop()
         future = loop.create_future()
         
-        await self.queue.put((task, context, future))
+        try:
+            self.queue.put_nowait((task, context, permission_profile, future))
+        except asyncio.QueueFull:
+            logger.warning("AgentOrchestrator queue is full (maxsize=%s), rejecting request.", self.max_queue_size)
+            raise QueueFullError("Agent system is currently overloaded. Please try again later.")
         
         # Wait for the worker to process our specific task
         return await future

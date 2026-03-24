@@ -74,6 +74,7 @@ def get_tool_registry() -> ToolRegistry:
         from src.infra.tools.system_tools import get_system_tools
         from src.infra.tools.monitor_tools import get_monitor_tools
         from src.infra.tools.productivity_tools import get_productivity_tools
+        from src.infra.tools.filesystem_tools import build_filesystem_tools
 
         for tool in get_info_tools():
             registry.register(tool)
@@ -82,6 +83,8 @@ def get_tool_registry() -> ToolRegistry:
         for tool in get_monitor_tools():
             registry.register(tool)
         for tool in get_productivity_tools():
+            registry.register(tool)
+        for tool in build_filesystem_tools():
             registry.register(tool)
 
         logger.info("Tool registry initialized with %d tools", len(registry))
@@ -95,21 +98,48 @@ def get_tool_registry() -> ToolRegistry:
 def get_amadeus_service() -> AmadeusService:
     """
     Get the Amadeus service singleton.
-    
+
     This is the main orchestrator with ML classifier for tool selection.
+
+    Note: The ToolExecutor inside this service is constructed WITHOUT a
+    ConfirmationCallback by default. When served via the FastAPI app, the
+    callback singleton from ``app.state`` is injected at request-time by
+    calling ``inject_confirmation_callback()``. This keeps the container
+    framework-agnostic.
     """
     settings = get_settings()
     registry = get_tool_registry()
     cache_service = get_cache_service()
-    
+
     service = AmadeusService(
         settings=settings,
         tool_registry=registry,
         cache_service=cache_service,
     )
-    
+
     logger.info("AmadeusService singleton initialized")
     return service
+
+
+def inject_confirmation_callback(confirmation_callback: "ConfirmationCallback") -> None:  # noqa: F821
+    """
+    Inject the HITL ``ConfirmationCallback`` into the AmadeusService's
+    ToolExecutor after the FastAPI app has started.
+
+    Called once during the lifespan startup sequence, after both the
+    ``APIConfirmationCallback`` singleton and the ``AmadeusService``
+    singleton have been created.
+
+    This pattern avoids importing FastAPI's ``app.state`` in the container,
+    keeping the container fully framework-agnostic.
+    """
+    from src.infra.tools.confirmation import ConfirmationCallback  # noqa: F811
+    service = get_amadeus_service()
+    service.tool_executor.confirmation_callback = confirmation_callback
+    logger.info(
+        "ConfirmationCallback injected into ToolExecutor (%s)",
+        type(confirmation_callback).__name__,
+    )
 
 
 @lru_cache()
@@ -247,16 +277,16 @@ def get_redis_client() -> "redis.asyncio.Redis | None":
         return None
 
 @lru_cache()
-def get_cache_service() -> "CacheService | None":
+def get_cache_service() -> "CacheService":
     """
     Get the CacheService singleton.
     Provides Redis-backed caching for LLM, TTS, tools, and search.
-    Returns None if Redis is unavailable.
+    Falls back gracefully to an in-memory dictionary if Redis is unavailable.
     """
     from src.infra.cache.cache_service import CacheService
     redis_client = get_redis_client()
     if not redis_client:
-        return None
+        logger.warning("Initializing CacheService in Local Zero-Dependency mode (in-memory dict).")
     return CacheService(redis=redis_client)
 
 

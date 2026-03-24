@@ -12,6 +12,8 @@ Usage:
     print(settings.APP_NAME)
 """
 
+import os
+import secrets
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -39,7 +41,8 @@ class Settings(BaseSettings):
     # ENVIRONMENT
     # =========================================================================
     ENV: Literal["development", "staging", "production"] = "development"
-    DEBUG: bool = True
+    DEBUG: bool = False
+    ALLOW_DEBUG_RESPONSES: bool = False  # When true, exposes full stack traces to the API client
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     
     # =========================================================================
@@ -69,7 +72,22 @@ class Settings(BaseSettings):
     # Groq LLM (free tier: 14,400 req/day)
     GROQ_API_KEY: str | None = None
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
-    
+
+    # =========================================================================
+    # LOCAL LLM (OLLAMA) — Primary provider for offline/desktop mode
+    # Optimized defaults for 4 GB RAM machines
+    # =========================================================================
+    OLLAMA_URL: str = "http://localhost:11434"
+    # phi3:mini  → 3.8B, ~2.3 GB RAM  ← DEFAULT (best for 4 GB machines)
+    # llama3.2:3b → 3B,  ~2.0 GB RAM
+    # gemma3:2b  → 2B,  ~1.5 GB RAM  (smallest viable)
+    OLLAMA_MODEL: str = "phi3:mini"
+    # When True: ONLY use Ollama, disable all cloud providers
+    # When False: Ollama → Groq → Gemini → OpenAI fallback chain
+    LOCAL_ONLY_MODE: bool = False
+    OLLAMA_TIMEOUT_SECONDS: float = 120.0   # CPU inference can be slow
+    OLLAMA_NUM_CTX: int = 4096             # Context window (tokens)
+
     # Search APIs
     BRAVE_SEARCH_API_KEY: str | None = None
     TAVILY_API_KEY: str | None = None
@@ -82,6 +100,9 @@ class Settings(BaseSettings):
     # SECURITY
     # =========================================================================
     SECRET_KEY: str | None = None  # Required for JWT auth in production
+    
+    # Generated once per process lifetime if not explicitly provided
+    IPC_SECRET_TOKEN: str = Field(default_factory=lambda: secrets.token_hex(32))
     
     # =========================================================================
     # OBSERVABILITY
@@ -189,10 +210,16 @@ class Settings(BaseSettings):
     # =========================================================================
     # API SERVER
     # =========================================================================
-    API_HOST: str = "0.0.0.0"
-    API_PORT: int = Field(default=8000, ge=1, le=65535)
+    API_HOST: str = "127.0.0.1"  # Loopback-only when running as desktop app
+    API_PORT: int = Field(default=8765, ge=1, le=65535)  # 8765 = Amadeus desktop port
     API_WORKERS: int = Field(default=1, ge=1, le=32)
-    ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:8501"
+    # Include tauri:// and tauri.localhost for Tauri 2.0 desktop app
+    ALLOWED_ORIGINS: str = (
+        "http://localhost:3000,"
+        "http://localhost:8765,"
+        "tauri://localhost,"
+        "https://tauri.localhost"
+    )
     
     # Rate Limiting
     RATE_LIMIT_REQUESTS: int = Field(default=100, ge=1)
@@ -216,6 +243,13 @@ class Settings(BaseSettings):
     FILE_SEARCH_MAX_RESULTS: int = Field(default=10, ge=1, le=100)
     FILE_READ_MAX_CHARS: int = Field(default=5000, ge=100, le=100000)
     APP_LAUNCH_TIMEOUT: int = Field(default=15, ge=1, le=60)
+
+    # Directories the search_file tool is allowed to traverse.
+    # Hidden directories (names starting with '.') are always excluded.
+    # Override via env var: SEARCH_ALLOWED_DIRS=["~/Documents","~/Downloads"]
+    SEARCH_ALLOWED_DIRS: list[str] = Field(
+        default=["~/Documents", "~/Desktop", "~/Downloads"],
+    )
     
     # =========================================================================
     # PRODUCTIVITY: REMINDERS
@@ -344,6 +378,9 @@ def validate_settings(settings: Settings | None = None) -> dict:
             errors.append("GEMINI_API_KEY is required in production")
         if not settings.SECRET_KEY:
             errors.append("SECRET_KEY is required in production (generate with: openssl rand -hex 32)")
+            
+        if getattr(settings, "ALLOW_DEBUG_RESPONSES", False):
+            warnings.append("SEVERE SECURITY WARNING: ALLOW_DEBUG_RESPONSES is True in production! Full stack traces may leak to clients.")
     else:
         if not settings.GEMINI_API_KEY:
             warnings.append("GEMINI_API_KEY not set - AI features will be limited")

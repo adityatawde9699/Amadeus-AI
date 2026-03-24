@@ -22,7 +22,7 @@ class TestSettings:
         
         assert settings.ASSISTANT_NAME == "Amadeus"
         assert settings.ENV == "development"
-        assert settings.DEBUG is True
+        assert settings.DEBUG is False
         assert settings.VOICE_ENABLED is True
         assert settings.WHISPER_MODEL == "tiny"
     
@@ -30,13 +30,13 @@ class TestSettings:
         """Test that environment variables override defaults."""
         with mock.patch.dict(os.environ, {
             "ENV": "production",
-            "DEBUG": "false",
+            "DEBUG": "true",
             "API_PORT": "9000",
         }):
             settings = Settings()
             
             assert settings.ENV == "production"
-            assert settings.DEBUG is False
+            assert settings.DEBUG is True
             assert settings.API_PORT == 9000
     
     def test_is_production_property(self):

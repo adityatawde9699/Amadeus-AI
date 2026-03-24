@@ -24,9 +24,12 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from functools import partial, wraps
-from typing import Any, Callable, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, TypeVar
 
-from src.core.domain.models import ToolDefinition, ToolExecutionResult
+if TYPE_CHECKING:
+    from src.infra.tools.confirmation import ConfirmationCallback
+
+from src.core.domain.models import ToolDefinition, ToolExecutionResult, PermissionProfile
 
 
 logger = logging.getLogger(__name__)
@@ -201,32 +204,111 @@ def tool(
 class ToolExecutor:
     """
     Handles safe execution of tools with error handling and retries.
-    
-    Migrated from amadeus.py with same logic preserved.
+
+    Parameters
+    ----------
+    max_retries:
+        Number of retry attempts for transient errors.
+    retry_delay:
+        Seconds to wait between retry attempts.
+    confirmation_callback:
+        HITL gate invoked before any tool that has ``requires_confirmation=True``.
+        If ``None`` and a destructive tool is called, execution is **denied by
+        default** (fail-safe behaviour).
     """
-    
-    def __init__(self, max_retries: int = 3, retry_delay: float = 0.5):
+
+    def __init__(
+        self,
+        max_retries: int = 3,
+        retry_delay: float = 0.5,
+        confirmation_callback: "ConfirmationCallback | None" = None,
+    ) -> None:
         self.max_retries = max_retries
         self.retry_delay = retry_delay
+        self.confirmation_callback = confirmation_callback
         self.execution_history: list[dict] = []
     
-    async def execute(self, tool: Tool, args: dict[str, Any]) -> ToolExecutionResult:
+    async def execute(
+        self,
+        tool: Tool,
+        args: dict[str, Any],
+        permission_profile: PermissionProfile = PermissionProfile.SYSTEM_FULL,
+    ) -> ToolExecutionResult:
         """
         Execute a tool with proper error handling and async support.
         
         Args:
             tool: The tool to execute
             args: Arguments to pass to the tool function
+            permission_profile: The security profile of the requesting user
             
         Returns:
             ToolExecutionResult with success status and result/error
         """
         start_time = datetime.now()
-        
+
+        # ------------------------------------------------------------------
+        # HARD SECURITY GATE
+        # READ_ONLY profiles cannot execute destructive actions under any circumstances.
+        # ------------------------------------------------------------------
+        if permission_profile == PermissionProfile.READ_ONLY and tool.requires_confirmation:
+            logger.warning(
+                "Execution hard-denied: Profile READ_ONLY blocked destructive tool '%s'",
+                tool.name,
+            )
+            return ToolExecutionResult(
+                tool_name=tool.name,
+                success=False,
+                error_message=(
+                    f"Action blocked: Your READ_ONLY permission profile restricts "
+                    f"access to the destructive tool '{tool.name}'."
+                ),
+                execution_time_ms=0.0,
+            )
+
+        # ------------------------------------------------------------------
+        # HUMAN-IN-THE-LOOP GATE
+        # Check requires_confirmation BEFORE any retry loop so we only ask
+        # the user once, not once per retry attempt.
+        # ------------------------------------------------------------------
+        if tool.requires_confirmation:
+            from src.infra.tools.confirmation import make_request_id
+            request_id = make_request_id()
+
+            if self.confirmation_callback is None:
+                # Fail-safe: no callback configured → deny by default
+                logger.warning(
+                    "confirmation_callback_not_set — denying destructive tool '%s' by default",
+                    tool.name,
+                )
+                return ToolExecutionResult(
+                    tool_name=tool.name,
+                    success=False,
+                    error_message=(
+                        f"Tool '{tool.name}' requires user confirmation but no "
+                        "confirmation handler is configured. Execution denied."
+                    ),
+                    execution_time_ms=0.0,
+                )
+
+            approved = await self.confirmation_callback.request_approval(
+                tool_name=tool.name,
+                args=args,
+                request_id=request_id,
+            )
+            if not approved:
+                logger.info("Tool '%s' execution denied by user (request_id=%s)", tool.name, request_id)
+                return ToolExecutionResult(
+                    tool_name=tool.name,
+                    success=False,
+                    error_message=f"User denied execution of '{tool.name}'.",
+                    execution_time_ms=(datetime.now() - start_time).total_seconds() * 1000,
+                )
+
         for attempt in range(self.max_retries + 1):
             try:
                 logger.info(f"Executing tool '{tool.name}' with args: {args} (attempt {attempt + 1})")
-                
+
                 # Validate arguments against expected parameters
                 validated_args = self._validate_args(tool, args)
                 

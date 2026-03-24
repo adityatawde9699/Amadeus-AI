@@ -25,6 +25,11 @@ from pydantic import BaseModel, ConfigDict, Field
 # ENUMS
 # =============================================================================
 
+class PermissionProfile(str, Enum):
+    """Declared permission profile for the agent session."""
+    READ_ONLY = "read_only"
+    SYSTEM_FULL = "system_full"
+
 class RequestSource(str, Enum):
     """Source of the user's request."""
     VOICE = "voice"
