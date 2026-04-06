@@ -11,7 +11,7 @@
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 > **Tech Stack Highlights:**
-> `Python 3.11` · `FastAPI` · `SQLAlchemy` · `Gemini` · `Groq (Llama 3.3)` · `OpenAI (GPT-4o-mini)` · `Redis` · `Qdrant` · `PostgreSQL` · `JWT Auth` · `SSE Streaming` · `faster-whisper` · `Edge TTS` · `Telegram` · `WhatsApp` · `Docker` · `GitHub Actions` · `scikit-learn (TF-IDF + SVM)` · `Prometheus`
+> `Python 3.11+` · `FastAPI` · `SQLAlchemy 2.0` · `Ollama` · `Groq (Llama 3.3)` · `Gemini` · `OpenAI (GPT-4o-mini)` · `Redis` · `Qdrant` · `PostgreSQL` · `JWT Auth` · `SSE Streaming` · `faster-whisper` · `Edge TTS` · `Telegram` · `WhatsApp` · `Docker` · `GitHub Actions` · `scikit-learn (TF-IDF + SVM)` · `Prometheus`
 
 
 </div>
@@ -26,14 +26,15 @@ General-purpose AI assistants are typically coupled to a single LLM provider, la
 
 ## 2. Description / Solution
 
-Amadeus AI is a FastAPI-based backend service that orchestrates a conversational AI agent loop across multiple LLM providers (Groq → Gemini → OpenAI) with automatic daily quota tracking and fallback routing. It exposes REST and WebSocket endpoints for text and real-time voice interaction, executes a categorized registry of system, productivity, and informational tools, and persists conversation history in PostgreSQL or SQLite. Caching is layered over Redis to reduce redundant LLM and tool calls. All protected routes require JWT-authenticated requests.
+Amadeus AI is a FastAPI-based backend service that orchestrates a conversational AI agent loop across multiple LLM providers (Ollama → Groq → Gemini → OpenAI) with automatic daily quota tracking and fallback routing. It exposes REST and WebSocket endpoints for text and real-time voice interaction, executes a categorized registry of system, productivity, and informational tools, and persists conversation history in PostgreSQL or SQLite. Caching is layered over Redis to reduce redundant LLM and tool calls. All protected routes require JWT-authenticated requests.
 
 ---
 
 ## 3. Features
 
 ### Conversational AI
-- Multi-LLM routing: Groq (Llama 3.3 70B) → Gemini 2.5 Flash → **OpenAI GPT-4o-mini** (emergency fallback)
+- Multi-LLM routing: **Ollama (local offline)** → Groq (Llama 3.3 70B) → Gemini 2.5 Flash → **OpenAI GPT-4o-mini** (emergency fallback)
+- **100% Local Inference Option**: Support for `LOCAL_ONLY_MODE` via Ollama for complete offline privacy and zero-cost inference.
 - **Redis-backed daily quota tracking** per provider — shared across all workers, auto-expires at midnight
 - **Semantic long-term memory** via Qdrant vector search — top-3 relevant memories injected into the agent prompt on every request
 - **Episodic memory (Knowledge Graph)** — LLM-driven entity extraction stores relationships (Subject-Predicate-Object) in PostgreSQL for precision context recall
@@ -116,7 +117,7 @@ Amadeus AI is a FastAPI-based backend service that orchestrates a conversational
 | HTTP latency histograms | Histogram | P50/P95/P99 per route via `prometheus-fastapi-instrumentator` |
 
 ### CI/CD & Deployment
-- GitHub Actions pipeline: lint (ruff), format check, type check (mypy), bandit (0 HIGH gate), pip-audit
+- GitHub Actions pipeline: lint (ruff — 100% clean), format check, strict type check (mypy), bandit (0 HIGH gate), pip-audit
 - Automated test run with real PostgreSQL + Redis service containers
 - **`train-model` CI job**: auto-retrains the ML classifier when `data/training_data.json` changes and commits updated model artifacts back to the repo
 - **Coverage threshold: 60%** enforced in CI (`--cov-fail-under=60`); **80%** enforced locally via `pyproject.toml`
@@ -362,9 +363,10 @@ curl -N -H "Authorization: Bearer $TOKEN" \
 - **Redis 5+** — caching layer (via `redis-py` async client)
 
 ### AI & LLM
-- **Google Generative AI (Gemini 2.5 Flash)** — secondary LLM, supports native `stream=True`
-- **Groq API (Llama 3.3 70B)** — primary LLM (free tier)
-- **OpenAI GPT-4o-mini** — emergency fallback (paid, optional) via `openai_adapter.py`
+- **Ollama** — Default primary local LLM execution (recommended: `phi3:mini` or `llama3.2`) for offline inference
+- **Groq API (Llama 3.3 70B)** — Cloud primary LLM (free tier)
+- **Google Generative AI (Gemini 2.5 Flash)** — Secondary cloud LLM, supports native `stream=True`
+- **OpenAI GPT-4o-mini** — Emergency fallback (paid, optional) via `openai_adapter.py`
 - **Qdrant** — vector database for semantic long-term memory
 - **Knowledge Graph** — structured entity relationship storage via SQLAlchemy/PostgreSQL
 - **LLMRouter** — Redis-backed daily-quota-aware routing engine with atomic `INCR`/`EXPIRE`
@@ -449,7 +451,7 @@ Amadeus-AI/
 
 **LLM Routing Order:**
 ```
-Request → Groq (14,400/day free) → Gemini (1,500/day free) → OpenAI (100/day paid)
+Request → Ollama (Unlimited local) → Groq (14,400/day free) → Gemini (1,500/day free) → OpenAI (100/day paid)
                                          ↓ all exhausted →
                                LLMRateLimitError (503)
 ```
@@ -615,9 +617,11 @@ Amadeus-AI/
 │   └── infra/
 │       ├── llm/
 │       │   ├── router.py         # Multi-LLM routing + Redis quota tracking
+│       │   ├── ollama_adapter.py # Ollama adapter (local offline inference)
 │       │   ├── gemini_adapter.py # Google Gemini adapter (supports stream=True)
 │       │   ├── groq_adapter.py   # Groq adapter
-│       │   └── openai_adapter.py # OpenAI adapter (emergency fallback)
+│       │   ├── openai_adapter.py # OpenAI adapter (emergency fallback)
+│       │   └── memory_manager.py # Long-term semantic memory management
 │       ├── messaging/
 │       │   ├── telegram_adapter.py  # Telegram Bot API send + parse
 │       │   ├── whatsapp_adapter.py  # Meta WhatsApp Cloud API
