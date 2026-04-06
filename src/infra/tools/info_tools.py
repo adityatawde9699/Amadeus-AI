@@ -27,6 +27,7 @@ settings = get_settings()
 # GREETING & TIME TOOLS
 # =============================================================================
 
+
 @tool(
     name="get_greeting",
     description="Get an appropriate greeting based on time of day",
@@ -52,7 +53,12 @@ def get_greeting() -> str:
     name="get_datetime_info",
     description="Return current time/date/day. Trigger: 'what time', 'current date', 'what day is it'",
     category=ToolCategory.INFORMATION,
-    parameters={"query": {"type": "string", "description": "What to retrieve: time, date, day, week, month, year"}}
+    parameters={
+        "query": {
+            "type": "string",
+            "description": "What to retrieve: time, date, day, week, month, year",
+        }
+    },
 )
 def get_datetime_info(query: str = "time") -> str:
     """Get current date, time, or day information."""
@@ -81,11 +87,12 @@ def get_datetime_info(query: str = "time") -> str:
 # WEATHER TOOLS
 # =============================================================================
 
+
 @tool(
     name="get_weather",
     description="Get current weather + forecast. Trigger: 'weather in ___', 'is it raining', 'temperature'",
     category=ToolCategory.INFORMATION,
-    parameters={"location": {"type": "string", "description": "City name or location"}}
+    parameters={"location": {"type": "string", "description": "City name or location"}},
 )
 async def get_weather_async(location: str = "India") -> str:
     """Fetches current weather for a location using OpenWeatherMap API."""
@@ -94,36 +101,33 @@ async def get_weather_async(location: str = "India") -> str:
         return "Weather service unavailable. Please configure WEATHER_API_KEY."
 
     base_url = "https://api.openweathermap.org/data/2.5/weather"
-    params = {
-        "q": location,
-        "appid": api_key,
-        "units": "metric"
-    }
+    params = {"q": location, "appid": api_key, "units": "metric"}
 
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(base_url, params=params, timeout=aiohttp.ClientTimeout(total=10)) as response:
-                if response.status == 404:
-                    return f"Sorry, I couldn't find weather data for '{location}'."
-                if response.status != 200:
-                    return f"Weather service error (status {response.status})."
+        async with aiohttp.ClientSession() as session, session.get(
+            base_url, params=params, timeout=aiohttp.ClientTimeout(total=10)
+        ) as response:
+            if response.status == 404:
+                return f"Sorry, I couldn't find weather data for '{location}'."
+            if response.status != 200:
+                return f"Weather service error (status {response.status})."
 
-                data = await response.json()
+            data = await response.json()
 
-                temp = data["main"]["temp"]
-                feels_like = data["main"]["feels_like"]
-                humidity = data["main"]["humidity"]
-                description = data["weather"][0]["description"]
-                city_name = data["name"]
-                country = data["sys"].get("country", "")
-                wind_speed = data.get("wind", {}).get("speed", 0)
-                wind_kmh = round(wind_speed * 3.6, 1)
+            temp = data["main"]["temp"]
+            feels_like = data["main"]["feels_like"]
+            humidity = data["main"]["humidity"]
+            description = data["weather"][0]["description"]
+            city_name = data["name"]
+            country = data["sys"].get("country", "")
+            wind_speed = data.get("wind", {}).get("speed", 0)
+            wind_kmh = round(wind_speed * 3.6, 1)
 
-                return (
-                    f"Weather in {city_name}, {country}: {description.capitalize()}. "
-                    f"Temperature is {temp:.1f}°C (feels like {feels_like:.1f}°C). "
-                    f"Humidity is {humidity}% with winds at {wind_kmh} km/h."
-                )
+            return (
+                f"Weather in {city_name}, {country}: {description.capitalize()}. "
+                f"Temperature is {temp:.1f}°C (feels like {feels_like:.1f}°C). "
+                f"Humidity is {humidity}% with winds at {wind_kmh} km/h."
+            )
 
     except TimeoutError:
         return "Weather request timed out. Please try again."
@@ -139,20 +143,22 @@ async def get_weather_async(location: str = "India") -> str:
 # NEWS TOOLS
 # =============================================================================
 
+
 @tool(
     name="get_news",
     description="Fetch current news headlines. Trigger: 'news today', 'latest headlines', 'tech news'",
     category=ToolCategory.INFORMATION,
     parameters={
-        "category": {"type": "string", "description": "Category: general, business, technology, sports, health"},
+        "category": {
+            "type": "string",
+            "description": "Category: general, business, technology, sports, health",
+        },
         "country": {"type": "string", "description": "Country code: in, us, gb"},
-        "count": {"type": "integer", "description": "Number of headlines"}
-    }
+        "count": {"type": "integer", "description": "Number of headlines"},
+    },
 )
 async def get_news_async(
-    category: str | None = None,
-    country: str | None = None,
-    count: int | None = None
+    category: str | None = None, country: str | None = None, count: int | None = None
 ) -> str:
     """Fetches top news headlines using NewsAPI."""
     api_key = settings.NEWS_API_KEY
@@ -168,32 +174,33 @@ async def get_news_async(
         "country": country,
         "category": category,
         "pageSize": count,
-        "apiKey": api_key
+        "apiKey": api_key,
     }
 
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(base_url, params=params, timeout=aiohttp.ClientTimeout(total=10)) as response:
-                if response.status != 200:
-                    return f"News service error (status {response.status})."
+        async with aiohttp.ClientSession() as session, session.get(
+            base_url, params=params, timeout=aiohttp.ClientTimeout(total=10)
+        ) as response:
+            if response.status != 200:
+                return f"News service error (status {response.status})."
 
-                data = await response.json()
+            data = await response.json()
 
-                if data.get("status") != "ok":
-                    return f"News API error: {data.get('message', 'Unknown error')}"
+            if data.get("status") != "ok":
+                return f"News API error: {data.get('message', 'Unknown error')}"
 
-                articles = data.get("articles", [])
+            articles = data.get("articles", [])
 
-                if not articles:
-                    return f"No news articles found for {category} in {country}."
+            if not articles:
+                return f"No news articles found for {category} in {country}."
 
-                headlines = []
-                for i, article in enumerate(articles[:count], 1):
-                    title = article.get("title", "No title")
-                    source = article.get("source", {}).get("name", "Unknown")
-                    headlines.append(f"{i}. {title} ({source})")
+            headlines = []
+            for i, article in enumerate(articles[:count], 1):
+                title = article.get("title", "No title")
+                source = article.get("source", {}).get("name", "Unknown")
+                headlines.append(f"{i}. {title} ({source})")
 
-                return f"Top {len(headlines)} {category} headlines:\n" + "\n".join(headlines)
+            return f"Top {len(headlines)} {category} headlines:\n" + "\n".join(headlines)
 
     except TimeoutError:
         return "News request timed out. Please try again."
@@ -207,11 +214,12 @@ async def get_news_async(
 # WEB BROWSING TOOLS
 # =============================================================================
 
+
 @tool(
     name="open_website",
     description="Open URL/Search Google. Trigger: 'open website', 'google ___', 'search for ___'",
     category=ToolCategory.INFORMATION,
-    parameters={"query": {"type": "string", "description": "URL to open or search term"}}
+    parameters={"query": {"type": "string", "description": "URL to open or search term"}},
 )
 def open_website(query: str | None = None, url: str | None = None, **kwargs: Any) -> str:
     """Opens a website or performs a Google search."""
@@ -244,46 +252,46 @@ def open_website(query: str | None = None, url: str | None = None, **kwargs: Any
 # WIKIPEDIA TOOLS
 # =============================================================================
 
+
 @tool(
     name="wikipedia_search",
     description="Get Wikipedia summary. Trigger: 'who is ___', 'what is ___', 'explain ___'",
     category=ToolCategory.INFORMATION,
     parameters={
         "query": {"type": "string", "description": "Search term"},
-        "sentences": {"type": "integer", "description": "Number of sentences"}
-    }
+        "sentences": {"type": "integer", "description": "Number of sentences"},
+    },
 )
 async def wikipedia_search_async(query: str, sentences: int = 3) -> str:
     """Searches Wikipedia and returns a summary."""
     base_url = "https://en.wikipedia.org/api/rest_v1/page/summary"
     search_url = f"{base_url}/{urllib.parse.quote(query)}"
 
-    headers = {
-        "User-Agent": "AmadeusAI/2.0 (https://github.com/adityatawde9699/Amadeus-AI)"
-    }
+    headers = {"User-Agent": "AmadeusAI/2.0 (https://github.com/adityatawde9699/Amadeus-AI)"}
 
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(search_url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
-                if response.status == 404:
-                    return await _wikipedia_search_fallback(query, session)
-                if response.status != 200:
-                    return f"Wikipedia error (status {response.status})."
+        async with aiohttp.ClientSession() as session, session.get(
+            search_url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)
+        ) as response:
+            if response.status == 404:
+                return await _wikipedia_search_fallback(query, session)
+            if response.status != 200:
+                return f"Wikipedia error (status {response.status})."
 
-                data = await response.json()
+            data = await response.json()
 
-                title = data.get("title", query)
-                extract = data.get("extract", "")
+            title = data.get("title", query)
+            extract = data.get("extract", "")
 
-                if not extract:
-                    return f"No Wikipedia article found for '{query}'."
+            if not extract:
+                return f"No Wikipedia article found for '{query}'."
 
-                sentences_list = extract.split(". ")
-                limited = ". ".join(sentences_list[:sentences])
-                if not limited.endswith("."):
-                    limited += "."
+            sentences_list = extract.split(". ")
+            limited = ". ".join(sentences_list[:sentences])
+            if not limited.endswith("."):
+                limited += "."
 
-                return f"From Wikipedia - {title}:\n{limited}"
+            return f"From Wikipedia - {title}:\n{limited}"
 
     except TimeoutError:
         return "Wikipedia request timed out."
@@ -299,11 +307,13 @@ async def _wikipedia_search_fallback(query: str, session: aiohttp.ClientSession)
         "list": "search",
         "srsearch": query,
         "format": "json",
-        "srlimit": 1
+        "srlimit": 1,
     }
 
     try:
-        async with session.get(search_api, params=params, timeout=aiohttp.ClientTimeout(total=10)) as response:
+        async with session.get(
+            search_api, params=params, timeout=aiohttp.ClientTimeout(total=10)
+        ) as response:
             data = await response.json()
             results = data.get("query", {}).get("search", [])
 
@@ -311,7 +321,12 @@ async def _wikipedia_search_fallback(query: str, session: aiohttp.ClientSession)
                 return f"No Wikipedia results found for '{query}'."
 
             title = results[0].get("title", "")
-            snippet = results[0].get("snippet", "").replace('<span class="searchmatch">', "").replace("</span>", "")
+            snippet = (
+                results[0]
+                .get("snippet", "")
+                .replace('<span class="searchmatch">', "")
+                .replace("</span>", "")
+            )
 
             return f"Wikipedia result for '{query}':\n{title}: {snippet}..."
 
@@ -323,11 +338,12 @@ async def _wikipedia_search_fallback(query: str, session: aiohttp.ClientSession)
 # CALCULATION TOOLS
 # =============================================================================
 
+
 @tool(
     name="calculate",
     description="Evaluate math expressions. Supports: +, -, *, /, **, %, sqrt. Trigger: '5+5', 'solve ___'",
     category=ToolCategory.INFORMATION,
-    parameters={"expression": {"type": "string", "description": "Mathematical expression"}}
+    parameters={"expression": {"type": "string", "description": "Mathematical expression"}},
 )
 def calculate(expression: str) -> str:
     """Safely evaluates a mathematical expression."""
@@ -351,6 +367,7 @@ def calculate(expression: str) -> str:
 # CONVERSION TOOLS
 # =============================================================================
 
+
 @tool(
     name="convert_temperature",
     description="Convert temperature units. Trigger: 'convert C to F'",
@@ -358,8 +375,8 @@ def calculate(expression: str) -> str:
     parameters={
         "value": {"type": "number", "description": "Temperature value"},
         "from_unit": {"type": "string", "description": "Source unit: C, F, K"},
-        "to_unit": {"type": "string", "description": "Target unit: C, F, K"}
-    }
+        "to_unit": {"type": "string", "description": "Target unit: C, F, K"},
+    },
 )
 def convert_temperature(value: float, from_unit: str, to_unit: str) -> str:
     """Converts temperature between Celsius, Fahrenheit, and Kelvin."""
@@ -367,14 +384,14 @@ def convert_temperature(value: float, from_unit: str, to_unit: str) -> str:
     to_unit = to_unit.lower()[0]
 
     if from_unit == "f":
-        celsius = (value - 32) * 5/9
+        celsius = (value - 32) * 5 / 9
     elif from_unit == "k":
         celsius = value - 273.15
     else:
         celsius = value
 
     if to_unit == "f":
-        result = celsius * 9/5 + 32
+        result = celsius * 9 / 5 + 32
         unit_name = "Fahrenheit"
     elif to_unit == "k":
         result = celsius + 273.15
@@ -393,14 +410,20 @@ def convert_temperature(value: float, from_unit: str, to_unit: str) -> str:
     parameters={
         "value": {"type": "number", "description": "Length value"},
         "from_unit": {"type": "string", "description": "Source unit"},
-        "to_unit": {"type": "string", "description": "Target unit"}
-    }
+        "to_unit": {"type": "string", "description": "Target unit"},
+    },
 )
 def convert_length(value: float, from_unit: str, to_unit: str) -> str:
     """Converts length between common units."""
     to_meters = {
-        "mm": 0.001, "cm": 0.01, "m": 1, "km": 1000,
-        "in": 0.0254, "ft": 0.3048, "yd": 0.9144, "mi": 1609.34
+        "mm": 0.001,
+        "cm": 0.01,
+        "m": 1,
+        "km": 1000,
+        "in": 0.0254,
+        "ft": 0.3048,
+        "yd": 0.9144,
+        "mi": 1609.34,
     }
 
     from_unit = from_unit.lower()
@@ -448,14 +471,15 @@ def tell_joke() -> str:
 # TIMER TOOLS
 # =============================================================================
 
+
 @tool(
     name="set_timer",
     description="Set a timer. Trigger: 'set timer for 5 minutes'",
     category=ToolCategory.INFORMATION,
     parameters={
         "duration_seconds": {"type": "integer", "description": "Duration in seconds"},
-        "message": {"type": "string", "description": "Message when timer completes"}
-    }
+        "message": {"type": "string", "description": "Message when timer completes"},
+    },
 )
 async def set_timer_async(duration_seconds: int, message: str = "Timer finished!") -> str:
     """Sets a timer that triggers after the specified duration."""
@@ -507,10 +531,10 @@ def parse_duration(duration_str: str) -> int:
     return total_seconds
 
 
-
 # =============================================================================
 # WEB SEARCH TOOL (via SearchRouter)
 # =============================================================================
+
 
 @tool(
     name="web_search",
@@ -519,7 +543,7 @@ def parse_duration(duration_str: str) -> int:
     parameters={
         "query": {"type": "string", "description": "Search query"},
         "depth": {"type": "string", "description": "Search depth: 'quick' (default) or 'deep'"},
-    }
+    },
 )
 async def web_search_async(query: str, depth: str = "quick") -> str:
     """Search the web using the tiered SearchRouter (DDG → Brave → Tavily)."""
@@ -528,6 +552,7 @@ async def web_search_async(query: str, depth: str = "quick") -> str:
 
     try:
         from src.container import get_search_router
+
         router = get_search_router()
         return await router.search(query.strip(), depth=depth)
     except Exception as e:
@@ -538,6 +563,7 @@ async def web_search_async(query: str, depth: str = "quick") -> str:
 # =============================================================================
 # TOOL COLLECTION
 # =============================================================================
+
 
 def get_info_tools() -> list[Tool]:
     """Get all information tools for manual registration."""

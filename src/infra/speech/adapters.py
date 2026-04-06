@@ -1,8 +1,8 @@
 import asyncio
 import logging
-import os
 import tempfile
 from collections.abc import AsyncGenerator
+from pathlib import Path
 from typing import Any, ClassVar
 
 from src.core.config import get_settings
@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 # Try to import faster_whisper, handle missing package
 try:
     from faster_whisper import WhisperModel
+
     WHISPER_AVAILABLE = True
 except ImportError:
     WHISPER_AVAILABLE = False
@@ -22,6 +23,7 @@ except ImportError:
 
 class WhisperVoiceInput(ISpeechToTextService):
     """STT Adapter: Loads model ONCE (Singleton) to prevent lag."""
+
     _model_cache: ClassVar[Any | None] = None
 
     def __init__(self) -> None:
@@ -70,10 +72,14 @@ class WhisperVoiceInput(ISpeechToTextService):
         temp_path = tempfile.mktemp(suffix=".wav")
         try:
             # Write bytes to temp file for faster_whisper
-            with open(temp_path, "wb") as f:
+            with Path(temp_path).open("wb") as f:
                 f.write(audio_data)
 
-            # Run in executor to avoid blocking the event loop
+            # Run in a single-worker executor to limit memory scaling (OOM protection)
+            from src.container import global_container
+
+            ml_pool = global_container.ml_thread_pool()
+
             loop = asyncio.get_running_loop()
             model = WhisperVoiceInput._model_cache
             assert model is not None  # Guarded above
@@ -82,19 +88,23 @@ class WhisperVoiceInput(ISpeechToTextService):
                 segments, _ = model.transcribe(temp_path, language=language)
                 return " ".join(s.text for s in segments).strip()
 
-            return await loop.run_in_executor(None, _transcribe_sync)
+            return await loop.run_in_executor(ml_pool, _transcribe_sync)
 
         except Exception as e:
             logger.exception(f"Transcription error: {e}")
             return ""
         finally:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
+            if Path(temp_path).exists():
+                Path(temp_path).unlink()
 
-    async def transcribe_stream(self, audio_stream: AsyncGenerator[bytes, None]) -> AsyncGenerator[str, None]:
+    async def transcribe_stream(
+        self, audio_stream: AsyncGenerator[bytes, None]
+    ) -> AsyncGenerator[str, None]:
         """Stub streaming transcription (not natively supported by faster-whisper)."""
+
         async def _stub() -> AsyncGenerator[str, None]:
             yield "Streaming not fully implemented"
+
         return _stub()
 
 

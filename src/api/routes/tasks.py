@@ -4,7 +4,6 @@ Task API routes.
 CRUD endpoints for managing tasks/todos.
 """
 
-
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import Response
 
@@ -18,6 +17,7 @@ router = APIRouter()
 # =============================================================================
 # ENDPOINTS
 # =============================================================================
+
 
 @router.post("/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
 async def create_task(task: TaskCreate) -> TaskResponse:
@@ -40,8 +40,7 @@ async def create_task(task: TaskCreate) -> TaskResponse:
 @router.get("/tasks", response_model=TaskListResponse)
 async def list_tasks(
     status_filter: str | None = Query(
-        None,
-        description="Filter by status: 'pending' or 'completed'"
+        None, description="Filter by status: 'pending' or 'completed'"
     ),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of tasks"),
     offset: int = Query(0, ge=0, description="Number of tasks to skip"),

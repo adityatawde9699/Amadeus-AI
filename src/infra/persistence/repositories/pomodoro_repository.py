@@ -96,18 +96,15 @@ class SQLAlchemyPomodoroRepository(IPomodoroRepository):
     async def list_recent(self, limit: int = 10) -> list[PomodoroSession]:
         """Return the N most recent Pomodoro sessions."""
         result = await self._session.execute(
-            select(PomodoroSessionORM)
-            .order_by(PomodoroSessionORM.created_at.desc())
-            .limit(limit)
+            select(PomodoroSessionORM).order_by(PomodoroSessionORM.created_at.desc()).limit(limit)
         )
         return [_orm_to_domain(orm) for orm in result.scalars().all()]
 
     async def count_completed_today(self) -> int:
         """Count Pomodoro cycles completed today (UTC)."""
         from sqlalchemy import and_, func
-        today_start = datetime.now(UTC).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
+
+        today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
         result = await self._session.execute(
             select(func.sum(PomodoroSessionORM.cycles_completed)).where(
                 and_(

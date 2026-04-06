@@ -44,7 +44,9 @@ class ISpeechToTextService(ABC):
         """
 
     @abstractmethod
-    async def transcribe_stream(self, audio_stream: AsyncGenerator[bytes, None]) -> AsyncGenerator[str, None]:
+    async def transcribe_stream(
+        self, audio_stream: AsyncGenerator[bytes, None]
+    ) -> AsyncGenerator[str, None]:
         """
         Process a continuous stream of audio into text chunks.
 

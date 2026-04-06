@@ -22,6 +22,7 @@ import pytest
 # Helpers
 # ===========================================================================
 
+
 def _make_telegram_payload(
     chat_id: int = 12345,
     text: str = "Hello bot",
@@ -75,12 +76,14 @@ def _make_whatsapp_payload(
 # Telegram Adapter Tests
 # ===========================================================================
 
+
 class TestTelegramAdapterParseUpdate:
     """Test parse_update() without a live Bot instance."""
 
-    def _adapter_without_bot(self) -> "TelegramAdapter":
+    def _adapter_without_bot(self) -> TelegramAdapter:
         """Create adapter that skips Bot initialization."""
         from src.infra.messaging.telegram_adapter import TelegramAdapter
+
         with patch("src.infra.messaging.telegram_adapter.get_settings") as mock_settings:
             mock_settings.return_value.TELEGRAM_BOT_TOKEN = None
             adapter = TelegramAdapter.__new__(TelegramAdapter)
@@ -90,7 +93,8 @@ class TestTelegramAdapterParseUpdate:
 
     def test_parse_text_message_manual_path(self) -> None:
         """parse_update() should return a TelegramMessage for a text update (no lib)."""
-        from src.infra.messaging.telegram_adapter import TelegramAdapter, TelegramMessage
+        from src.infra.messaging.telegram_adapter import TelegramMessage
+
         adapter = self._adapter_without_bot()
         payload = _make_telegram_payload()
         result = adapter.parse_update(payload)
@@ -104,20 +108,20 @@ class TestTelegramAdapterParseUpdate:
 
     def test_parse_non_text_returns_none(self) -> None:
         """parse_update() should return None for non-text updates."""
-        from src.infra.messaging.telegram_adapter import TelegramAdapter
+
         adapter = self._adapter_without_bot()
         payload = {"update_id": 101, "message": {"chat": {"id": 1}, "sticker": {}}}
         assert adapter.parse_update(payload) is None
 
     def test_parse_empty_payload_returns_none(self) -> None:
         """parse_update() should return None for an empty dict."""
-        from src.infra.messaging.telegram_adapter import TelegramAdapter
+
         adapter = self._adapter_without_bot()
         assert adapter.parse_update({}) is None
 
     def test_is_ready_false_when_no_token(self) -> None:
         """is_ready should be False when bot token is missing."""
-        from src.infra.messaging.telegram_adapter import TelegramAdapter
+
         adapter = self._adapter_without_bot()
         assert adapter.is_ready is False
 
@@ -126,11 +130,13 @@ class TestTelegramAdapterParseUpdate:
 # WhatsApp Adapter Tests
 # ===========================================================================
 
+
 class TestWhatsAppAdapterParsing:
     """Test parsing and webhook verification logic."""
 
-    def _adapter(self) -> "WhatsAppAdapter":
+    def _adapter(self) -> WhatsAppAdapter:
         from src.infra.messaging.whatsapp_adapter import WhatsAppAdapter
+
         with patch("src.infra.messaging.whatsapp_adapter.get_settings") as mock_settings:
             mock_settings.return_value.WHATSAPP_ACCESS_TOKEN = "fake-token"
             mock_settings.return_value.WHATSAPP_PHONE_NUMBER_ID = "1234567890"
@@ -154,6 +160,7 @@ class TestWhatsAppAdapterParsing:
 
     def test_parse_payload_text_message(self) -> None:
         from src.infra.messaging.whatsapp_adapter import WhatsAppMessage
+
         adapter = self._adapter()
         payload = _make_whatsapp_payload(phone="919876543210", text="Hi there")
         msg = adapter.parse_payload(payload)
@@ -179,8 +186,9 @@ class TestWhatsAppAdapterParsing:
 class TestWhatsAppAdapterSend:
     """Test send methods with mocked httpx."""
 
-    def _adapter(self) -> "WhatsAppAdapter":
+    def _adapter(self) -> WhatsAppAdapter:
         from src.infra.messaging.whatsapp_adapter import WhatsAppAdapter
+
         return WhatsAppAdapter(
             access_token="fake-token",
             phone_number_id="1234567890",
@@ -239,7 +247,7 @@ class TestWhatsAppAdapterSend:
                 body_text="Too many buttons:",
                 buttons=[
                     {"id": f"opt_{i}", "title": f"Option {i}"}
-                    for i in range(5)         # send 5, should be capped at 3
+                    for i in range(5)  # send 5, should be capped at 3
                 ],
             )
 
@@ -251,6 +259,7 @@ class TestWhatsAppAdapterSend:
     async def test_send_interactive_buttons_returns_false_when_unconfigured(self) -> None:
         """send_interactive_buttons() returns False when credentials are missing."""
         from src.infra.messaging.whatsapp_adapter import WhatsAppAdapter
+
         adapter = WhatsAppAdapter(access_token=None, phone_number_id=None, verify_token=None)
         result = await adapter.send_interactive_buttons(
             to_phone="919876543210",

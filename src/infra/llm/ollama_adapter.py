@@ -35,9 +35,11 @@ logger = logging.getLogger(__name__)
 # DATA MODELS
 # =============================================================================
 
+
 @dataclass
 class OllamaModel:
     """Metadata for an Ollama model."""
+
     name: str
     size_bytes: int
     modified_at: str
@@ -45,7 +47,7 @@ class OllamaModel:
 
     @property
     def size_gb(self) -> float:
-        return round(self.size_bytes / (1024 ** 3), 2)
+        return round(self.size_bytes / (1024**3), 2)
 
     @property
     def display_name(self) -> str:
@@ -55,6 +57,7 @@ class OllamaModel:
 @dataclass
 class ProgressEvent:
     """Download progress event from Ollama pull."""
+
     status: str
     completed: int = 0
     total: int = 0
@@ -70,6 +73,7 @@ class ProgressEvent:
 # =============================================================================
 # OLLAMA ADAPTER
 # =============================================================================
+
 
 class OllamaAdapter:
     """
@@ -129,14 +133,13 @@ class OllamaAdapter:
             models = [m["name"] for m in data.get("models", [])]
             # Accept partial name match: "phi3:mini" matches "phi3:mini"
             available = any(
-                self.model in m or m.startswith(self.model.split(":")[0])
-                for m in models
+                self.model in m or m.startswith(self.model.split(":")[0]) for m in models
             )
             if not available:
                 logger.warning(
-                    "Ollama running but model '%s' not found. "
-                    "Run: ollama pull %s",
-                    self.model, self.model
+                    "Ollama running but model '%s' not found. Run: ollama pull %s",
+                    self.model,
+                    self.model,
                 )
             return available
         except (httpx.ConnectError, httpx.TimeoutException):
@@ -184,9 +187,7 @@ class OllamaAdapter:
             LLMRateLimitError: If Ollama is not available
         """
         if not await self.is_server_running():
-            raise LLMRateLimitError(
-                "Ollama server not running. Start with: ollama serve"
-            )
+            raise LLMRateLimitError("Ollama server not running. Start with: ollama serve")
 
         payload: dict[str, Any] = {
             "model": self.model,

@@ -25,13 +25,17 @@ from pydantic import BaseModel, ConfigDict, Field
 # ENUMS
 # =============================================================================
 
+
 class PermissionProfile(StrEnum):
     """Declared permission profile for the agent session."""
+
     READ_ONLY = "read_only"
     SYSTEM_FULL = "system_full"
 
+
 class RequestSource(StrEnum):
     """Source of the user's request."""
+
     VOICE = "voice"
     TEXT = "text"
     API = "api"
@@ -40,20 +44,23 @@ class RequestSource(StrEnum):
 
 class InteractionType(StrEnum):
     """Type of interaction with the assistant."""
-    COMMAND = "command"       # Execute a specific action
-    QUERY = "query"           # Request information
+
+    COMMAND = "command"  # Execute a specific action
+    QUERY = "query"  # Request information
     CONVERSATION = "conversation"  # General chat
-    SYSTEM = "system"         # System-generated (reminders, alerts)
+    SYSTEM = "system"  # System-generated (reminders, alerts)
 
 
 class TaskStatus(StrEnum):
     """Status of a task."""
+
     PENDING = "pending"
     COMPLETED = "completed"
 
 
 class ReminderStatus(StrEnum):
     """Status of a reminder."""
+
     ACTIVE = "active"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
@@ -61,6 +68,7 @@ class ReminderStatus(StrEnum):
 
 class EventStatus(StrEnum):
     """Status of a calendar event."""
+
     ACTIVE = "active"
     CANCELLED = "cancelled"
     COMPLETED = "completed"
@@ -68,6 +76,7 @@ class EventStatus(StrEnum):
 
 class PomodoroState(StrEnum):
     """State of a Pomodoro session."""
+
     IDLE = "idle"
     WORKING = "working"
     SHORT_BREAK = "short_break"
@@ -78,6 +87,7 @@ class PomodoroState(StrEnum):
 
 class AlertSeverity(StrEnum):
     """Severity level for system alerts."""
+
     INFO = "info"
     WARNING = "warning"
     CRITICAL = "critical"
@@ -87,6 +97,7 @@ class AlertSeverity(StrEnum):
 # CORE DOMAIN MODELS
 # =============================================================================
 
+
 class UserContext(BaseModel):
     """
     Context about who is speaking/interacting with Amadeus.
@@ -94,6 +105,7 @@ class UserContext(BaseModel):
     In a multi-user system, this would include user ID, preferences,
     permissions, etc. For now, it's simplified for single-user use.
     """
+
     model_config = ConfigDict(frozen=True)
 
     user_id: str = "admin"
@@ -109,6 +121,7 @@ class InteractionLog(BaseModel):
     This is the primary record of all interactions, whether from
     voice, text, or API. Used for logging, analytics, and context.
     """
+
     id: UUID = Field(default_factory=uuid4)
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     source: RequestSource
@@ -132,6 +145,7 @@ class SystemStatus(BaseModel):
     Provides a snapshot of the current system state including
     resource usage and health indicators.
     """
+
     model_config = ConfigDict(frozen=True)
 
     timestamp: datetime = Field(default_factory=datetime.utcnow)
@@ -149,6 +163,7 @@ class SystemAlert(BaseModel):
     """
     Represents a system alert or warning.
     """
+
     id: UUID = Field(default_factory=uuid4)
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     severity: AlertSeverity
@@ -163,8 +178,10 @@ class SystemAlert(BaseModel):
 # PRODUCTIVITY DOMAIN MODELS
 # =============================================================================
 
+
 class Task(BaseModel):
     """Domain model for a task/todo item."""
+
     id: int | None = None
     content: str
     status: TaskStatus = TaskStatus.PENDING
@@ -173,14 +190,17 @@ class Task(BaseModel):
 
     def mark_complete(self) -> "Task":
         """Return a new Task marked as complete."""
-        return self.model_copy(update={
-            "status": TaskStatus.COMPLETED,
-            "completed_at": datetime.utcnow(),
-        })
+        return self.model_copy(
+            update={
+                "status": TaskStatus.COMPLETED,
+                "completed_at": datetime.utcnow(),
+            }
+        )
 
 
 class Note(BaseModel):
     """Domain model for a note."""
+
     id: int | None = None
     title: str
     content: str
@@ -196,6 +216,7 @@ class Note(BaseModel):
 
 class Reminder(BaseModel):
     """Domain model for a reminder."""
+
     id: int | None = None
     title: str
     time: datetime
@@ -211,6 +232,7 @@ class Reminder(BaseModel):
 
 class CalendarEvent(BaseModel):
     """Domain model for a calendar event."""
+
     id: int | None = None
     title: str
     description: str = ""
@@ -238,6 +260,7 @@ class CalendarEvent(BaseModel):
 
 class PomodoroSession(BaseModel):
     """Domain model for a Pomodoro work session."""
+
     id: int | None = None
     state: PomodoroState = PomodoroState.IDLE
     task_description: str = ""
@@ -259,8 +282,10 @@ class PomodoroSession(BaseModel):
 # TOOL DOMAIN MODELS
 # =============================================================================
 
+
 class ToolDefinition(BaseModel):
     """Definition of a tool/function that Amadeus can execute."""
+
     model_config = ConfigDict(frozen=True)
 
     name: str
@@ -273,6 +298,7 @@ class ToolDefinition(BaseModel):
 
 class ToolExecutionResult(BaseModel):
     """Result of executing a tool."""
+
     tool_name: str
     success: bool
     result: Any = None
@@ -285,8 +311,10 @@ class ToolExecutionResult(BaseModel):
 # CONVERSATION DOMAIN MODELS
 # =============================================================================
 
+
 class ConversationMessage(BaseModel):
     """A single message in a conversation."""
+
     role: str  # "user", "assistant", "system"
     content: str
     timestamp: datetime = Field(default_factory=datetime.utcnow)
@@ -296,38 +324,42 @@ class ConversationMessage(BaseModel):
 
 class ConversationContext(BaseModel):
     """Context for ongoing conversation."""
+
     messages: list[ConversationMessage] = Field(default_factory=list)
     user_context: UserContext = Field(default_factory=UserContext)
     summary: str = ""
 
     def add_message(
-        self,
-        role: str,
-        content: str,
-        tool_used: str | None = None,
-        **metadata: Any
+        self, role: str, content: str, tool_used: str | None = None, **metadata: Any
     ) -> None:
         """Add a message to the conversation."""
-        self.messages.append(ConversationMessage(
-            role=role,
-            content=content,
-            tool_used=tool_used,
-            metadata=metadata,
-        ))
+        self.messages.append(
+            ConversationMessage(
+                role=role,
+                content=content,
+                tool_used=tool_used,
+                metadata=metadata,
+            )
+        )
 
     def get_recent_messages(self, count: int = 10) -> list[ConversationMessage]:
         """Get the most recent messages."""
         return self.messages[-count:] if self.messages else []
 
+
 # =============================================================================
 # API REQUEST/RESPONSE MODELS
 # =============================================================================
 
+
 class ChatRequest(BaseModel):
     """Request model for chat endpoint."""
+
     message: str = Field(..., min_length=1, max_length=10000, description="User message")
     source: str = Field(default="api", description="Source: api, text, voice")
-    session_id: str | None = Field(default=None, description="Session ID for conversation continuity")
+    session_id: str | None = Field(
+        default=None, description="Session ID for conversation continuity"
+    )
     request_id: str | None = Field(default=None, description="Optional request ID for tracing")
 
     model_config = {
@@ -335,13 +367,15 @@ class ChatRequest(BaseModel):
             "example": {
                 "message": "What is the weather like today?",
                 "source": "api",
-                "session_id": "session_12345"
+                "session_id": "session_12345",
             }
         }
     }
 
+
 class ChatResponse(BaseModel):
     """Response model for chat endpoint."""
+
     response: str = Field(..., description="Assistant's response")
     source: str = Field(..., description="Request source")
     session_id: str = Field(..., description="Session ID for this conversation")
@@ -353,31 +387,39 @@ class ChatResponse(BaseModel):
                 "response": "The weather is sunny and 25 degrees.",
                 "source": "api",
                 "session_id": "session_12345",
-                "tools_used": ["get_weather"]
+                "tools_used": ["get_weather"],
             }
         }
     }
 
+
 class ToolListResponse(BaseModel):
     """Response model for tool listing."""
+
     total: int
     categories: dict[str, list[str]]
 
+
 class MessageResponse(BaseModel):
     """Single message in history."""
+
     role: str
     content: str
     tool_used: str | None = None
     timestamp: str | None = None
 
+
 class HistoryResponse(BaseModel):
     """Response model for conversation history."""
+
     session_id: str
     messages: list[MessageResponse]
     total: int
 
+
 class HealthResponse(BaseModel):
     """Detailed health check response."""
+
     status: str
     service: str
     version: str
@@ -396,13 +438,15 @@ class HealthResponse(BaseModel):
                 "environment": "production",
                 "database": "connected",
                 "voice_enabled": True,
-                "classifier_enabled": True
+                "classifier_enabled": True,
             }
         }
     }
 
+
 class SystemStatusResponse(BaseModel):
     """System status response."""
+
     cpu_usage: float
     memory_usage: float
     disk_usage: float
@@ -422,25 +466,23 @@ class SystemStatusResponse(BaseModel):
                 "is_charging": True,
                 "uptime_seconds": 3600.5,
                 "is_healthy": True,
-                "alerts": []
+                "alerts": [],
             }
         }
     }
+
 
 class TaskCreate(BaseModel):
     """Schema for creating a task."""
+
     content: str = Field(..., min_length=1, max_length=1000, description="Task content")
 
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "content": "Buy groceries for the week"
-            }
-        }
-    }
+    model_config = {"json_schema_extra": {"example": {"content": "Buy groceries for the week"}}}
+
 
 class TaskResponse(BaseModel):
     """Schema for task response."""
+
     id: int
     content: str
     status: str
@@ -465,25 +507,20 @@ class TaskResponse(BaseModel):
                 "content": "Buy groceries for the week",
                 "status": "pending",
                 "created_at": "2023-11-20T10:00:00Z",
-                "completed_at": None
+                "completed_at": None,
             }
         }
     }
 
+
 class TaskListResponse(BaseModel):
     """Schema for task list response."""
+
     tasks: list[TaskResponse]
     total: int
     pending: int
     completed: int
 
     model_config = {
-        "json_schema_extra": {
-            "example": {
-                "tasks": [],
-                "total": 0,
-                "pending": 0,
-                "completed": 0
-            }
-        }
+        "json_schema_extra": {"example": {"tasks": [], "total": 0, "pending": 0, "completed": 0}}
     }

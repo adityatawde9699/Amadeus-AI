@@ -41,7 +41,6 @@ class ElevenLabsAdapter(ITextToSpeechService):
             import asyncio
 
             from elevenlabs import ElevenLabs
-            from elevenlabs import Voice as ElevenVoice, VoiceSettings
 
             client = ElevenLabs(api_key=self._api_key)
             target_voice = voice_id or self._default_voice_id
@@ -74,7 +73,9 @@ class TTSRouter(ITextToSpeechService):
     ) -> None:
         self.edge = edge_tts
 
-    async def synthesize(self, text: str, voice_id: str | None = None, priority: str = "normal") -> bytes:
+    async def synthesize(
+        self, text: str, voice_id: str | None = None, priority: str = "normal"
+    ) -> bytes:
         """Route synthesis - EdgeTTS only."""
         if not text:
             return b""

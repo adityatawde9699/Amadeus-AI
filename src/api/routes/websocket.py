@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+
 # Simple connection manager for WebSockets
 class ConnectionManager:
     def __init__(self) -> None:
@@ -24,7 +25,9 @@ class ConnectionManager:
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
 
+
 manager = ConnectionManager()
+
 
 @router.websocket("/ws/chat")
 async def websocket_endpoint(websocket: WebSocket) -> None:
@@ -71,7 +74,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             words = response_text.split(" ")
             for word in words:
                 await websocket.send_json({"type": "text", "content": word + " "})
-                await asyncio.sleep(0.05) # simulate latency of generation
+                await asyncio.sleep(0.05)  # simulate latency of generation
 
             # Signal completion of this turn
             await websocket.send_json({"type": "done"})
@@ -82,4 +85,4 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     except Exception as e:
         logger.error(f"WebSocket error: {e}", exc_info=True)
         if websocket in manager.active_connections:
-             manager.disconnect(websocket)
+            manager.disconnect(websocket)

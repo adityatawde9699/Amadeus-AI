@@ -71,6 +71,7 @@ async def summarize_conversation(
         if llm_adapter is None:
             # Late import to avoid circular deps
             from src.container import get_llm_router
+
             llm_adapter = get_llm_router()
 
         response = await llm_adapter.generate(

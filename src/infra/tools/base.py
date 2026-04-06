@@ -43,9 +43,11 @@ F = TypeVar("F", bound=Callable[..., Any])
 # TOOL CATEGORIES
 # =============================================================================
 
+
 class ToolCategory(StrEnum):
     """Categories for organizing tools."""
-    SYSTEM = "system"           # Hardware, OS, files
+
+    SYSTEM = "system"  # Hardware, OS, files
     INFORMATION = "information"  # Web, search, calculations
     PRODUCTIVITY = "productivity"  # Tasks, notes, reminders, calendar
     COMMUNICATION = "communication"  # Future: email, messaging
@@ -54,6 +56,7 @@ class ToolCategory(StrEnum):
 # =============================================================================
 # TOOL DATACLASS
 # =============================================================================
+
 
 @dataclass
 class Tool:
@@ -69,6 +72,7 @@ class Tool:
         requires_confirmation: Whether to ask user before executing
         is_async: Auto-detected from function signature
     """
+
     name: str
     function: Callable
     description: str
@@ -84,7 +88,6 @@ class Tool:
         """
         params = ", ".join(f"{k}={v}" for k, v in args.items())
         return f"Execute {self.name}({params})"
-
 
     def __post_init__(self) -> None:
         """Auto-detect if function is async."""
@@ -125,12 +128,7 @@ class Tool:
                     required.append(param_name)
             else:
                 # Simple type string like 'str', 'int'
-                type_map = {
-                    "str": "STRING",
-                    "int": "INTEGER",
-                    "float": "NUMBER",
-                    "bool": "BOOLEAN"
-                }
+                type_map = {"str": "STRING", "int": "INTEGER", "float": "NUMBER", "bool": "BOOLEAN"}
                 properties[param_name] = {
                     "type": type_map.get(param_info, "STRING"),
                 }
@@ -143,13 +141,16 @@ class Tool:
                 "type": "OBJECT",  # FIXED: Capitalized
                 "properties": properties,
                 "required": required,
-            } if properties else {"type": "OBJECT", "properties": {}},
+            }
+            if properties
+            else {"type": "OBJECT", "properties": {}},
         }
 
 
 # =============================================================================
 # TOOL DECORATOR
 # =============================================================================
+
 
 def tool(
     name: str,
@@ -181,6 +182,7 @@ def tool(
     Returns:
         Decorated function with _tool_metadata attribute
     """
+
     def decorator(func: F) -> F:
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -203,7 +205,7 @@ def tool(
             requires_confirmation=requires_confirmation,
         )
 
-        return cast(F, final_func)
+        return cast("F", final_func)
 
     return decorator
 
@@ -211,6 +213,7 @@ def tool(
 # =============================================================================
 # TOOL EXECUTOR
 # =============================================================================
+
 
 class ToolExecutor:
     """
@@ -284,6 +287,7 @@ class ToolExecutor:
         # ------------------------------------------------------------------
         if tool.requires_confirmation:
             from src.infra.tools.confirmation import make_request_id
+
             request_id = make_request_id()
 
             if self.confirmation_callback is None:
@@ -310,7 +314,9 @@ class ToolExecutor:
                 preview=preview,
             )
             if not approved:
-                logger.info("Tool '%s' execution denied by user (request_id=%s)", tool.name, request_id)
+                logger.info(
+                    "Tool '%s' execution denied by user (request_id=%s)", tool.name, request_id
+                )
                 return ToolExecutionResult(
                     tool_name=tool.name,
                     success=False,
@@ -318,10 +324,11 @@ class ToolExecutor:
                     execution_time_ms=(datetime.now() - start_time).total_seconds() * 1000,
                 )
 
-
         for attempt in range(self.max_retries + 1):
             try:
-                logger.info(f"Executing tool '{tool.name}' with args: {args} (attempt {attempt + 1})")
+                logger.info(
+                    f"Executing tool '{tool.name}' with args: {args} (attempt {attempt + 1})"
+                )
 
                 # Validate arguments against expected parameters
                 validated_args = self._validate_args(tool, args)
@@ -333,20 +340,21 @@ class ToolExecutor:
                     # Run sync functions in executor to not block
                     loop = asyncio.get_event_loop()
                     result = await loop.run_in_executor(
-                        None,
-                        partial(tool.function, **validated_args)
+                        None, partial(tool.function, **validated_args)
                     )
 
                 # Calculate execution time
                 execution_time_ms = (datetime.now() - start_time).total_seconds() * 1000
 
                 # Log successful execution
-                self.execution_history.append({
-                    "tool": tool.name,
-                    "args": args,
-                    "success": True,
-                    "timestamp": datetime.now().isoformat(),
-                })
+                self.execution_history.append(
+                    {
+                        "tool": tool.name,
+                        "args": args,
+                        "success": True,
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                )
 
                 return ToolExecutionResult(
                     tool_name=tool.name,
@@ -368,13 +376,15 @@ class ToolExecutor:
             except Exception as e:
                 logger.error(f"Tool execution error ({tool.name}): {e}", exc_info=True)
                 if attempt == self.max_retries:
-                    self.execution_history.append({
-                        "tool": tool.name,
-                        "args": args,
-                        "success": False,
-                        "error": str(e),
-                        "timestamp": datetime.now().isoformat(),
-                    })
+                    self.execution_history.append(
+                        {
+                            "tool": tool.name,
+                            "args": args,
+                            "success": False,
+                            "error": str(e),
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                    )
                     return ToolExecutionResult(
                         tool_name=tool.name,
                         success=False,
@@ -400,9 +410,12 @@ class ToolExecutor:
 
         # Check for required parameters
         for name, param in sig.parameters.items():
-            if param.default == inspect.Parameter.empty and name not in cleaned:
-                if name not in ("self", "cls"):
-                    logger.warning(f"Missing required parameter '{name}' for {tool.name}")
+            if (
+                param.default == inspect.Parameter.empty
+                and name not in cleaned
+                and name not in ("self", "cls")
+            ):
+                logger.warning(f"Missing required parameter '{name}' for {tool.name}")
 
         return cleaned
 

@@ -7,16 +7,17 @@ any API keys or local ChromaDB installation.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.infra.memory_service import QdrantMemoryService, MemoryResult
+from src.infra.memory_service import MemoryResult, QdrantMemoryService
 
 
 # ===========================================================================
 # Fixtures
 # ===========================================================================
+
 
 def _mock_settings(chroma_enabled: bool = True) -> MagicMock:
     """Build a minimal Settings mock."""
@@ -32,6 +33,7 @@ def _mock_settings(chroma_enabled: bool = True) -> MagicMock:
 # ===========================================================================
 # Tests: Service Initialization
 # ===========================================================================
+
 
 class TestChromeMemoryServiceInit:
     """Verify service boots up correctly."""
@@ -66,6 +68,7 @@ class TestChromeMemoryServiceInit:
 # ===========================================================================
 # Tests: store()
 # ===========================================================================
+
 
 class TestChromeMemoryServiceStore:
     """Test the store() async method."""
@@ -129,6 +132,7 @@ class TestChromeMemoryServiceStore:
 # Tests: retrieve()
 # ===========================================================================
 
+
 class TestChromeMemoryServiceRetrieve:
     """Test the retrieve() async method."""
 
@@ -148,8 +152,12 @@ class TestChromeMemoryServiceRetrieve:
             "documents": [["I love astronomy", "Let's talk about stars"]],
             "metadatas": [
                 [
-                    {"session_id": "sess-1", "role": "user",      "timestamp": "2026-01-01T00:00:00"},
-                    {"session_id": "sess-2", "role": "assistant", "timestamp": "2026-01-02T00:00:00"},
+                    {"session_id": "sess-1", "role": "user", "timestamp": "2026-01-01T00:00:00"},
+                    {
+                        "session_id": "sess-2",
+                        "role": "assistant",
+                        "timestamp": "2026-01-02T00:00:00",
+                    },
                 ]
             ],
             "distances": [[0.05, 0.25]],
@@ -200,6 +208,7 @@ class TestChromeMemoryServiceRetrieve:
 # Tests: format_for_prompt()
 # ===========================================================================
 
+
 class TestFormatForPrompt:
     """Test the prompt-formatting helper."""
 
@@ -221,7 +230,9 @@ class TestFormatForPrompt:
 
     def test_max_chars_truncates_output(self) -> None:
         """format_for_prompt should stop appending memories once max_chars is reached."""
-        memories = [MemoryResult("s1", "user", "x" * 200, "2026-01-01", i * 0.01) for i in range(10)]
+        memories = [
+            MemoryResult("s1", "user", "x" * 200, "2026-01-01", i * 0.01) for i in range(10)
+        ]
         svc = QdrantMemoryService.__new__(QdrantMemoryService)
         output = svc.format_for_prompt(memories, max_chars=300)
         assert len(output) <= 500  # generous bound accounting for header line

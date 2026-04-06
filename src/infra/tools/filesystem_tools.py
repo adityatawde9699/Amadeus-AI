@@ -43,8 +43,10 @@ def _safe_resolve(user_path: str) -> Path | None:
     name="fs_list_directory",
     description="List files and directories in the thoroughly sandboxed agent workspace.",
     category=ToolCategory.SYSTEM,
-    parameters={"path": {"type": "string", "description": "Relative path within workspace", "default": "."}},
-    requires_confirmation=False
+    parameters={
+        "path": {"type": "string", "description": "Relative path within workspace", "default": "."}
+    },
+    requires_confirmation=False,
 )
 async def fs_list_directory(path: str = ".") -> str:
     """List files and directories in the agent workspace."""
@@ -71,7 +73,7 @@ async def fs_list_directory(path: str = ".") -> str:
     description="Read the contents of a text file in the sandboxed agent workspace.",
     category=ToolCategory.SYSTEM,
     parameters={"path": {"type": "string", "description": "Relative path to file"}},
-    requires_confirmation=False
+    requires_confirmation=False,
 )
 async def fs_read_file(path: str) -> str:
     """Read the contents of a file in the agent workspace."""
@@ -96,9 +98,9 @@ async def fs_read_file(path: str) -> str:
     category=ToolCategory.SYSTEM,
     parameters={
         "path": {"type": "string", "description": "Relative path to file"},
-        "content": {"type": "string", "description": "Content to write"}
+        "content": {"type": "string", "description": "Content to write"},
     },
-    requires_confirmation=True  # DESTRUCTIVE - REQUIRES HITL
+    requires_confirmation=True,  # DESTRUCTIVE - REQUIRES HITL
 )
 async def fs_write_file(path: str, content: str) -> str:
     """Write content to a file in the agent workspace (creates dirs if needed)."""
@@ -120,9 +122,9 @@ async def fs_write_file(path: str, content: str) -> str:
     category=ToolCategory.SYSTEM,
     parameters={
         "query": {"type": "string", "description": "Search pattern"},
-        "path": {"type": "string", "description": "Relative directory to search", "default": "."}
+        "path": {"type": "string", "description": "Relative directory to search", "default": "."},
     },
-    requires_confirmation=False
+    requires_confirmation=False,
 )
 async def fs_search_files(query: str, path: str = ".") -> str:
     """Search for files matching a pattern in the agent workspace."""

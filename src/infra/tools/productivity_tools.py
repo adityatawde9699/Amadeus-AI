@@ -28,15 +28,18 @@ logger = logging.getLogger(__name__)
 # The injected factory functions below are the preferred approach.
 # =============================================================================
 
+
 def _get_session() -> Any:
     """Get async session — used by legacy bare-function tools."""
     from src.infra.persistence.database import get_session
+
     return get_session()
 
 
 # =============================================================================
 # TASK TOOL FACTORY (SOLID — injected ITaskRepository)
 # =============================================================================
+
 
 def build_task_tools(task_repo: ITaskRepository) -> list[Tool]:
     """
@@ -45,12 +48,15 @@ def build_task_tools(task_repo: ITaskRepository) -> list[Tool]:
     This avoids direct DB access inside tool functions, making them unit-testable.
     """
 
-    async def add_task(task_content: str | None = None, content: str | None = None, **kwargs: Any) -> str:
+    async def add_task(
+        task_content: str | None = None, content: str | None = None, **kwargs: Any
+    ) -> str:
         text = task_content or content or kwargs.get("text")
         if not text:
             return "Error: No task content provided."
         try:
             from src.core.domain.models import Task
+
             created = await task_repo.create(Task(content=text))
             return f"Task added: '{text}' (ID: {created.id})"
         except Exception as e:
@@ -76,7 +82,9 @@ def build_task_tools(task_repo: ITaskRepository) -> list[Tool]:
             logger.exception("list_tasks failed: %s", e)
             return f"Error listing tasks: {e}"
 
-    async def complete_task(identifier: str | None = None, task_id: str | None = None, **kwargs: Any) -> str:
+    async def complete_task(
+        identifier: str | None = None, task_id: str | None = None, **kwargs: Any
+    ) -> str:
         target = identifier or task_id or kwargs.get("id")
         if not target:
             return "Error: No task identifier provided."
@@ -125,14 +133,21 @@ def build_task_tools(task_repo: ITaskRepository) -> list[Tool]:
             description="List all tasks. Trigger: 'show tasks', 'my todos', 'list tasks'",
             category=ToolCategory.PRODUCTIVITY,
             function=list_tasks,
-            parameters={"status_filter": {"type": "string", "description": "Filter: pending, completed, or all"}},
+            parameters={
+                "status_filter": {
+                    "type": "string",
+                    "description": "Filter: pending, completed, or all",
+                }
+            },
         ),
         Tool(
             name="complete_task",
             description="Mark a task as complete. Trigger: 'complete task', 'finish task', 'done with'",
             category=ToolCategory.PRODUCTIVITY,
             function=complete_task,
-            parameters={"identifier": {"type": "string", "description": "Task ID or partial content"}},
+            parameters={
+                "identifier": {"type": "string", "description": "Task ID or partial content"}
+            },
         ),
         Tool(
             name="get_task_summary",
@@ -146,6 +161,7 @@ def build_task_tools(task_repo: ITaskRepository) -> list[Tool]:
 # =============================================================================
 # POMODORO TOOL FACTORY (SOLID — injected IPomodoroRepository)
 # =============================================================================
+
 
 def build_pomodoro_tools(pomodoro_repo: IPomodoroRepository) -> list[Tool]:
     """
@@ -161,12 +177,14 @@ def build_pomodoro_tools(pomodoro_repo: IPomodoroRepository) -> list[Tool]:
                 f"⏱️ A Pomodoro is already running ({active.state.value}, "
                 f"task: '{active.task_description}'). Stop it first."
             )
-        session = await pomodoro_repo.create(PomodoroSession(
-            state=PomodoroState.WORKING,
-            task_description=task,
-            work_duration_minutes=duration,
-            started_at=datetime.now(UTC),
-        ))
+        session = await pomodoro_repo.create(
+            PomodoroSession(
+                state=PomodoroState.WORKING,
+                task_description=task,
+                work_duration_minutes=duration,
+                started_at=datetime.now(UTC),
+            )
+        )
         return (
             f"🍅 Pomodoro started! Task: '{task}' | Duration: {duration} min | ID: {session.id}\n"
             f"Stay focused — I'll remind you when it's done."
@@ -180,7 +198,9 @@ def build_pomodoro_tools(pomodoro_repo: IPomodoroRepository) -> list[Tool]:
         if active and active.id is not None:
             updated = await pomodoro_repo.update_state(active.id, PomodoroState.COMPLETED)
         if updated:
-            return f"⏹️ Pomodoro session stopped (ID: {updated.id}, task: '{updated.task_description}')"
+            return (
+                f"⏹️ Pomodoro session stopped (ID: {updated.id}, task: '{updated.task_description}')"
+            )
         return "Could not stop the Pomodoro session."
 
     async def pomodoro_status(**kwargs: Any) -> str:
@@ -210,7 +230,10 @@ def build_pomodoro_tools(pomodoro_repo: IPomodoroRepository) -> list[Tool]:
             function=start_pomodoro,
             parameters={
                 "task": {"type": "string", "description": "What you're working on"},
-                "duration": {"type": "integer", "description": "Work duration in minutes (default 25)"},
+                "duration": {
+                    "type": "integer",
+                    "description": "Work duration in minutes (default 25)",
+                },
             },
         ),
         Tool(
@@ -233,7 +256,7 @@ def build_pomodoro_tools(pomodoro_repo: IPomodoroRepository) -> list[Tool]:
 # These use _get_session() directly and will be removed in Phase 4.
 # =============================================================================
 
-from sqlalchemy import select  # noqa: E402
+from sqlalchemy import select
 
 
 @tool(
@@ -251,6 +274,7 @@ async def create_note(title: str | None = None, content: str | None = None, **kw
     try:
         async with _get_session() as db:
             from src.infra.persistence.orm_models import NoteORM
+
             note = NoteORM(title=note_title, content=note_content)
             db.add(note)
             await db.commit()
@@ -270,7 +294,10 @@ async def list_notes(**kwargs: Any) -> str:
     try:
         async with _get_session() as db:
             from src.infra.persistence.orm_models import NoteORM
-            stmt = select(NoteORM.id, NoteORM.title, NoteORM.created_at).order_by(NoteORM.created_at.desc())
+
+            stmt = select(NoteORM.id, NoteORM.title, NoteORM.created_at).order_by(
+                NoteORM.created_at.desc()
+            )
             result = await db.execute(stmt)
             notes = result.all()
             if not notes:
@@ -300,6 +327,7 @@ async def get_note(identifier: str | None = None, **kwargs: Any) -> str:
     try:
         async with _get_session() as db:
             from src.infra.persistence.orm_models import NoteORM
+
             note = None
             if str(target).isdigit():
                 result = await db.execute(select(NoteORM).where(NoteORM.id == int(target)))
@@ -331,6 +359,7 @@ async def add_reminder(title: str | None = None, time: str | None = None, **kwar
         return "Error: No reminder title provided."
     try:
         from dateparser import parse as parse_date
+
         parsed_time = parse_date(reminder_time) if reminder_time else None
     except ImportError:
         parsed_time = None
@@ -339,6 +368,7 @@ async def add_reminder(title: str | None = None, time: str | None = None, **kwar
     try:
         async with _get_session() as db:
             from src.infra.persistence.orm_models import ReminderORM
+
             reminder = ReminderORM(title=reminder_title, time=parsed_time)
             db.add(reminder)
             await db.commit()
@@ -359,6 +389,7 @@ async def list_reminders(**kwargs: Any) -> str:
     try:
         async with _get_session() as db:
             from src.infra.persistence.orm_models import ReminderORM
+
             stmt = (
                 select(ReminderORM.id, ReminderORM.title, ReminderORM.time, ReminderORM.status)
                 .where(ReminderORM.status == "active")
@@ -381,6 +412,7 @@ async def list_reminders(**kwargs: Any) -> str:
 # =============================================================================
 # TOOL COLLECTION (legacy auto-discovery)
 # =============================================================================
+
 
 def get_productivity_tools() -> list[Tool]:
     """Get legacy (session-injected) productivity tools for auto-discovery."""

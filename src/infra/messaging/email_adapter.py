@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 # Data Transfer Objects
 # =========================================================================
 
+
 @dataclass(frozen=True)
 class ParsedEmail:
     """Cleaned email ready for LLM consumption."""
@@ -46,6 +47,7 @@ class ParsedEmail:
 # =========================================================================
 # HTML → Plain-text Pipeline
 # =========================================================================
+
 
 def _strip_html(html: str, max_chars: int = 4000) -> str:
     """
@@ -72,6 +74,7 @@ def _strip_html(html: str, max_chars: int = 4000) -> str:
 # =========================================================================
 # Email Adapter
 # =========================================================================
+
 
 class EmailAdapter:
     """

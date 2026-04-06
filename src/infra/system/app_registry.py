@@ -15,12 +15,14 @@ from rapidfuzz import fuzz, process
 
 logger = logging.getLogger(__name__)
 
+
 class AppRegistry:
     """
     Scans the operating system for installed applications and caches the paths
     in a JSON file to prevent expensive lookups on every invocation.
     Uses rapidfuzz for exact and substring matching.
     """
+
     def __init__(self, cache_dir: Path | None = None):
         if cache_dir is None:
             # Default to user's home directory under .amadeus
@@ -35,7 +37,7 @@ class AppRegistry:
         """Load from JSON cache if it exists, otherwise trigger a scan."""
         if self.cache_file.exists():
             try:
-                with open(self.cache_file, encoding="utf-8") as f:
+                with self.cache_file.open(encoding="utf-8") as f:
                     apps: dict[str, str] = json.load(f)
                     logger.debug(f"Loaded {len(apps)} applications from cache.")
                     return apps
@@ -65,9 +67,11 @@ class AppRegistry:
 
         if discovered:
             try:
-                with open(self.cache_file, "w", encoding="utf-8") as f:
+                with self.cache_file.open("w", encoding="utf-8") as f:
                     json.dump(discovered, f, indent=2)
-                logger.info(f"Successfully cached {len(discovered)} applications to {self.cache_file}")
+                logger.info(
+                    f"Successfully cached {len(discovered)} applications to {self.cache_file}"
+                )
             except Exception as e:
                 logger.exception(f"Failed to write cache file: {e}")
 
@@ -77,6 +81,7 @@ class AppRegistry:
     def _scan_windows(self) -> dict[str, str]:
         """Use the standard library winreg to find registered App Paths."""
         import winreg
+
         apps = {}
 
         key_path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths"
@@ -150,21 +155,20 @@ class AppRegistry:
         # 2. Substring or exact filename match (e.g. they ask for "chrome.exe" and we mapped "chrome")
         for _key_name, abs_path in self.apps.items():
             if requested_name == Path(abs_path).name.lower():
-                 return abs_path
+                return abs_path
 
         # 3. Fuzzy Matching (Substrings, slight misspellings)
         # Use WRatio which handles different lengths, string cases, and token sorting well
         match = process.extractOne(
-            requested_name,
-            self.apps.keys(),
-            scorer=fuzz.WRatio,
-            score_cutoff=score_cutoff
+            requested_name, self.apps.keys(), scorer=fuzz.WRatio, score_cutoff=score_cutoff
         )
 
         if match:
-            best_match_key = match[0] # The string matched from the keys
+            best_match_key = match[0]  # The string matched from the keys
             score = match[1]
-            logger.debug(f"Fuzzy matched '{requested_name}' to '{best_match_key}' with score {score}")
+            logger.debug(
+                f"Fuzzy matched '{requested_name}' to '{best_match_key}' with score {score}"
+            )
             return self.apps[best_match_key]
 
         return None

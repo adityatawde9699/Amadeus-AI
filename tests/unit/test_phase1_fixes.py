@@ -14,9 +14,8 @@ from __future__ import annotations
 import asyncio
 import sys
 import types
-from dataclasses import dataclass
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -42,14 +41,19 @@ if "google.genai" not in sys.modules:
 # Helpers
 # ===========================================================================
 
-def _make_tool(requires_confirmation: bool = False, is_async: bool = False, name: str = "test_tool"):
+
+def _make_tool(
+    requires_confirmation: bool = False, is_async: bool = False, name: str = "test_tool"
+):
     """Build a minimal Tool object for ToolExecutor tests."""
     from src.infra.tools.base import Tool, ToolCategory
 
     if is_async:
+
         async def _fn(**kwargs):
             return "async_result"
     else:
+
         def _fn(**kwargs):
             return "sync_result"
 
@@ -66,6 +70,7 @@ def _make_tool(requires_confirmation: bool = False, is_async: bool = False, name
 # ===========================================================================
 # Test Group 1: ConfirmationCallback enforcement in ToolExecutor
 # ===========================================================================
+
 
 class TestConfirmationGate:
     """Verifies that requires_confirmation=True is actually enforced."""
@@ -113,7 +118,10 @@ class TestConfirmationGate:
         result = await executor.execute(tool, {})
 
         assert result.success is False
-        assert "confirmation handler" in result.error_message.lower() or "denied" in result.error_message.lower()
+        assert (
+            "confirmation handler" in result.error_message.lower()
+            or "denied" in result.error_message.lower()
+        )
 
     @pytest.mark.asyncio
     async def test_non_destructive_tool_skips_gate(self):
@@ -159,8 +167,8 @@ class TestConfirmationGate:
 # Test Group 2: APIConfirmationCallback
 # ===========================================================================
 
-class TestAPIConfirmationCallback:
 
+class TestAPIConfirmationCallback:
     @pytest.mark.asyncio
     async def test_approve_resolves_future(self):
         """approve(id, True) unblocks request_approval and returns True."""
@@ -213,11 +221,13 @@ class TestAPIConfirmationCallback:
 # Test Group 3: _trim_cache correctness
 # ===========================================================================
 
+
 class TestTrimCache:
     """Verifies _trim_cache keeps the most recent max_context messages."""
 
     def _make_manager(self, max_context: int = 5):
         from src.app.services.amadeus_service import ConversationManager
+
         return ConversationManager(session_id="test-session", max_context=max_context)
 
     @pytest.mark.asyncio
@@ -249,6 +259,7 @@ class TestTrimCache:
 # ===========================================================================
 # Test Group 4: search_file allowlist enforcement
 # ===========================================================================
+
 
 class TestSearchFileAllowlist:
     """Verifies search_file only searches allowlist dirs and skips hidden dirs."""
@@ -325,23 +336,29 @@ class TestSearchFileAllowlist:
         with patch("src.core.config.get_settings", return_value=mock_settings):
             result = search_file(file_name="anything")
 
-        assert "SEARCH_ALLOWED_DIRS" in result or "does not exist" in result.lower() or "restricted" in result.lower()
+        assert (
+            "SEARCH_ALLOWED_DIRS" in result
+            or "does not exist" in result.lower()
+            or "restricted" in result.lower()
+        )
 
 
 # ===========================================================================
 # Test Group 5: Metrics module — no circular import
 # ===========================================================================
 
+
 class TestMetricsImport:
     def test_metrics_importable_without_server(self):
         """src.infra.metrics can be imported without pulling in src.api.server."""
         # If this import raises, it means there's a circular dependency
         from src.infra.metrics import (
-            amadeus_llm_calls_total,
-            amadeus_tool_calls_total,
             amadeus_cache_hit_rate,
+            amadeus_llm_calls_total,
             amadeus_llm_cost_usd,
+            amadeus_tool_calls_total,
         )
+
         assert amadeus_llm_calls_total is not None
         assert amadeus_tool_calls_total is not None
         assert amadeus_cache_hit_rate is not None

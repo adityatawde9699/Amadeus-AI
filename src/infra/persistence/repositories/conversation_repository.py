@@ -100,10 +100,7 @@ class SQLConversationRepository(IConversationRepository):
         """List recent session IDs."""
         # Get distinct session_ids with their most recent timestamp
         stmt = (
-            select(
-                MessageORM.session_id,
-                func.max(MessageORM.timestamp).label("last_activity")
-            )
+            select(MessageORM.session_id, func.max(MessageORM.timestamp).label("last_activity"))
             .group_by(MessageORM.session_id)
             .order_by(desc("last_activity"))
             .limit(limit)

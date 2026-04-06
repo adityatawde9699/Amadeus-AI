@@ -21,7 +21,7 @@ Usage:
 import hashlib
 import json
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 
 if TYPE_CHECKING:
@@ -32,18 +32,20 @@ logger = logging.getLogger(__name__)
 
 
 # Tools whose results are safe to cache (stateless, non-mutating)
-CACHEABLE_TOOLS: frozenset[str] = frozenset({
-    "get_weather",
-    "get_news",
-    "get_datetime_info",
-    "wikipedia_search",
-    "web_search",
-    "get_cpu_usage",
-    "get_memory_info",
-    "get_battery_info",
-    "system_status",
-    "tell_joke",
-})
+CACHEABLE_TOOLS: frozenset[str] = frozenset(
+    {
+        "get_weather",
+        "get_news",
+        "get_datetime_info",
+        "wikipedia_search",
+        "web_search",
+        "get_cpu_usage",
+        "get_memory_info",
+        "get_battery_info",
+        "system_status",
+        "tell_joke",
+    }
+)
 
 
 class CacheService:
@@ -55,10 +57,10 @@ class CacheService:
     to a thread-safe in-memory dictionary cache.
     """
 
-    NAMESPACES: dict[str, int] = {
-        "llm": 3600,     # 1 hour
-        "tts": 86400,    # 24 hours
-        "tool": 300,     # 5 minutes
+    NAMESPACES: ClassVar[dict[str, int]] = {
+        "llm": 3600,  # 1 hour
+        "tts": 86400,  # 24 hours
+        "tool": 300,  # 5 minutes
         "search": 1800,  # 30 minutes
     }
 
@@ -95,6 +97,7 @@ class CacheService:
         else:
             # Local Cache Logic
             import time
+
             if key in self._local_cache:
                 expiry, value = self._local_cache[key]
                 if time.time() < expiry:
@@ -114,6 +117,7 @@ class CacheService:
         else:
             # Local Cache Logic
             import time
+
             expiry = time.time() + ttl_seconds
             self._local_cache[key] = (expiry, value)
 
@@ -126,7 +130,7 @@ class CacheService:
         key = self._key("llm", f"{provider}:{prompt}")
         result = await self._get(key)
         if result is not None:
-             return result.decode() if isinstance(result, bytes) else result
+            return result.decode() if isinstance(result, bytes) else result
         return None
 
     async def set_llm(self, prompt: str, response: str, provider: str = "") -> None:
@@ -201,5 +205,5 @@ class CacheService:
             "misses": self._misses,
             "total": total,
             "hit_rate_pct": round(hit_rate, 2),
-            "backend": "redis" if self._redis else "local_memory"
+            "backend": "redis" if self._redis else "local_memory",
         }

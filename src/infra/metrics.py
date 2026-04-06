@@ -32,6 +32,7 @@ try:
 except ValueError:
     # Already registered — happens on uvicorn auto-reload
     from prometheus_client import REGISTRY
+
     amadeus_llm_calls_total = REGISTRY._names_to_collectors.get(  # type: ignore[assignment]
         "amadeus_llm_calls_total"
     )
@@ -43,6 +44,7 @@ try:
     )
 except ValueError:
     from prometheus_client import REGISTRY
+
     amadeus_llm_cost_usd = REGISTRY._names_to_collectors.get(  # type: ignore[assignment]
         "amadeus_llm_cost_usd"
     )
@@ -60,6 +62,7 @@ try:
     )
 except ValueError:
     from prometheus_client import REGISTRY
+
     amadeus_tool_calls_total = REGISTRY._names_to_collectors.get(  # type: ignore[assignment]
         "amadeus_tool_calls_total"
     )
@@ -76,6 +79,7 @@ try:
     )
 except ValueError:
     from prometheus_client import REGISTRY
+
     amadeus_cache_hit_rate = REGISTRY._names_to_collectors.get(  # type: ignore[assignment]
         "amadeus_cache_hit_rate"
     )

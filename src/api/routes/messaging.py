@@ -35,6 +35,7 @@ _email = EmailAdapter()
 # REQUEST / RESPONSE SCHEMAS
 # =============================================================================
 
+
 class SendMessageRequest(BaseModel):
     """Outbound message dispatch request."""
 
@@ -68,6 +69,7 @@ class StatusResponse(BaseModel):
 # =============================================================================
 # ENDPOINTS
 # =============================================================================
+
 
 @router.post(
     "/send",
@@ -148,6 +150,6 @@ async def messaging_status() -> StatusResponse:
     """
     return StatusResponse(
         telegram=_telegram.is_ready,
-        whatsapp=bool(_whatsapp._access_token),  # noqa: SLF001
+        whatsapp=bool(_whatsapp._access_token),
         email=_email.is_configured,
     )

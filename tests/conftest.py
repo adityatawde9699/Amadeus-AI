@@ -4,23 +4,23 @@ Pytest configuration and shared fixtures.
 This module provides fixtures for testing the Amadeus AI application.
 """
 
-import asyncio
-from typing import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Generator
 
 import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from src.core.config import Settings, get_settings
-from src.infra.persistence.database import Base, get_session, get_engine
+from src.core.config import Settings
+from src.infra.persistence.database import Base
 
 
 # =============================================================================
 # TEST SETTINGS
 # =============================================================================
+
 
 def get_test_settings() -> Settings:
     """Get settings configured for testing."""
@@ -45,45 +45,49 @@ def test_settings() -> Settings:
 # DATABASE FIXTURES
 # =============================================================================
 
+
 @pytest.fixture(scope="session")
 def postgres_container():
     """Start a PostgreSQL container for the test session."""
     from testcontainers.postgres import PostgresContainer
-    
+
     with PostgresContainer("postgres:15-alpine") as postgres:
         yield postgres
+
 
 @pytest_asyncio.fixture(scope="function")
 async def test_db(postgres_container):
     """
     Create a fresh test database for each test function using testcontainers.
     """
-    db_url = postgres_container.get_connection_url().replace("postgresql+psycopg2", "postgresql+asyncpg")
-    
+    db_url = postgres_container.get_connection_url().replace(
+        "postgresql+psycopg2", "postgresql+asyncpg"
+    )
+
     # Create engine for test DB
     engine = create_async_engine(
         db_url,
         echo=False,
         poolclass=StaticPool,
     )
-    
+
     # Create tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    
+
     # Create session factory
     session_factory = async_sessionmaker(
         bind=engine,
         class_=AsyncSession,
         expire_on_commit=False,
     )
-    
+
     yield session_factory
-    
+
     # Cleanup tables after test
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
-        
+
     await engine.dispose()
 
 
@@ -99,11 +103,12 @@ async def db_session(test_db) -> AsyncGenerator[AsyncSession, None]:
 # API CLIENT FIXTURES
 # =============================================================================
 
+
 @pytest.fixture(scope="module")
 def client() -> Generator[TestClient, None, None]:
     """Provide a test client for synchronous API tests."""
     from src.api.server import app
-    
+
     with TestClient(app) as c:
         yield c
 
@@ -112,7 +117,7 @@ def client() -> Generator[TestClient, None, None]:
 async def async_client() -> AsyncGenerator[AsyncClient, None]:
     """Provide an async test client for async API tests."""
     from src.api.server import app
-    
+
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",

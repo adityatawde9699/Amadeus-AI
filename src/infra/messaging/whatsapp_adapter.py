@@ -59,7 +59,9 @@ class WhatsAppAdapter:
     # Webhook Verification (GET challenge from Meta)
     # ------------------------------------------------------------------
 
-    def verify_webhook(self, mode: str | None, token: str | None, challenge: str | None) -> str | None:
+    def verify_webhook(
+        self, mode: str | None, token: str | None, challenge: str | None
+    ) -> str | None:
         """
         Handle Meta's webhook verification.
 
@@ -210,9 +212,7 @@ class WhatsAppAdapter:
             return False
 
         if len(buttons) > 3:
-            logger.warning(
-                "Meta API allows max 3 buttons; truncating from %d to 3", len(buttons)
-            )
+            logger.warning("Meta API allows max 3 buttons; truncating from %d to 3", len(buttons))
             buttons = buttons[:3]
 
         # Build Meta Cloud API interactive payload
@@ -328,9 +328,7 @@ class WhatsAppAdapter:
             async with httpx.AsyncClient(timeout=15) as client:
                 resp = await client.post(url, json=payload, headers=headers)
                 resp.raise_for_status()
-                logger.info(
-                    "whatsapp_template_sent to=%s template=%s", to_phone, template_name
-                )
+                logger.info("whatsapp_template_sent to=%s template=%s", to_phone, template_name)
                 return True
         except httpx.HTTPStatusError as exc:
             logger.exception(

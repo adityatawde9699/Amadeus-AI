@@ -10,11 +10,11 @@ from __future__ import annotations
 import json
 import sys
 import types
-from asyncio import Queue
 from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 
 # ===========================
 # Stub heavy imports if needed
@@ -28,6 +28,7 @@ for _mod in ("google.generativeai", "groq", "sklearn"):
 # Helpers
 # ==========================================================================
 
+
 def _make_json_response(data: dict, status_code: int = 200) -> MagicMock:
     """Create a mock httpx.Response with a JSON body."""
     resp = MagicMock()
@@ -39,15 +40,18 @@ def _make_json_response(data: dict, status_code: int = 200) -> MagicMock:
 
 def _make_stream_lines(chunks: list[dict]) -> AsyncIterator[str]:
     """Create an async iterable of NDJSON lines for streaming tests."""
+
     async def _gen():
         for chunk in chunks:
             yield json.dumps(chunk)
+
     return _gen()
 
 
 # ==========================================================================
 # Tests
 # ==========================================================================
+
 
 class TestOllamaAdapterAvailability:
     """Tests for is_available() and is_server_running()."""
@@ -90,14 +94,13 @@ class TestOllamaAdapterAvailability:
     async def test_is_available_false_when_server_down(self):
         """Returns False when Ollama server is not running (connection error)."""
         import httpx
+
         from src.infra.llm.ollama_adapter import OllamaAdapter
 
         adapter = OllamaAdapter(model="phi3:mini")
         with patch.object(adapter, "_get_client") as mock_client_fn:
             mock_client = AsyncMock()
-            mock_client.get = AsyncMock(
-                side_effect=httpx.ConnectError("Connection refused")
-            )
+            mock_client.get = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
             mock_client_fn.return_value = mock_client
 
             result = await adapter.is_available()
@@ -136,6 +139,7 @@ class TestOllamaAdapterGeneration:
     async def test_generate_response_raises_when_ollama_down(self):
         """Raises LLMRateLimitError if Ollama server is not running."""
         import httpx
+
         from src.core.exceptions import LLMRateLimitError
         from src.infra.llm.ollama_adapter import OllamaAdapter
 
@@ -143,9 +147,7 @@ class TestOllamaAdapterGeneration:
 
         with patch.object(adapter, "_get_client") as mock_client_fn:
             mock_client = AsyncMock()
-            mock_client.get = AsyncMock(
-                side_effect=httpx.ConnectError("Connection refused")
-            )
+            mock_client.get = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
             mock_client_fn.return_value = mock_client
 
             with pytest.raises(LLMRateLimitError, match="Ollama server not running"):
@@ -157,9 +159,7 @@ class TestOllamaAdapterGeneration:
         from src.infra.llm.ollama_adapter import OllamaAdapter
 
         adapter = OllamaAdapter(model="phi3:mini")
-        generate_resp = _make_json_response(
-            {"response": "Deterministic answer.", "done": True}
-        )
+        generate_resp = _make_json_response({"response": "Deterministic answer.", "done": True})
         server_resp = MagicMock()
         server_resp.status_code = 200
         captured_payloads: list[dict] = []
@@ -200,10 +200,13 @@ class TestOllamaAdapterStreaming:
         class _FakeStream:
             async def __aenter__(self):
                 return self
+
             async def __aexit__(self, *_):
                 pass
+
             def raise_for_status(self):
                 pass
+
             async def aiter_lines(self):
                 for chunk in stream_chunks:
                     yield json.dumps(chunk)
@@ -224,15 +227,14 @@ class TestOllamaAdapterStreaming:
     async def test_stream_response_graceful_when_server_down(self):
         """stream_response yields error message instead of crashing."""
         import httpx
+
         from src.infra.llm.ollama_adapter import OllamaAdapter
 
         adapter = OllamaAdapter(model="phi3:mini")
 
         with patch.object(adapter, "_get_client") as mock_client_fn:
             mock_client = AsyncMock()
-            mock_client.get = AsyncMock(
-                side_effect=httpx.ConnectError("Server down")
-            )
+            mock_client.get = AsyncMock(side_effect=httpx.ConnectError("Server down"))
             mock_client_fn.return_value = mock_client
 
             tokens = []
@@ -253,22 +255,24 @@ class TestOllamaAdapterModelManagement:
         from src.infra.llm.ollama_adapter import OllamaAdapter, OllamaModel
 
         adapter = OllamaAdapter(model="phi3:mini")
-        mock_resp = _make_json_response({
-            "models": [
-                {
-                    "name": "phi3:mini",
-                    "size": 2_300_000_000,
-                    "modified_at": "2024-12-01T00:00:00Z",
-                    "digest": "abc123",
-                },
-                {
-                    "name": "llama3.2:3b",
-                    "size": 2_000_000_000,
-                    "modified_at": "2024-11-15T00:00:00Z",
-                    "digest": "def456",
-                },
-            ]
-        })
+        mock_resp = _make_json_response(
+            {
+                "models": [
+                    {
+                        "name": "phi3:mini",
+                        "size": 2_300_000_000,
+                        "modified_at": "2024-12-01T00:00:00Z",
+                        "digest": "abc123",
+                    },
+                    {
+                        "name": "llama3.2:3b",
+                        "size": 2_000_000_000,
+                        "modified_at": "2024-11-15T00:00:00Z",
+                        "digest": "def456",
+                    },
+                ]
+            }
+        )
 
         with patch.object(adapter, "_get_client") as mock_client_fn:
             mock_client = AsyncMock()
@@ -286,15 +290,14 @@ class TestOllamaAdapterModelManagement:
     async def test_list_models_returns_empty_on_error(self):
         """list_models returns empty list if Ollama is unreachable."""
         import httpx
+
         from src.infra.llm.ollama_adapter import OllamaAdapter
 
         adapter = OllamaAdapter(model="phi3:mini")
 
         with patch.object(adapter, "_get_client") as mock_client_fn:
             mock_client = AsyncMock()
-            mock_client.get = AsyncMock(
-                side_effect=httpx.ConnectError("Refused")
-            )
+            mock_client.get = AsyncMock(side_effect=httpx.ConnectError("Refused"))
             mock_client_fn.return_value = mock_client
 
             models = await adapter.list_models()
@@ -335,6 +338,7 @@ class TestLLMRouterWithOllama:
         """Router falls back to Groq when Ollama raises LLMRateLimitError."""
         import sys
         import types as _types
+
         from src.core.exceptions import LLMRateLimitError
 
         for mod in ("joblib", "redis", "redis.asyncio"):
@@ -344,9 +348,7 @@ class TestLLMRouterWithOllama:
         from src.infra.llm.router import LLMRouter
 
         ollama = AsyncMock()
-        ollama.generate_response = AsyncMock(
-            side_effect=LLMRateLimitError("Ollama not running")
-        )
+        ollama.generate_response = AsyncMock(side_effect=LLMRateLimitError("Ollama not running"))
         groq = AsyncMock()
         groq.generate_response = AsyncMock(return_value="Groq fallback")
 

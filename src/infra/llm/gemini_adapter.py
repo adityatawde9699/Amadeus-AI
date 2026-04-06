@@ -29,6 +29,18 @@ from src.core.interfaces.services import ILLMService
 
 logger = logging.getLogger(__name__)
 
+# Prompt injection patterns to detect (log only — do NOT block)
+_INJECTION_PATTERNS: tuple[str, ...] = (
+    "ignore previous instructions",
+    "disregard your system prompt",
+    "you are now a",
+    "act as if you are",
+    "forget everything above",
+    "new instruction:",
+    "system prompt:",
+    "ignore all prior",
+)
+
 
 class GeminiAdapter(ILLMService):
     """
@@ -79,17 +91,6 @@ class GeminiAdapter(ILLMService):
         if len(text) > max_length:
             text = text[:max_length] + "... [truncated]"
 
-        # Prompt injection detection (log only — do NOT block)
-        _INJECTION_PATTERNS = (
-            "ignore previous instructions",
-            "disregard your system prompt",
-            "you are now a",
-            "act as if you are",
-            "forget everything above",
-            "new instruction:",
-            "system prompt:",
-            "ignore all prior",
-        )
         lower = text.lower()
         for pattern in _INJECTION_PATTERNS:
             if pattern in lower:
@@ -276,16 +277,20 @@ Guidelines:
                 else:
                     properties[param_name] = {"type": "string"}
 
-            gemini_tools.append({
-                "function_declarations": [{
-                    "name": tool.name,
-                    "description": tool.description,
-                    "parameters": {
-                        "type": "object",
-                        "properties": properties,
-                        "required": required,
-                    },
-                }]
-            })
+            gemini_tools.append(
+                {
+                    "function_declarations": [
+                        {
+                            "name": tool.name,
+                            "description": tool.description,
+                            "parameters": {
+                                "type": "object",
+                                "properties": properties,
+                                "required": required,
+                            },
+                        }
+                    ]
+                }
+            )
 
         return gemini_tools

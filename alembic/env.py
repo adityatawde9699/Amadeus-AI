@@ -1,5 +1,9 @@
 import asyncio
+
+# Add Src to path to import models
+import sys
 from logging.config import fileConfig
+from pathlib import Path
 
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
@@ -7,24 +11,14 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
 
-# Add Src to path to import models
-import sys
-from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.core.config import get_settings
 from src.infra.persistence.orm_models import (
     Base,
-    TaskORM,
-    NoteORM,
-    ReminderORM,
-    CalendarEventORM,
-    InteractionLogORM,
-    MessageORM,
-    PomodoroSessionORM,
-    ProcessedEmailORM,
-    ConversationSummaryORM,
 )
+
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

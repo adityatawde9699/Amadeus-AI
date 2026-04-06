@@ -5,12 +5,14 @@ This allows the agent to iteratively 'wake up' and check its environment
 (time, memory context, or external triggers) without direct user prompting.
 Inspired by OpenClaw's background routines.
 """
+
 import asyncio
 import logging
 from datetime import datetime
 
 
 logger = logging.getLogger(__name__)
+
 
 class AutonomousObservationLoop:
     def __init__(self, interval_minutes: int = 60, session_ids: list[str] | None = None) -> None:
@@ -44,13 +46,14 @@ class AutonomousObservationLoop:
                 break
             except Exception as e:
                 logger.error(f"Error in autonomous loop: {e}", exc_info=True)
-                await asyncio.sleep(60) # Backoff on error
+                await asyncio.sleep(60)  # Backoff on error
 
     async def _trigger_observation(self, session_id: str) -> None:
         """Trigger the agent to observe its state."""
         logger.info(f"Triggering autonomous observation for session {session_id}")
         try:
             from src.app.services.amadeus_service import AmadeusService
+
             svc = AmadeusService(session_id=session_id)
             await svc.initialize()
 

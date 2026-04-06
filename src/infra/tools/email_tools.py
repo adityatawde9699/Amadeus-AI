@@ -56,7 +56,9 @@ def build_email_tools() -> list[dict]:
             "name": "read_unread_emails",
             "description": "Read unread emails from the inbox. Returns sender, subject, date, and preview.",
             "function": read_unread_emails,
-            "parameters": {"limit": {"type": "integer", "description": "Max emails to fetch", "default": 5}},
+            "parameters": {
+                "limit": {"type": "integer", "description": "Max emails to fetch", "default": 5}
+            },
         },
         {
             "name": "send_email",

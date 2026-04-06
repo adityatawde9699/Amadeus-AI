@@ -46,11 +46,14 @@ class GroqAdapter(ILLMService):
 
         try:
             from groq import Groq
+
             self._client = Groq(api_key=self._api_key)
             self._configured = True
             logger.info("Groq API configured with model %s", self._settings.GROQ_MODEL)
         except ImportError as e:
-            raise LLMConnectionError("Groq", "groq package not installed. Run: pip install groq") from e
+            raise LLMConnectionError(
+                "Groq", "groq package not installed. Run: pip install groq"
+            ) from e
 
     def _get_system_prompt(self) -> str:
         """Get the system prompt for Amadeus."""

@@ -7,10 +7,12 @@ from src.core.interfaces.speech_service import ISpeechToTextService, ITextToSpee
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class VoiceInput:
     audio_data: bytes
     sample_rate: int = 16000
+
 
 @dataclass
 class VoiceResponse:
@@ -27,7 +29,7 @@ class VoiceService:
         self,
         amadeus_service: AmadeusService,
         stt_service: ISpeechToTextService,
-        tts_service: ITextToSpeechService
+        tts_service: ITextToSpeechService,
     ):
         self.amadeus = amadeus_service
         self.stt = stt_service

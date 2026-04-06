@@ -6,6 +6,9 @@ Migrated from system_monitor.py to Clean Architecture structure.
 """
 
 import logging
+import platform
+import time
+from datetime import datetime
 from typing import Any
 
 import psutil
@@ -19,6 +22,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # CPU & MEMORY TOOLS
 # =============================================================================
+
 
 @tool(
     name="get_cpu_usage",
@@ -44,8 +48,8 @@ def get_memory_usage() -> str:
     """Get memory (RAM) usage."""
     try:
         mem = psutil.virtual_memory()
-        used_gb = mem.used / (1024 ** 3)
-        total_gb = mem.total / (1024 ** 3)
+        used_gb = mem.used / (1024**3)
+        total_gb = mem.total / (1024**3)
         return f"Memory: {used_gb:.1f} GB / {total_gb:.1f} GB ({mem.percent:.1f}% used)"
     except Exception as e:
         logger.exception(f"Error getting memory usage: {e}")
@@ -56,19 +60,18 @@ def get_memory_usage() -> str:
     name="get_disk_usage",
     description="Get disk usage for a path",
     category=ToolCategory.SYSTEM,
-    parameters={"path": {"type": "string", "description": "Disk path (default: C:/ or /)"}}
+    parameters={"path": {"type": "string", "description": "Disk path (default: C:/ or /)"}},
 )
 def get_disk_usage(path: str = "/") -> str:
     """Get disk usage statistics."""
     try:
-        import platform
         if platform.system() == "Windows" and path == "/":
             path = "C:/"
 
         disk = psutil.disk_usage(path)
-        used_gb = disk.used / (1024 ** 3)
-        total_gb = disk.total / (1024 ** 3)
-        free_gb = disk.free / (1024 ** 3)
+        used_gb = disk.used / (1024**3)
+        total_gb = disk.total / (1024**3)
+        free_gb = disk.free / (1024**3)
         return f"Disk: {used_gb:.1f} GB / {total_gb:.1f} GB ({disk.percent:.1f}% used, {free_gb:.1f} GB free)"
     except Exception as e:
         logger.exception(f"Error getting disk usage: {e}")
@@ -78,6 +81,7 @@ def get_disk_usage(path: str = "/") -> str:
 # =============================================================================
 # BATTERY & NETWORK TOOLS
 # =============================================================================
+
 
 @tool(
     name="get_battery_info",
@@ -120,8 +124,8 @@ def get_network_info() -> str:
     """Get network usage statistics."""
     try:
         net = psutil.net_io_counters()
-        sent_mb = net.bytes_sent / (1024 ** 2)
-        recv_mb = net.bytes_recv / (1024 ** 2)
+        sent_mb = net.bytes_sent / (1024**2)
+        recv_mb = net.bytes_recv / (1024**2)
         return f"Network: Sent {sent_mb:.1f} MB, Received {recv_mb:.1f} MB"
     except Exception as e:
         logger.exception(f"Error getting network info: {e}")
@@ -132,6 +136,7 @@ def get_network_info() -> str:
 # UPTIME & PROCESS TOOLS
 # =============================================================================
 
+
 @tool(
     name="get_system_uptime",
     description="Get system uptime (how long system has been running)",
@@ -140,9 +145,6 @@ def get_network_info() -> str:
 def get_system_uptime() -> str:
     """Get system uptime."""
     try:
-        import time
-        from datetime import datetime
-
         boot_time = psutil.boot_time()
         uptime_seconds = time.time() - boot_time
 
@@ -166,7 +168,7 @@ def get_system_uptime() -> str:
     name="get_running_processes",
     description="List top processes by memory usage",
     category=ToolCategory.SYSTEM,
-    parameters={"count": {"type": "integer", "description": "Number of processes to show"}}
+    parameters={"count": {"type": "integer", "description": "Number of processes to show"}},
 )
 def get_running_processes(count: int = 10) -> str:
     """Get top running processes by memory usage."""
@@ -175,11 +177,13 @@ def get_running_processes(count: int = 10) -> str:
         for proc in psutil.process_iter(["pid", "name", "memory_percent"]):
             try:
                 info: Any = proc.info
-                proc_list.append({
-                    "pid": info.get("pid", 0),
-                    "name": info.get("name", "unknown"),
-                    "memory_percent": float(info.get("memory_percent") or 0),
-                })
+                proc_list.append(
+                    {
+                        "pid": info.get("pid", 0),
+                        "name": info.get("name", "unknown"),
+                        "memory_percent": float(info.get("memory_percent") or 0),
+                    }
+                )
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
 
@@ -189,7 +193,9 @@ def get_running_processes(count: int = 10) -> str:
 
         result = f"Top {len(top_procs)} processes by memory:\n"
         for i, p in enumerate(top_procs, 1):
-            result += f"{i}. {p['name']} (PID: {p['pid']}, Mem: {float(p['memory_percent']):.1f}%)\n"
+            result += (
+                f"{i}. {p['name']} (PID: {p['pid']}, Mem: {float(p['memory_percent']):.1f}%)\n"
+            )
 
         return result.strip()
 
@@ -202,6 +208,7 @@ def get_running_processes(count: int = 10) -> str:
 # GPU & TEMPERATURE TOOLS
 # =============================================================================
 
+
 @tool(
     name="get_gpu_stats",
     description="Get GPU statistics (usage, memory, temperature)",
@@ -213,6 +220,7 @@ def get_gpu_stats() -> str:
         # Try NVIDIA GPU via GPUtil
         try:
             import GPUtil  # type: ignore[import-not-found]
+
             gpus = GPUtil.getGPUs()
             if gpus:
                 result = "GPU Information:\n"
@@ -263,6 +271,7 @@ def get_temperature_sensors() -> str:
 # SYSTEM STATUS & ALERTS
 # =============================================================================
 
+
 @tool(
     name="system_status",
     description="General system summary (CPU + RAM + Disk + Battery). Trigger: 'system status', 'performance'",
@@ -279,16 +288,15 @@ def generate_system_summary() -> str:
 
         # Memory
         mem = psutil.virtual_memory()
-        mem_used_gb = mem.used / (1024 ** 3)
-        mem_total_gb = mem.total / (1024 ** 3)
+        mem_used_gb = mem.used / (1024**3)
+        mem_total_gb = mem.total / (1024**3)
         lines.append(f"Memory: {mem_used_gb:.1f}/{mem_total_gb:.1f} GB ({mem.percent:.1f}%)")
 
         # Disk
-        import platform
         disk_path = "C:/" if platform.system() == "Windows" else "/"
         disk = psutil.disk_usage(disk_path)
-        disk_used_gb = disk.used / (1024 ** 3)
-        disk_total_gb = disk.total / (1024 ** 3)
+        disk_used_gb = disk.used / (1024**3)
+        disk_total_gb = disk.total / (1024**3)
         lines.append(f"Disk: {disk_used_gb:.1f}/{disk_total_gb:.1f} GB ({disk.percent:.1f}%)")
 
         # Battery
@@ -343,7 +351,6 @@ def check_system_alerts() -> str:
             alerts.append(f"🟡 Warning: Memory usage at {mem.percent:.1f}%")
 
         # Disk check
-        import platform
         disk_path = "C:/" if platform.system() == "Windows" else "/"
         disk = psutil.disk_usage(disk_path)
         if disk.percent > 95:
@@ -375,9 +382,6 @@ def check_system_alerts() -> str:
 def get_full_system_report() -> str:
     """Generate a full detailed system report."""
     try:
-        import platform
-        from datetime import datetime
-
         lines = [
             "=" * 50,
             "FULL SYSTEM REPORT",
@@ -401,21 +405,29 @@ def get_full_system_report() -> str:
 
         # Memory
         mem = psutil.virtual_memory()
-        lines.append(f"Memory: {mem.percent:.1f}% ({mem.used // (1024**3)}/{mem.total // (1024**3)} GB)")
+        lines.append(
+            f"Memory: {mem.percent:.1f}% ({mem.used // (1024**3)}/{mem.total // (1024**3)} GB)"
+        )
 
         # Disk
         disk_path = "C:/" if platform.system() == "Windows" else "/"
         disk = psutil.disk_usage(disk_path)
-        lines.append(f"Disk: {disk.percent:.1f}% ({disk.used // (1024**3)}/{disk.total // (1024**3)} GB)")
+        lines.append(
+            f"Disk: {disk.percent:.1f}% ({disk.used // (1024**3)}/{disk.total // (1024**3)} GB)"
+        )
 
         # Network
         net = psutil.net_io_counters()
-        lines.append(f"Network: ↑{net.bytes_sent // (1024**2)} MB ↓{net.bytes_recv // (1024**2)} MB")
+        lines.append(
+            f"Network: ↑{net.bytes_sent // (1024**2)} MB ↓{net.bytes_recv // (1024**2)} MB"
+        )
 
         # Battery
         battery = psutil.sensors_battery()
         if battery:
-            lines.append(f"Battery: {battery.percent}% ({'Charging' if battery.power_plugged else 'Discharging'})")
+            lines.append(
+                f"Battery: {battery.percent}% ({'Charging' if battery.power_plugged else 'Discharging'})"
+            )
 
         lines.append("")
         lines.append("=" * 50)
@@ -430,6 +442,7 @@ def get_full_system_report() -> str:
 # =============================================================================
 # TOOL COLLECTION
 # =============================================================================
+
 
 def get_monitor_tools() -> list[Tool]:
     """Get all monitor tools for manual registration."""

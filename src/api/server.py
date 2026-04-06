@@ -27,6 +27,8 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
+from src.api.auth.manager import auth_backend, fastapi_users
+from src.api.auth.schemas import UserCreate, UserRead
 from src.api.middleware.audit_logger import AuditLoggerMiddleware
 from src.core.config import get_settings, validate_settings
 from src.core.exceptions import AmadeusError
@@ -77,6 +79,7 @@ def get_rate_limit_key(request: Request) -> str:
             pass  # Fall through to IP-based key
     return get_remote_address(request)
 
+
 if settings.SENTRY_DSN:
     sentry_sdk.init(
         dsn=settings.SENTRY_DSN,
@@ -88,6 +91,7 @@ if settings.SENTRY_DSN:
 # =============================================================================
 # LIFESPAN MANAGEMENT
 # =============================================================================
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
@@ -116,6 +120,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # via the get_confirmation_callback dependency.
     from src.container import inject_confirmation_callback
     from src.infra.tools.confirmation import APIConfirmationCallback
+
     confirmation_callback = APIConfirmationCallback(
         timeout_seconds=60  # User has 60s to approve/deny before auto-deny
     )
@@ -126,6 +131,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Initialize Telegram Long Polling
     logger.info("Initializing Telegram Long Polling...")
     from src.api.routes.webhooks import _telegram
+
     await _telegram.start_polling()
 
     # Initialize and start APScheduler
@@ -140,7 +146,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         "interval",
         minutes=interval_minutes,
         id="proactive_checks_job",
-        replace_existing=True
+        replace_existing=True,
     )
 
     scheduler.start()
@@ -148,9 +154,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Initialize Autonomous Observation Loop
     logger.info("Initializing Autonomous Observation Loop...")
     from src.app.services.autonomous_loop import AutonomousObservationLoop
+
     observation_loop = AutonomousObservationLoop(
-        interval_minutes=60,
-        session_ids=["system_default_session"]
+        interval_minutes=60, session_ids=["system_default_session"]
     )
     await observation_loop.start()
 
@@ -173,6 +179,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 # =============================================================================
 # FASTAPI APPLICATION
 # =============================================================================
+
+from src.container import global_container
+
 
 app = FastAPI(
     title=f"{settings.ASSISTANT_NAME} AI Assistant API",
@@ -198,6 +207,8 @@ app = FastAPI(
     docs_url="/docs" if settings.DEBUG else None,
     redoc_url="/redoc" if settings.DEBUG else None,
 )
+
+app.container = global_container  # type: ignore[attr-defined]
 
 
 # =============================================================================
@@ -230,7 +241,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 
 from src.infra.metrics import (
     amadeus_llm_calls_total,  # noqa: F401 — imported for re-export / side-effect registration
-    )
+)
 
 
 Instrumentator().instrument(app).expose(app, endpoint="/api/v1/metrics", tags=["System"])
@@ -239,6 +250,7 @@ Instrumentator().instrument(app).expose(app, endpoint="/api/v1/metrics", tags=["
 # =============================================================================
 # EXCEPTION HANDLERS
 # =============================================================================
+
 
 @app.exception_handler(AmadeusError)
 async def amadeus_exception_handler(request: Request, exc: AmadeusError) -> JSONResponse:
@@ -270,6 +282,7 @@ async def generic_exception_handler(request: Request, exc: Exception) -> JSONRes
 # =============================================================================
 # HEALTH CHECK ROUTES
 # =============================================================================
+
 
 @app.get("/health", tags=["Health"])
 async def health_check() -> dict[str, str]:
@@ -305,7 +318,7 @@ from fastapi import Depends
 
 from src.api.middleware.authentication import verify_jwt_token
 from src.api.middleware.rbac import RequireUser
-from src.api.routes import (  # noqa: E402
+from src.api.routes import (
     chat,
     confirm,
     health,
@@ -325,7 +338,7 @@ app.include_router(health.router, prefix="/api/v1", tags=["System"])
 app.include_router(llm.router, prefix="/api/v1", tags=["LLM"])  # No auth — informational
 
 # Protected routes (Require basic User role)
-protected_deps = [Depends(verify_jwt_token), Depends(RequireUser)]
+protected_deps = [Depends(RequireUser)]
 app.include_router(tasks.router, prefix="/api/v1", tags=["Tasks"], dependencies=protected_deps)
 app.include_router(chat.router, prefix="/api/v1", tags=["Chat"], dependencies=protected_deps)
 app.include_router(voice.router, prefix="/api/v1", tags=["Voice"], dependencies=protected_deps)
@@ -336,8 +349,24 @@ app.include_router(system_admin.router, prefix="/api/v1", tags=["Admin System"])
 # Webhooks use their own secret-token validation — no JWT
 app.include_router(webhooks.router, prefix="/api/v1", tags=["Webhooks"])
 
+
+
+# FastAPI-Users Auth
+app.include_router(
+    fastapi_users.get_auth_router(auth_backend),
+    prefix="/api/v1/auth/jwt",
+    tags=["Auth"],
+)
+app.include_router(
+    fastapi_users.get_register_router(UserRead, UserCreate),
+    prefix="/api/v1/auth",
+    tags=["Auth"],
+)
+
 # Outbound messaging dispatch (requires JWT auth)
-app.include_router(messaging.router, prefix="/api/v1", tags=["Messaging"], dependencies=[Depends(verify_jwt_token)])
+app.include_router(
+    messaging.router, prefix="/api/v1", tags=["Messaging"], dependencies=[Depends(verify_jwt_token)]
+)
 
 # WebSocket Endpoint (no HTTP prefix usually needed)
 app.include_router(websocket.router, tags=["Realtime"])
@@ -357,6 +386,7 @@ app.include_router(
 # =============================================================================
 # MAIN ENTRY POINT
 # =============================================================================
+
 
 def main() -> None:
     """Run the API server directly."""

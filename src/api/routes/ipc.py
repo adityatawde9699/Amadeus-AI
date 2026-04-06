@@ -16,7 +16,10 @@ from src.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-async def verify_ipc_token(x_ipc_token: str = Header(..., description="Secret token for inter-process communication")) -> None:
+
+async def verify_ipc_token(
+    x_ipc_token: str = Header(..., description="Secret token for inter-process communication"),
+) -> None:
     settings = get_settings()
     if not settings.IPC_SECRET_TOKEN:
         return
@@ -25,6 +28,7 @@ async def verify_ipc_token(x_ipc_token: str = Header(..., description="Secret to
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid IPC token",
         )
+
 
 router = APIRouter(
     prefix="/ipc",
@@ -80,6 +84,5 @@ async def toggle_voice_activation() -> VoiceToggleResponse:
     # the user hears "Microphone muted" audibly.
 
     return VoiceToggleResponse(
-        voice_enabled=settings.VOICE_ENABLED,
-        message=f"Voice activation {action}"
+        voice_enabled=settings.VOICE_ENABLED, message=f"Voice activation {action}"
     )

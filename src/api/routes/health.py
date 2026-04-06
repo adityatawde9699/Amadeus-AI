@@ -60,6 +60,7 @@ async def get_system_status() -> SystemStatusResponse:
     # Uptime
     boot_time = psutil.boot_time()
     import time
+
     uptime_seconds = time.time() - boot_time
 
     # Check for alerts
@@ -100,6 +101,7 @@ async def get_system_status() -> SystemStatusResponse:
         alerts=alerts,
     )
 
+
 @router.get("/usage/daily", tags=["Health"])
 async def get_daily_usage() -> dict[str, object]:
     """Monitor daily API usage to stay within free tiers."""
@@ -114,17 +116,19 @@ async def get_daily_usage() -> dict[str, object]:
 
     return {
         "date": date.today().isoformat(),
-        "llm": getattr(llm_router, "get_usage_report", dict)() if hasattr(llm_router, "get_usage_report") else {},
+        "llm": getattr(llm_router, "get_usage_report", dict)()
+        if hasattr(llm_router, "get_usage_report")
+        else {},
         "search": {
             "brave_daily_count": "See logs",  # Add monitoring
             "brave_daily_limit": 60,
-            "status": "healthy" if True else "approaching_limit"
+            "status": "healthy" if True else "approaching_limit",
         },
         "voice": {
             "stt": "whisper_local_unlimited",
             "tts": "edge_tts_unlimited",
-            "monthly_cost": 0.0
+            "monthly_cost": 0.0,
         },
         "estimated_monthly_cost": "$5.00",  # Railway only
-        "budget_status": "under_budget"
+        "budget_status": "under_budget",
     }

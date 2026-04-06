@@ -8,8 +8,8 @@ Tests cover:
 - create_access_token produces correctly structured tokens
 """
 
-from datetime import datetime, timedelta, timezone
-from unittest.mock import patch, MagicMock
+from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -38,6 +38,7 @@ def _make_credentials(token: str) -> HTTPAuthorizationCredentials:
 # Tests: verify_jwt_token
 # ---------------------------------------------------------------------------
 
+
 class TestVerifyJwtToken:
     def test_valid_token_is_accepted(self):
         """A token with a future `exp` and valid signature is accepted."""
@@ -45,8 +46,8 @@ class TestVerifyJwtToken:
 
         payload = {
             "sub": "user_123",
-            "exp": datetime.now(tz=timezone.utc) + timedelta(hours=1),
-            "iat": datetime.now(tz=timezone.utc),
+            "exp": datetime.now(tz=UTC) + timedelta(hours=1),
+            "iat": datetime.now(tz=UTC),
         }
         token = _make_token(payload)
         creds = _make_credentials(token)
@@ -66,8 +67,8 @@ class TestVerifyJwtToken:
 
         payload = {
             "sub": "user_expired",
-            "exp": datetime.now(tz=timezone.utc) - timedelta(seconds=10),
-            "iat": datetime.now(tz=timezone.utc) - timedelta(hours=1),
+            "exp": datetime.now(tz=UTC) - timedelta(seconds=10),
+            "iat": datetime.now(tz=UTC) - timedelta(hours=1),
         }
         token = _make_token(payload)
         creds = _make_credentials(token)
@@ -88,7 +89,7 @@ class TestVerifyJwtToken:
 
         payload = {
             "sub": "attacker",
-            "exp": datetime.now(tz=timezone.utc) + timedelta(hours=1),
+            "exp": datetime.now(tz=UTC) + timedelta(hours=1),
         }
         token = _make_token_with_secret(payload, "wrong-secret")
         creds = _make_credentials(token)
@@ -143,6 +144,7 @@ class TestVerifyJwtToken:
 # Tests: create_access_token
 # ---------------------------------------------------------------------------
 
+
 class TestCreateAccessToken:
     def test_token_contains_sub_exp_iat(self):
         """create_access_token must include sub, exp, and iat claims."""
@@ -189,6 +191,7 @@ class TestCreateAccessToken:
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_token_with_secret(payload: dict, secret: str) -> str:
     return jwt.encode(payload, secret, algorithm=_ALGORITHM)

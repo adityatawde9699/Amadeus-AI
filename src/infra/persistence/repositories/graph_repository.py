@@ -13,6 +13,7 @@ from src.infra.persistence.orm_models import EntityORM, RelationshipORM
 
 logger = logging.getLogger(__name__)
 
+
 class SQLKnowledgeGraphRepository(IKnowledgeGraphRepository):
     """
     Handles persistence for the Knowledge Graph (Entities and Relationships).
@@ -21,7 +22,9 @@ class SQLKnowledgeGraphRepository(IKnowledgeGraphRepository):
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def upsert_entity(self, name: str, entity_type: str | None = None, description: str | None = None) -> int:
+    async def upsert_entity(
+        self, name: str, entity_type: str | None = None, description: str | None = None
+    ) -> int:
         """Create or update an entity by name."""
         try:
             # Check if exists
@@ -40,12 +43,10 @@ class SQLKnowledgeGraphRepository(IKnowledgeGraphRepository):
 
             # Create new
             new_entity = EntityORM(
-                name=name,
-                entity_type=entity_type or "unknown",
-                description=description or ""
+                name=name, entity_type=entity_type or "unknown", description=description or ""
             )
             self.session.add(new_entity)
-            await self.session.flush() # Get ID without full commit
+            await self.session.flush()  # Get ID without full commit
             await self.session.commit()
             return int(new_entity.id)
         except Exception as e:
@@ -57,11 +58,13 @@ class SQLKnowledgeGraphRepository(IKnowledgeGraphRepository):
         """Add or strengthen a relationship."""
         try:
             # Check if relationship already exists
-            stmt = select(RelationshipORM).where(and_(
-                RelationshipORM.subject_id == subject_id,
-                RelationshipORM.predicate == predicate,
-                RelationshipORM.object_id == object_id
-            ))
+            stmt = select(RelationshipORM).where(
+                and_(
+                    RelationshipORM.subject_id == subject_id,
+                    RelationshipORM.predicate == predicate,
+                    RelationshipORM.object_id == object_id,
+                )
+            )
             result = await self.session.execute(stmt)
             rel = result.scalars().first()
 
@@ -71,10 +74,7 @@ class SQLKnowledgeGraphRepository(IKnowledgeGraphRepository):
             else:
                 # Create new
                 new_rel = RelationshipORM(
-                    subject_id=subject_id,
-                    predicate=predicate,
-                    object_id=object_id,
-                    strength=1
+                    subject_id=subject_id, predicate=predicate, object_id=object_id, strength=1
                 )
                 self.session.add(new_rel)
 
@@ -98,27 +98,26 @@ class SQLKnowledgeGraphRepository(IKnowledgeGraphRepository):
             # 2. Find relationships where this entity is subject or object
             # This requires joining with EntityORM twice to get names
             from sqlalchemy.orm import aliased
-            SubEntity = aliased(EntityORM)
-            ObjEntity = aliased(EntityORM)
+
+            SubEntity = aliased(EntityORM)  # noqa: N806 — aliased model follows PascalCase convention
+            ObjEntity = aliased(EntityORM)  # noqa: N806 — aliased model follows PascalCase convention
 
             rel_stmt = (
                 select(SubEntity.name, RelationshipORM.predicate, ObjEntity.name)
                 .join(SubEntity, RelationshipORM.subject_id == SubEntity.id)
                 .join(ObjEntity, RelationshipORM.object_id == ObjEntity.id)
-                .where(or_(
-                    RelationshipORM.subject_id.in_(entity_ids),
-                    RelationshipORM.object_id.in_(entity_ids)
-                ))
+                .where(
+                    or_(
+                        RelationshipORM.subject_id.in_(entity_ids),
+                        RelationshipORM.object_id.in_(entity_ids),
+                    )
+                )
             )
 
             result = await self.session.execute(rel_stmt)
             triples = []
             for sub_name, pred, obj_name in result.all():
-                triples.append({
-                    "subject": sub_name,
-                    "predicate": pred,
-                    "object": obj_name
-                })
+                triples.append({"subject": sub_name, "predicate": pred, "object": obj_name})
 
             return triples
         except Exception as e:
@@ -136,5 +135,5 @@ class SQLKnowledgeGraphRepository(IKnowledgeGraphRepository):
             "id": entity.id,
             "name": entity.name,
             "type": entity.entity_type,
-            "description": entity.description
+            "description": entity.description,
         }

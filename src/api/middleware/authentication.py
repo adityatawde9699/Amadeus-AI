@@ -50,8 +50,10 @@ def create_access_token(subject: str, extra_claims: dict | None = None) -> str:
     }
     return str(jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256"))
 
+
 # Security scheme for FastAPI OpenAPI docs
 security = HTTPBearer()
+
 
 def verify_jwt_token(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Mapping:
     """
@@ -66,8 +68,7 @@ def verify_jwt_token(credentials: HTTPAuthorizationCredentials = Depends(securit
     if not settings.SECRET_KEY:
         logger.error("Authentication attempted but SECRET_KEY is not configured")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Server configuration error"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Server configuration error"
         )
 
     try:
@@ -102,7 +103,7 @@ def verify_jwt_token(credentials: HTTPAuthorizationCredentials = Depends(securit
 
 
 def get_optional_jwt_payload(
-    credentials: HTTPAuthorizationCredentials | None = Depends(HTTPBearer(auto_error=False))
+    credentials: HTTPAuthorizationCredentials | None = Depends(HTTPBearer(auto_error=False)),
 ) -> Mapping | None:
     """
     Extract the JWT payload if a token is present, otherwise return None.
