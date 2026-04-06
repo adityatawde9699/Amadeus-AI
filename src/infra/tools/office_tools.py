@@ -7,10 +7,11 @@ using the pywin32 (win32com.client) API on Windows.
 
 import logging
 import os
-from typing import Any, List, Optional
 from pathlib import Path
+from typing import Any
 
 from src.infra.tools.base import Tool, ToolCategory, tool
+
 
 logger = logging.getLogger(__name__)
 
@@ -22,11 +23,11 @@ except ImportError:
     HAS_PYWIN32 = False
     logger.warning("pywin32 not installed. Office tools will be unavailable.")
 
-def _check_windows_office():
+def _check_windows_office() -> tuple[bool, str | None]:
     """Verify system is Windows and pywin32 is available."""
     if not HAS_PYWIN32:
         return False, "Error: pywin32 is not installed. Please run 'pip install pywin32'."
-    if os.name != 'nt':
+    if os.name != "nt":
         return False, "Error: Local Office integration is only supported on Windows."
     return True, None
 
@@ -40,11 +41,11 @@ def _check_windows_office():
         "data": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}, "description": "2D array of row data"},
     }
 )
-def create_excel_spreadsheet(file_name: str, columns: List[str], data: List[List[Any]], **kwargs: Any) -> str:
+def create_excel_spreadsheet(file_name: str, columns: list[str], data: list[list[Any]], **kwargs: Any) -> str:
     """Create a new Excel spreadsheet using local Excel app."""
     ok, err = _check_windows_office()
     if not ok:
-        return err
+        return err or "Office integration error"
 
     try:
         excel = win32com.client.Dispatch("Excel.Application")
@@ -64,20 +65,20 @@ def create_excel_spreadsheet(file_name: str, columns: List[str], data: List[List
         # Save file in agent workspace
         from src.core.config import get_settings
         settings = get_settings()
-        workspace = Path(settings.AGENT_WORKSPACE).resolve()
+        workspace = settings.AGENT_WORKSPACE
         workspace.mkdir(parents=True, exist_ok=True)
-        
+
         save_path = workspace / file_name
         if not save_path.suffix:
             save_path = save_path.with_suffix(".xlsx")
-            
+
         wb.SaveAs(str(save_path))
         wb.Close()
         excel.Quit()
-        
+
         return f"Successfully created Excel spreadsheet at {save_path}"
     except Exception as e:
-        logger.error(f"Failed to create Excel spreadsheet: {e}")
+        logger.exception(f"Failed to create Excel spreadsheet: {e}")
         return f"Error: Failed to create Excel spreadsheet: {e}"
 
 def create_excel_preview(args: dict) -> str:
@@ -88,7 +89,7 @@ def create_excel_preview(args: dict) -> str:
     return f"Create Excel file '{file_name}' with {len(cols)} columns and {rows} rows of data."
 
 # Assign the preview function to the tool metadata
-create_excel_spreadsheet._tool_metadata.get_preview = create_excel_preview
+create_excel_spreadsheet._tool_metadata.get_preview = create_excel_preview  # type: ignore[attr-defined]
 
 
 @tool(
@@ -105,19 +106,19 @@ def create_word_document(file_name: str, title: str, content: str, **kwargs: Any
     """Create a new Word document using local Word app."""
     ok, err = _check_windows_office()
     if not ok:
-        return err
+        return err or "Office integration error"
 
     try:
         word = win32com.client.Dispatch("Word.Application")
         word.Visible = False
         doc = word.Documents.Add()
-        
+
         # Add Title
         range = doc.Range(0, 0)
         range.Text = title + "\n\n"
         range.Font.Bold = True
         range.Font.Size = 16
-        
+
         # Add Content
         content_range = doc.Range(doc.Content.End - 1, doc.Content.End - 1)
         content_range.Text = content
@@ -126,9 +127,9 @@ def create_word_document(file_name: str, title: str, content: str, **kwargs: Any
 
         from src.core.config import get_settings
         settings = get_settings()
-        workspace = Path(settings.AGENT_WORKSPACE).resolve()
+        workspace = settings.AGENT_WORKSPACE
         workspace.mkdir(parents=True, exist_ok=True)
-        
+
         save_path = workspace / file_name
         if not save_path.suffix:
             save_path = save_path.with_suffix(".docx")
@@ -136,17 +137,17 @@ def create_word_document(file_name: str, title: str, content: str, **kwargs: Any
         doc.SaveAs(str(save_path))
         doc.Close()
         word.Quit()
-        
+
         return f"Successfully created Word document at {save_path}"
     except Exception as e:
-        logger.error(f"Failed to create Word document: {e}")
+        logger.exception(f"Failed to create Word document: {e}")
         return f"Error: Failed to create Word document: {e}"
 
 def create_word_preview(args: dict) -> str:
     file_name = args.get("file_name", "untitled.docx")
     title = args.get("title", "")
     return f"Create Word document '{file_name}' titled '{title}'."
-create_word_document._tool_metadata.get_preview = create_word_preview
+create_word_document._tool_metadata.get_preview = create_word_preview  # type: ignore[attr-defined]
 
 @tool(
     name="send_outlook_email",
@@ -162,7 +163,7 @@ def send_outlook_email(to: str, subject: str, body: str, **kwargs: Any) -> str:
     """Send an email using the local Outlook app."""
     ok, err = _check_windows_office()
     if not ok:
-        return err
+        return err or "Office integration error"
 
     try:
         outlook = win32com.client.Dispatch("Outlook.Application")
@@ -173,14 +174,14 @@ def send_outlook_email(to: str, subject: str, body: str, **kwargs: Any) -> str:
         mail.Send()
         return f"Successfully sent email to {to} via Outlook."
     except Exception as e:
-        logger.error(f"Failed to send Outlook email: {e}")
+        logger.exception(f"Failed to send Outlook email: {e}")
         return f"Error: Failed to send Outlook email: {e}"
 
 def send_email_preview(args: dict) -> str:
     to = args.get("to", "unknown recipient")
     subject = args.get("subject", "No subject")
     return f"Send email to '{to}' with subject '{subject}'."
-send_outlook_email._tool_metadata.get_preview = send_email_preview
+send_outlook_email._tool_metadata.get_preview = send_email_preview  # type: ignore[attr-defined]
 
 @tool(
     name="read_outlook_emails",
@@ -194,42 +195,42 @@ def read_outlook_emails(count: int = 5, **kwargs: Any) -> str:
     """Read recent emails using the local Outlook app."""
     ok, err = _check_windows_office()
     if not ok:
-        return err
+        return err or "Office integration error"
 
     try:
         outlook = win32com.client.Dispatch("Outlook.Application")
         namespace = outlook.GetNamespace("MAPI")
         inbox = namespace.GetDefaultFolder(6)  # 6 = olFolderInbox
-        
+
         # Get items, sort by received time descending
         items = inbox.Items
         items.Sort("[ReceivedTime]", True)
-        
+
         emails = []
         for i, item in enumerate(items):
             if i >= count:
                 break
-            
+
             # Use getattr to safely access properties since items can be different types (e.g. meeting requests)
             sender = getattr(item, "SenderName", "Unknown Sender")
             subject = getattr(item, "Subject", "No Subject")
             received = getattr(item, "ReceivedTime", "Unknown Time")
             body = getattr(item, "Body", "")[:200]  # First 200 chars
-            
+
             emails.append(f"From: {sender}\\nDate: {received}\\nSubject: {subject}\\nSnippet: {body}...\\n")
-            
+
         if not emails:
             return "No recent emails found."
-            
+
         return f"Found {len(emails)} recent emails:\\n\\n" + "\\n---\\n".join(emails)
     except Exception as e:
-        logger.error(f"Failed to read Outlook emails: {e}")
+        logger.exception(f"Failed to read Outlook emails: {e}")
         return f"Error: Failed to read Outlook emails: {e}"
 
 def read_outlook_emails_preview(args: dict) -> str:
     count = args.get("count", 5)
     return f"Read the {count} most recent emails from your Outlook inbox."
-read_outlook_emails._tool_metadata.get_preview = read_outlook_emails_preview
+read_outlook_emails._tool_metadata.get_preview = read_outlook_emails_preview  # type: ignore[attr-defined]
 
 @tool(
     name="read_excel_spreadsheet",
@@ -241,46 +242,43 @@ read_outlook_emails._tool_metadata.get_preview = read_outlook_emails_preview
         "max_rows": {"type": "integer", "description": "Maximum number of rows to read (default 20)"},
     }
 )
-def read_excel_spreadsheet(file_path: str, sheet_name: Optional[str] = None, max_rows: int = 20, **kwargs: Any) -> str:
+def read_excel_spreadsheet(file_path: str, sheet_name: str | None = None, max_rows: int = 20, **kwargs: Any) -> str:
     """Read data from an Excel file."""
     ok, err = _check_windows_office()
     if not ok:
-        return err
+        return err or "Office integration error"
 
     try:
         from src.core.config import get_settings
         settings = get_settings()
-        
+
         # Handle relative paths by anchoring to workspace
         path_obj = Path(file_path)
         if not path_obj.is_absolute():
-            workspace = Path(settings.AGENT_WORKSPACE).resolve()
+            workspace = settings.AGENT_WORKSPACE
             path_obj = workspace / file_path
-            
+
         # Add .xlsx if no extension
         if not path_obj.suffix:
             path_obj = path_obj.with_suffix(".xlsx")
-            
+
         if not path_obj.exists():
             return f"Error: File not found at {path_obj}"
 
         excel = win32com.client.Dispatch("Excel.Application")
         excel.Visible = False
         wb = excel.Workbooks.Open(str(path_obj.resolve()))
-        
+
         try:
-            if sheet_name:
-                ws = wb.Worksheets(sheet_name)
-            else:
-                ws = wb.ActiveSheet
-                
+            ws = wb.Worksheets(sheet_name) if sheet_name else wb.ActiveSheet
+
             used_range = ws.UsedRange
             # Get values (returns tuple of tuples)
             values = used_range.Value
-            
+
             if not values:
                 return f"No data found in sheet '{ws.Name}'."
-                
+
             # Convert to string and limit rows
             rows = []
             for i, row in enumerate(values):
@@ -291,15 +289,14 @@ def read_excel_spreadsheet(file_path: str, sheet_name: Optional[str] = None, max
                 str_row = [str(cell) if cell is not None else "" for cell in row]
                 if any(str_row):  # Only add if row has some data
                     rows.append(" | ".join(str_row))
-                    
-            result = f"Data from {path_obj.name} (Sheet: {ws.Name}):\\n\\n" + "\\n".join(rows)
-            return result
+
+            return f"Data from {path_obj.name} (Sheet: {ws.Name}):\\n\\n" + "\\n".join(rows)
         finally:
             wb.Close(SaveChanges=False)
             excel.Quit()
-            
+
     except Exception as e:
-        logger.error(f"Failed to read Excel spreadsheet: {e}")
+        logger.exception(f"Failed to read Excel spreadsheet: {e}")
         return f"Error: Failed to read Excel spreadsheet: {e}"
 
 def read_excel_preview(args: dict) -> str:
@@ -307,14 +304,14 @@ def read_excel_preview(args: dict) -> str:
     sheet = args.get("sheet_name", "active sheet")
     rows = args.get("max_rows", 20)
     return f"Read up to {rows} rows from '{sheet}' in Excel file '{file_path}'."
-read_excel_spreadsheet._tool_metadata.get_preview = read_excel_preview
+read_excel_spreadsheet._tool_metadata.get_preview = read_excel_preview  # type: ignore[attr-defined]
 
-def get_office_tools() -> List[Tool]:
+def get_office_tools() -> list[Tool]:
     """Get all office tools for registration."""
     return [
-        create_excel_spreadsheet._tool_metadata,
-        create_word_document._tool_metadata,
-        send_outlook_email._tool_metadata,
-        read_outlook_emails._tool_metadata,
-        read_excel_spreadsheet._tool_metadata,
+        create_excel_spreadsheet._tool_metadata,  # type: ignore[attr-defined]
+        create_word_document._tool_metadata,  # type: ignore[attr-defined]
+        send_outlook_email._tool_metadata,  # type: ignore[attr-defined]
+        read_outlook_emails._tool_metadata,  # type: ignore[attr-defined]
+        read_excel_spreadsheet._tool_metadata,  # type: ignore[attr-defined]
     ]

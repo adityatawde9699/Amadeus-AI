@@ -11,6 +11,7 @@ from datetime import datetime
 
 from src.core.config import get_settings
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -20,30 +21,30 @@ async def run_proactive_checks() -> None:
     and sends messages to the master user on configured messaging platforms.
     """
     settings = get_settings()
-    
+
     platforms = []
     if settings.MASTER_TELEGRAM_CHAT_ID:
         platforms.append(("telegram", settings.MASTER_TELEGRAM_CHAT_ID))
     if settings.MASTER_WHATSAPP_NUMBER:
         platforms.append(("whatsapp", settings.MASTER_WHATSAPP_NUMBER))
-        
+
     if not platforms:
         logger.info("No MASTER users configured. Skipping proactive checks.")
         return
 
     from src.app.services.amadeus_service import AmadeusService
-    
+
     current_time = datetime.now().strftime("%I:%M %p on %A, %B %d")
-    
+
     for platform_name, user_id in platforms:
         logger.info(f"Running proactive checks for {platform_name} / {user_id}")
-        
+
         try:
             # We use the user_id as the session_id to maintain conversation context for that user
             # just as the webhooks do.
             service = AmadeusService(session_id=user_id)
             await service.initialize()
-            
+
             # The prompt to trigger analysis and action
             prompt = (
                 f"SYSTEM BACKGROUND EVENT: It is currently {current_time}. "
@@ -53,9 +54,9 @@ async def run_proactive_checks() -> None:
                 "Include a summary of what needs attention. "
                 "If everything is fine and nothing needs attention, just finish the task silently without bothering me."
             )
-            
+
             # Submitting it as a background event processes it via the agent Orchestrator internally
             await service.handle_background_event(prompt)
-            
+
         except Exception as e:
             logger.error(f"Error during proactive check for {platform_name}: {e}", exc_info=True)

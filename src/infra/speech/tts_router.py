@@ -39,7 +39,9 @@ class ElevenLabsAdapter(ITextToSpeechService):
 
         try:
             import asyncio
+
             from elevenlabs import ElevenLabs
+            from elevenlabs import Voice as ElevenVoice, VoiceSettings
 
             client = ElevenLabs(api_key=self._api_key)
             target_voice = voice_id or self._default_voice_id
@@ -56,10 +58,10 @@ class ElevenLabsAdapter(ITextToSpeechService):
             return await loop.run_in_executor(None, _call_elevenlabs)
 
         except ImportError:
-            logger.error("elevenlabs package not installed. Run: pip install elevenlabs")
+            logger.exception("elevenlabs package not installed. Run: pip install elevenlabs")
             return b""
         except Exception as e:
-            logger.error("ElevenLabs TTS failed: %s", type(e).__name__)
+            logger.exception("ElevenLabs TTS failed: %s", type(e).__name__)
             return b""
 
 

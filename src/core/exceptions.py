@@ -7,7 +7,7 @@ exceptions should be caught and wrapped in these domain exceptions.
 
 Usage:
     from src.core.exceptions import ToolExecutionError, ConfigurationError
-    
+
     raise ToolExecutionError("open_chrome", "Chrome is not installed")
 """
 
@@ -17,16 +17,16 @@ from typing import Any
 class AmadeusError(Exception):
     """
     Base exception for all Amadeus-related errors.
-    
+
     All domain-specific exceptions should inherit from this class
     to enable consistent error handling at API boundaries.
     """
-    
+
     def __init__(self, message: str, details: dict[str, Any] | None = None):
         self.message = message
         self.details = details or {}
         super().__init__(self.message)
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert exception to a dictionary for API responses."""
         return {
@@ -42,7 +42,7 @@ class AmadeusError(Exception):
 
 class ConfigurationError(AmadeusError):
     """Raised when there's a configuration problem."""
-    
+
     def __init__(self, message: str, config_key: str | None = None):
         super().__init__(
             message,
@@ -53,7 +53,7 @@ class ConfigurationError(AmadeusError):
 
 class MissingAPIKeyError(ConfigurationError):
     """Raised when a required API key is missing."""
-    
+
     def __init__(self, key_name: str):
         super().__init__(
             f"Missing required API key: {key_name}",
@@ -68,7 +68,7 @@ class MissingAPIKeyError(ConfigurationError):
 
 class ToolExecutionError(AmadeusError):
     """Raised when a tool fails to execute properly."""
-    
+
     def __init__(self, tool_name: str, reason: str, cause: Exception | None = None):
         super().__init__(
             f"Tool '{tool_name}' failed: {reason}",
@@ -81,14 +81,14 @@ class ToolExecutionError(AmadeusError):
 
 class ToolNotFoundError(ToolExecutionError):
     """Raised when a requested tool doesn't exist."""
-    
+
     def __init__(self, tool_name: str):
         super().__init__(tool_name, f"Tool '{tool_name}' not found")
 
 
 class ToolTimeoutError(ToolExecutionError):
     """Raised when a tool execution times out."""
-    
+
     def __init__(self, tool_name: str, timeout_seconds: float):
         super().__init__(
             tool_name,
@@ -99,7 +99,7 @@ class ToolTimeoutError(ToolExecutionError):
 
 class ToolArgumentError(ToolExecutionError):
     """Raised when tool arguments are invalid."""
-    
+
     def __init__(self, tool_name: str, argument: str, reason: str):
         super().__init__(
             tool_name,
@@ -114,12 +114,11 @@ class ToolArgumentError(ToolExecutionError):
 
 class PersistenceError(AmadeusError):
     """Base exception for database/storage errors."""
-    pass
 
 
 class EntityNotFoundError(PersistenceError):
     """Raised when a requested entity doesn't exist."""
-    
+
     def __init__(self, entity_type: str, entity_id: Any):
         super().__init__(
             f"{entity_type} with id '{entity_id}' not found",
@@ -131,7 +130,7 @@ class EntityNotFoundError(PersistenceError):
 
 class DuplicateEntityError(PersistenceError):
     """Raised when attempting to create a duplicate entity."""
-    
+
     def __init__(self, entity_type: str, identifier: str):
         super().__init__(
             f"{entity_type} already exists: {identifier}",
@@ -141,7 +140,7 @@ class DuplicateEntityError(PersistenceError):
 
 class DatabaseConnectionError(PersistenceError):
     """Raised when database connection fails."""
-    
+
     def __init__(self, message: str = "Failed to connect to database"):
         super().__init__(message)
 
@@ -152,12 +151,11 @@ class DatabaseConnectionError(PersistenceError):
 
 class VoiceError(AmadeusError):
     """Base exception for voice-related errors."""
-    pass
 
 
 class SpeechRecognitionError(VoiceError):
     """Raised when speech recognition fails."""
-    
+
     def __init__(self, reason: str, timeout: bool = False):
         super().__init__(
             f"Speech recognition failed: {reason}",
@@ -168,14 +166,14 @@ class SpeechRecognitionError(VoiceError):
 
 class TextToSpeechError(VoiceError):
     """Raised when text-to-speech fails."""
-    
+
     def __init__(self, reason: str):
         super().__init__(f"Text-to-speech failed: {reason}")
 
 
 class VoiceServiceUnavailableError(VoiceError):
     """Raised when voice services are not available."""
-    
+
     def __init__(self, missing_dependency: str | None = None):
         message = "Voice service is not available"
         if missing_dependency:
@@ -192,12 +190,11 @@ class VoiceServiceUnavailableError(VoiceError):
 
 class LLMError(AmadeusError):
     """Base exception for LLM-related errors."""
-    pass
 
 
 class LLMConnectionError(LLMError):
     """Raised when connection to LLM service fails."""
-    
+
     def __init__(self, service: str, reason: str):
         super().__init__(
             f"Failed to connect to {service}: {reason}",
@@ -208,7 +205,7 @@ class LLMConnectionError(LLMError):
 
 class LLMRateLimitError(LLMError):
     """Raised when LLM rate limit is exceeded."""
-    
+
     def __init__(self, service: str, retry_after: float | None = None):
         message = f"{service} rate limit exceeded"
         if retry_after:
@@ -222,7 +219,7 @@ class LLMRateLimitError(LLMError):
 
 class LLMResponseError(LLMError):
     """Raised when LLM response is invalid or unexpected."""
-    
+
     def __init__(self, reason: str):
         super().__init__(f"Invalid LLM response: {reason}")
 
@@ -233,7 +230,7 @@ class LLMResponseError(LLMError):
 
 class ValidationError(AmadeusError):
     """Raised when input validation fails."""
-    
+
     def __init__(self, field: str, reason: str):
         super().__init__(
             f"Validation failed for '{field}': {reason}",
@@ -245,7 +242,7 @@ class ValidationError(AmadeusError):
 
 class InputTooLongError(ValidationError):
     """Raised when input exceeds maximum length."""
-    
+
     def __init__(self, field: str, max_length: int, actual_length: int):
         super().__init__(
             field,
@@ -261,7 +258,7 @@ class InputTooLongError(ValidationError):
 
 class RateLimitExceededError(AmadeusError):
     """Raised when rate limit is exceeded."""
-    
+
     def __init__(self, limit: int, window_seconds: int, retry_after: float | None = None):
         super().__init__(
             f"Rate limit of {limit} requests per {window_seconds}s exceeded",

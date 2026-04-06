@@ -12,12 +12,17 @@ Usage tracking resets daily at midnight (UTC).
 """
 
 import asyncio
+import json
 import logging
+import os
+import time
 from collections import defaultdict
 from datetime import date
+from typing import Any
 from typing import TYPE_CHECKING
 
 from src.core.exceptions import LLMRateLimitError
+
 
 if TYPE_CHECKING:
     from src.infra.llm.gemini_adapter import GeminiAdapter
@@ -44,16 +49,17 @@ class _RedisCounterBackend:
 
     def __init__(self, redis_url: str) -> None:
         self._redis_url = redis_url
-        self._client: object | None = None
+        self._client: Any | None = None
 
-    async def _get_client(self) -> object | None:
+    async def _get_client(self) -> Any | None:
+        """Get or create redis client, returns None on failure."""
         if self._client is not None:
             return self._client
         try:
             import redis.asyncio as aioredis
             client = aioredis.from_url(self._redis_url, decode_responses=True)
             # Verify connectivity
-            await client.ping()  # type: ignore[union-attr]
+            await client.ping()  # type: ignore[misc]
             self._client = client
             logger.info("LLMRouter connected to Redis for shared quota tracking")
         except Exception as e:
@@ -70,7 +76,7 @@ class _RedisCounterBackend:
         if client is None:
             return 0
         try:
-            val = await client.get(self._key(provider))  # type: ignore[union-attr]
+            val = await client.get(self._key(provider))
             return int(val) if val else 0
         except Exception:
             return 0
@@ -82,10 +88,10 @@ class _RedisCounterBackend:
             return
         try:
             key = self._key(provider)
-            pipe = client.pipeline()  # type: ignore[union-attr]
-            await pipe.incr(key)  # type: ignore[union-attr]
-            await pipe.expire(key, 86400)  # type: ignore[union-attr]
-            await pipe.execute()  # type: ignore[union-attr]
+            pipe = client.pipeline()
+            await pipe.incr(key)
+            await pipe.expire(key, 86400)
+            await pipe.execute()
         except Exception as e:
             logger.debug("Redis increment failed: %s", e)
 
@@ -217,9 +223,9 @@ class LLMRouter:
 
             try:
                 provider = self._providers[provider_name]
-                result = await provider.generate_response(  # type: ignore[union-attr]
+                result = await provider.generate_response(  # type: ignore[attr-defined]
                     prompt=prompt,
-                    context=context,  # type: ignore[arg-type]
+                    context=context,
                     temperature=temperature,
                     max_tokens=max_tokens,
                 )
@@ -250,7 +256,7 @@ class LLMRouter:
                 logger.warning("Provider %s rate limited, trying next.", provider_name)
                 continue
             except Exception as e:
-                logger.error(
+                logger.exception(
                     "Provider %s failed: %s. Trying next.",
                     provider_name, type(e).__name__,
                 )

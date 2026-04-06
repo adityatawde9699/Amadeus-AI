@@ -17,7 +17,6 @@ Usage:
     response = await adapter.generate_response(prompt="Hello!", context=None)
 """
 
-import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator
@@ -27,6 +26,7 @@ from typing import Any
 import httpx
 
 from src.core.exceptions import LLMRateLimitError
+
 
 logger = logging.getLogger(__name__)
 
@@ -205,7 +205,7 @@ class OllamaAdapter:
             resp = await client.post("/api/generate", json=payload)
             resp.raise_for_status()
             data = resp.json()
-            response_text = data.get("response", "").strip()
+            response_text = str(data.get("response", "")).strip()
             logger.debug(
                 "Ollama generated %d chars (model=%s, tokens=%d)",
                 len(response_text),
@@ -214,10 +214,10 @@ class OllamaAdapter:
             )
             return response_text
         except httpx.HTTPStatusError as e:
-            logger.error("Ollama HTTP error: %s", e.response.text)
+            logger.exception("Ollama HTTP error: %s", e.response.text)
             raise LLMRateLimitError(f"Ollama error: {e.response.status_code}") from e
         except Exception as e:
-            logger.error("Ollama generation failed: %s", type(e).__name__)
+            logger.exception("Ollama generation failed: %s", type(e).__name__)
             raise LLMRateLimitError(f"Ollama unavailable: {e}") from e
 
     async def stream_response(
@@ -267,7 +267,7 @@ class OllamaAdapter:
                     except json.JSONDecodeError:
                         continue
         except Exception as e:
-            logger.error("Ollama stream error: %s", e)
+            logger.exception("Ollama stream error: %s", e)
             yield f"\n⚠️ Stream interrupted: {type(e).__name__}"
 
     async def chat(
@@ -307,7 +307,7 @@ class OllamaAdapter:
         client = await self._get_client()
         resp = await client.post("/api/chat", json=payload)
         resp.raise_for_status()
-        return resp.json()["message"]["content"]
+        return str(resp.json()["message"]["content"])
 
     async def _stream_chat(self, payload: dict) -> AsyncIterator[str]:
         """Internal streaming chat generator."""
@@ -353,7 +353,7 @@ class OllamaAdapter:
                 for m in data.get("models", [])
             ]
         except Exception as e:
-            logger.error("Failed to list Ollama models: %s", e)
+            logger.exception("Failed to list Ollama models: %s", e)
             return []
 
     async def pull_model(self, name: str) -> AsyncIterator[ProgressEvent]:
@@ -388,7 +388,7 @@ class OllamaAdapter:
                     except json.JSONDecodeError:
                         continue
         except Exception as e:
-            logger.error("Failed to pull model %s: %s", name, e)
+            logger.exception("Failed to pull model %s: %s", name, e)
             yield ProgressEvent(status=f"error: {e}")
 
     async def delete_model(self, name: str) -> bool:
@@ -406,7 +406,7 @@ class OllamaAdapter:
             resp = await client.request("DELETE", "/api/delete", json={"name": name})
             return resp.status_code == 200
         except Exception as e:
-            logger.error("Failed to delete model %s: %s", name, e)
+            logger.exception("Failed to delete model %s: %s", name, e)
             return False
 
     async def get_model_info(self, name: str) -> dict:
@@ -423,7 +423,8 @@ class OllamaAdapter:
             client = await self._get_client()
             resp = await client.post("/api/show", json={"name": name})
             resp.raise_for_status()
-            return resp.json()
+            result: dict[Any, Any] = resp.json()
+            return result
         except Exception:
             return {}
 

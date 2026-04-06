@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from src.app.services.amadeus_service import AmadeusService
 from src.core.interfaces.speech_service import ISpeechToTextService, ITextToSpeechService
 
+
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -21,9 +22,9 @@ class VoiceResponse:
 
 class VoiceService:
     """Orchestrates speech recognition, AI processing, and speech synthesis."""
-    
+
     def __init__(
-        self, 
+        self,
         amadeus_service: AmadeusService,
         stt_service: ISpeechToTextService,
         tts_service: ITextToSpeechService

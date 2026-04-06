@@ -8,18 +8,17 @@ and route registration.
 Usage:
     # Run with uvicorn
     uvicorn src.api.server:app --reload
-    
+
     # Or run directly
     python -m src.api.server
 """
 
-import logging
-import sys
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 import sentry_sdk
 import structlog
-
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -33,7 +32,6 @@ from src.core.config import get_settings, validate_settings
 from src.core.exceptions import AmadeusError
 from src.infra.persistence.database import close_db, init_db
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 # Global scheduler instance
 scheduler = AsyncIOScheduler()
@@ -92,15 +90,15 @@ if settings.SENTRY_DSN:
 # =============================================================================
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     Application lifespan manager.
-    
+
     Handles startup and shutdown events for the application.
     """
     # Startup
     logger.info(f"Starting {settings.ASSISTANT_NAME} API v{settings.ASSISTANT_VERSION}")
-    
+
     # Validate configuration
     validation = validate_settings()
     if validation["errors"]:
@@ -109,64 +107,64 @@ async def lifespan(app: FastAPI):
             raise RuntimeError("Configuration errors in production")
     for warning in validation.get("warnings", []):
         logger.warning(f"Config warning: {warning}")
-    
+
     # Initialize database
     await init_db()
 
     # Initialize HITL Confirmation callback singleton.
     # Stored on app.state so the /confirm route handler can access it
     # via the get_confirmation_callback dependency.
-    from src.infra.tools.confirmation import APIConfirmationCallback
     from src.container import inject_confirmation_callback
+    from src.infra.tools.confirmation import APIConfirmationCallback
     confirmation_callback = APIConfirmationCallback(
         timeout_seconds=60  # User has 60s to approve/deny before auto-deny
     )
     app.state.confirmation_callback = confirmation_callback
     inject_confirmation_callback(confirmation_callback)
     logger.info("HITL confirmation gate initialized (timeout=60s)")
-    
+
     # Initialize Telegram Long Polling
     logger.info("Initializing Telegram Long Polling...")
     from src.api.routes.webhooks import _telegram
     await _telegram.start_polling()
-    
+
     # Initialize and start APScheduler
     logger.info("Initializing background task scheduler...")
-    
+
     from src.app.services.proactive_service import run_proactive_checks
-    
+
     # Run proactive checks periodically (e.g. every 30 minutes)
     interval_minutes = settings.PROACTIVE_CHECK_INTERVAL_MINUTES
     scheduler.add_job(
-        run_proactive_checks, 
-        'interval', 
-        minutes=interval_minutes, 
+        run_proactive_checks,
+        "interval",
+        minutes=interval_minutes,
         id="proactive_checks_job",
         replace_existing=True
     )
-    
+
     scheduler.start()
-    
+
     # Initialize Autonomous Observation Loop
     logger.info("Initializing Autonomous Observation Loop...")
     from src.app.services.autonomous_loop import AutonomousObservationLoop
     observation_loop = AutonomousObservationLoop(
-        interval_minutes=60, 
+        interval_minutes=60,
         session_ids=["system_default_session"]
     )
     await observation_loop.start()
-    
+
     logger.info(f"API ready at http://{settings.API_HOST}:{settings.API_PORT}")
-    
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down API...")
     if scheduler.running:
         scheduler.shutdown(wait=False)
-        
+
     await _telegram.stop_polling()
-    
+
     observation_loop.stop()
     await close_db()
     logger.info("Shutdown complete")
@@ -181,18 +179,18 @@ app = FastAPI(
     version=settings.ASSISTANT_VERSION,
     description="""
     RESTful API for the Amadeus AI Assistant.
-    
+
     ## Features
-    
+
     * **Tasks Management**: Create, list, complete, and delete tasks
     * **Notes**: Create, read, update, and delete notes with tagging
     * **Reminders**: Schedule and manage time-based reminders
     * **Calendar**: Manage calendar events and view agenda
     * **Voice**: Text-to-speech and speech-to-text processing
     * **System**: Monitor system health and status
-    
+
     ## Authentication
-    
+
     Currently in development mode with no authentication required.
     Production deployments should implement proper authentication.
     """,
@@ -219,25 +217,21 @@ app.add_middleware(
 app.add_middleware(AuditLoggerMiddleware)
 
 # Rate limiting — per user (JWT sub) with IP fallback
-limiter_kwargs = {
-    "key_func": get_rate_limit_key,
-    "default_limits": [f"{settings.RATE_LIMIT_REQUESTS}/minute"],
-}
-if settings.REDIS_URL:
-    limiter_kwargs["storage_uri"] = settings.REDIS_URL
-
-limiter = Limiter(**limiter_kwargs)
+limiter = Limiter(
+    key_func=get_rate_limit_key,
+    default_limits=[f"{settings.RATE_LIMIT_REQUESTS}/minute"],
+    storage_uri=settings.REDIS_URL if settings.REDIS_URL else None,
+)
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
 # Prometheus Metrics (imported from infra layer — single source of truth)
 from prometheus_fastapi_instrumentator import Instrumentator
+
 from src.infra.metrics import (
     amadeus_llm_calls_total,  # noqa: F401 — imported for re-export / side-effect registration
-    amadeus_llm_cost_usd,
-    amadeus_cache_hit_rate,
-    amadeus_tool_calls_total,
-)
+    )
+
 
 Instrumentator().instrument(app).expose(app, endpoint="/api/v1/metrics", tags=["System"])
 
@@ -247,7 +241,7 @@ Instrumentator().instrument(app).expose(app, endpoint="/api/v1/metrics", tags=["
 # =============================================================================
 
 @app.exception_handler(AmadeusError)
-async def amadeus_exception_handler(request: Request, exc: AmadeusError):
+async def amadeus_exception_handler(request: Request, exc: AmadeusError) -> JSONResponse:
     """Handle domain-specific exceptions."""
     logger.warning(f"Domain error: {exc.message}")
     return JSONResponse(
@@ -257,16 +251,16 @@ async def amadeus_exception_handler(request: Request, exc: AmadeusError):
 
 
 @app.exception_handler(Exception)
-async def generic_exception_handler(request: Request, exc: Exception):
+async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Handle unexpected exceptions."""
     logger.error(f"Unexpected error: {exc}", exc_info=True)
-    
+
     if getattr(settings, "ALLOW_DEBUG_RESPONSES", False):
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"error": "InternalError", "message": str(exc)},
         )
-    
+
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"error": "InternalError", "message": "An unexpected error occurred"},
@@ -278,10 +272,10 @@ async def generic_exception_handler(request: Request, exc: Exception):
 # =============================================================================
 
 @app.get("/health", tags=["Health"])
-async def health_check():
+async def health_check() -> dict[str, str]:
     """
     Health check endpoint.
-    
+
     Returns basic health status for load balancers and monitoring.
     """
     return {
@@ -293,7 +287,7 @@ async def health_check():
 
 
 @app.get("/", tags=["Health"])
-async def root():
+async def root() -> dict[str, str]:
     """Root endpoint with API information."""
     return {
         "message": f"Welcome to {settings.ASSISTANT_NAME} API",
@@ -307,10 +301,24 @@ async def root():
 # =============================================================================
 
 # Import and register route modules
-from src.api.routes import tasks, health, chat, voice, llm, webhooks, websocket, system_admin, messaging, ipc, confirm  # noqa: E402
+from fastapi import Depends
+
 from src.api.middleware.authentication import verify_jwt_token
 from src.api.middleware.rbac import RequireUser
-from fastapi import Depends
+from src.api.routes import (  # noqa: E402
+    chat,
+    confirm,
+    health,
+    ipc,
+    llm,
+    messaging,
+    system_admin,
+    tasks,
+    voice,
+    webhooks,
+    websocket,
+)
+
 
 # Disable auth for health + LLM usage, enable for everything else
 app.include_router(health.router, prefix="/api/v1", tags=["System"])
@@ -350,10 +358,10 @@ app.include_router(
 # MAIN ENTRY POINT
 # =============================================================================
 
-def main():
+def main() -> None:
     """Run the API server directly."""
     import uvicorn
-    
+
     uvicorn.run(
         "src.api.server:app",
         host=settings.API_HOST,

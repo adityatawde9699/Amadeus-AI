@@ -51,7 +51,7 @@ class TelegramAdapter:
 
     Usage:
         adapter = TelegramAdapter()
-        
+
         # Start polling (e.g., in FastAPI lifespan):
         await adapter.start_polling()
 
@@ -76,20 +76,25 @@ class TelegramAdapter:
     def _init_application(self) -> None:
         """Initialize a python-telegram-bot Application instance for polling."""
         try:
-            from telegram.ext import ApplicationBuilder, MessageHandler, filters # type: ignore[import-untyped]
-            
+            from telegram.ext import (
+                ApplicationBuilder,
+                MessageHandler,
+                filters,
+            )
+
             # Using ApplicationBuilder is required for v20+ polling
+            assert self._token is not None, "Token must be set at this point"
             self._application = ApplicationBuilder().token(self._token).build()
             self._bot = self._application.bot
-            
+
             # Register the main message handler
             self._application.add_handler(
                 MessageHandler(filters.TEXT & (~filters.COMMAND), self._handle_message)
             )
-            
+
             logger.info("python-telegram-bot Application instance created for long polling")
         except ImportError:
-            logger.error(
+            logger.exception(
                 "python-telegram-bot is not installed. "
                 "Run: pip install 'python-telegram-bot>=20.7'"
             )
@@ -111,22 +116,22 @@ class TelegramAdapter:
         msg = update.message
         chat_id = msg.chat_id
         text = msg.text
-        
+
         logger.info(f"Received telegram message from chat_id={chat_id}")
-        
+
         try:
             from src.app.services.amadeus_service import AmadeusService
             # Instantiate AmadeusService isolated to this user session (chat_id)
             service = AmadeusService(session_id=str(chat_id))
             await service.initialize()
-            
+
             # Handle command
             response = await service.handle_command(text, source="telegram")
             reply_text = response if isinstance(response, str) else str(response)
-            
+
             # Send the reply back
             await self.send_message(chat_id, reply_text)
-        except Exception as exc:
+        except Exception:
             logger.exception("telegram_polling_processing_failed")
             await self.send_message(chat_id, "⚠️ Sorry, something went wrong processing your request.")
 
@@ -137,7 +142,7 @@ class TelegramAdapter:
         """
         if not self._application:
             return False
-            
+
         try:
             # Initialize and start the application
             await self._application.initialize()
@@ -147,7 +152,7 @@ class TelegramAdapter:
             logger.info("Telegram long polling started successfully")
             return True
         except Exception as exc:
-            logger.error(f"Failed to start telegram polling: {exc}")
+            logger.exception(f"Failed to start telegram polling: {exc}")
             return False
 
     async def stop_polling(self) -> bool:
@@ -157,7 +162,7 @@ class TelegramAdapter:
         """
         if not self._application:
             return False
-            
+
         try:
             # Stop the updater and application
             if self._application.updater:
@@ -167,7 +172,7 @@ class TelegramAdapter:
             logger.info("Telegram long polling stopped successfully")
             return True
         except Exception as exc:
-            logger.error(f"Failed to stop telegram polling: {exc}")
+            logger.exception(f"Failed to stop telegram polling: {exc}")
             return False
 
     # -----------------------------------------------------------------------
@@ -199,7 +204,7 @@ class TelegramAdapter:
             logger.info("telegram_message_sent chat_id=%s", chat_id)
             return True
         except Exception as exc:
-            logger.error("telegram_send_failed chat_id=%s error=%s", chat_id, exc)
+            logger.exception("telegram_send_failed chat_id=%s error=%s", chat_id, exc)
             return False
 
     async def send_buttons(
@@ -231,7 +236,10 @@ class TelegramAdapter:
             return False
 
         try:
-            from telegram import InlineKeyboardButton, InlineKeyboardMarkup  # type: ignore[import-untyped]
+            from telegram import (
+                InlineKeyboardButton,
+                InlineKeyboardMarkup,
+            )
 
             keyboard = [
                 [
@@ -250,7 +258,7 @@ class TelegramAdapter:
             logger.info("telegram_buttons_sent chat_id=%s buttons=%d", chat_id, sum(len(r) for r in buttons))
             return True
         except Exception as exc:
-            logger.error("telegram_buttons_send_failed chat_id=%s error=%s", chat_id, exc)
+            logger.exception("telegram_buttons_send_failed chat_id=%s error=%s", chat_id, exc)
             return False
 
     async def send_voice(
@@ -284,7 +292,7 @@ class TelegramAdapter:
             logger.info("telegram_voice_sent chat_id=%s", chat_id)
             return True
         except Exception as exc:
-            logger.error("telegram_voice_send_failed chat_id=%s error=%s", chat_id, exc)
+            logger.exception("telegram_voice_send_failed chat_id=%s error=%s", chat_id, exc)
             return False
 
     @property

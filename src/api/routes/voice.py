@@ -3,10 +3,14 @@ Voice WebSocket Route.
 Handles real-time audio streaming.
 """
 
+import contextlib
 import logging
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
+
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+
+from src.app.services.voice_service import VoiceInput, VoiceService
 from src.container import get_voice_service
-from src.app.services.voice_service import VoiceService, VoiceInput
+
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -15,10 +19,10 @@ router = APIRouter()
 async def voice_websocket_endpoint(
     websocket: WebSocket,
     voice_service: VoiceService = Depends(get_voice_service)
-):
+) -> None:
     await websocket.accept()
     logger.info("🔌 Voice WebSocket connected")
-    
+
     try:
         while True:
             # 1. Receive Audio Blob from Client
@@ -30,7 +34,7 @@ async def voice_websocket_endpoint(
             result = await voice_service.process_audio(voice_input)
 
             # 3. Send Updates to Client
-            
+
             # Message 1: Transcription (What server heard)
             await websocket.send_json({
                 "type": "transcription",
@@ -51,8 +55,6 @@ async def voice_websocket_endpoint(
     except WebSocketDisconnect:
         logger.info("🔌 Voice WebSocket disconnected")
     except Exception as e:
-        logger.error(f"WebSocket error: {e}")
-        try:
+        logger.exception(f"WebSocket error: {e}")
+        with contextlib.suppress(BaseException):
             await websocket.close()
-        except:
-            pass

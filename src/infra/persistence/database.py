@@ -7,15 +7,16 @@ context manager for database operations. It supports both SQLite
 
 Usage:
     from src.infra.persistence.database import get_session, init_db
-    
+
     async with get_session() as session:
         # Use session for database operations
         ...
 """
 
 import logging
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from typing import Any
 
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
@@ -25,16 +26,17 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.orm import declarative_base
-from sqlalchemy.pool import NullPool, StaticPool, QueuePool
+from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool, QueuePool, StaticPool
 
 from src.core.config import get_settings
 
 
 logger = logging.getLogger(__name__)
 
-# Base class for all ORM models
-Base = declarative_base()
+class Base(DeclarativeBase):
+    """Base class for all ORM models."""
+    pass
 
 # Global engine and session factory (initialized lazily)
 _engine: AsyncEngine | None = None
@@ -45,24 +47,24 @@ _db_initialized: bool = False
 def get_engine() -> AsyncEngine:
     """
     Get or create the async database engine.
-    
+
     Returns:
         The async SQLAlchemy engine.
     """
     global _engine
-    
+
     if _engine is not None:
         return _engine
-    
+
     settings = get_settings()
     async_db_url = settings.get_async_database_url()
-    
+
     # Different pool configuration for SQLite vs other databases
     if settings.database_is_sqlite:
         # Determine if in-memory or file-based SQLite
         is_memory = ":memory:" in async_db_url.lower()
         pool_class = StaticPool if is_memory else NullPool
-        
+
         _engine = create_async_engine(
             async_db_url,
             echo=settings.DB_ECHO,
@@ -87,7 +89,7 @@ def get_engine() -> AsyncEngine:
             pool_recycle=settings.DB_POOL_RECYCLE,
             pool_pre_ping=True,
         )
-    
+
     logger.info(f"Database engine created: {async_db_url.split('@')[-1] if '@' in async_db_url else async_db_url}")
     return _engine
 
@@ -95,17 +97,17 @@ def get_engine() -> AsyncEngine:
 def get_session_factory() -> async_sessionmaker[AsyncSession]:
     """
     Get or create the async session factory.
-    
+
     Returns:
         The async session factory.
     """
     global _session_factory
-    
+
     if _session_factory is not None:
         return _session_factory
-    
+
     engine = get_engine()
-    
+
     _session_factory = async_sessionmaker(
         bind=engine,
         class_=AsyncSession,
@@ -113,7 +115,7 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
         autoflush=True,
         autocommit=False,
     )
-    
+
     return _session_factory
 
 
@@ -121,13 +123,13 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """
     Async context manager for database sessions.
-    
+
     Handles commit on success and rollback on exception.
-    
+
     Usage:
         async with get_session() as session:
             result = await session.execute(query)
-            
+
     Yields:
         An async database session.
     """
@@ -146,24 +148,24 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 async def init_db() -> None:
     """
     Initialize the database by creating all tables.
-    
+
     This is idempotent - safe to call multiple times.
     """
     global _db_initialized
-    
+
     if _db_initialized:
         logger.debug("Database already initialized, skipping")
         return
-    
+
     # Import ORM models to register them with Base
     from src.infra.persistence import orm_models  # noqa: F401
-    
+
     engine = get_engine()
-    
+
     logger.info("Initializing database tables...")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    
+
     _db_initialized = True
     logger.info("Database tables initialized successfully")
 
@@ -171,11 +173,11 @@ async def init_db() -> None:
 async def close_db() -> None:
     """
     Close database connections and dispose of the engine.
-    
+
     Call this during application shutdown.
     """
     global _engine, _session_factory, _db_initialized
-    
+
     if _engine is not None:
         logger.info("Closing database connections...")
         await _engine.dispose()
@@ -190,20 +192,20 @@ async def close_db() -> None:
 # =============================================================================
 
 @event.listens_for(Engine, "connect")
-def set_sqlite_pragma(dbapi_conn, connection_record):
+def set_sqlite_pragma(dbapi_conn: Any, connection_record: Any) -> None:
     """
     Set SQLite-specific pragmas for better performance.
-    
+
     These settings improve SQLite performance for typical workloads:
     - WAL mode for better concurrent reads
     - Larger cache for fewer disk reads
     - Memory temp store for faster temp table operations
     """
     settings = get_settings()
-    
+
     if not settings.database_is_sqlite:
         return
-    
+
     cursor = dbapi_conn.cursor()
     try:
         # Enable foreign key constraints

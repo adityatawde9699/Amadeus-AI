@@ -13,9 +13,10 @@ Key advantages over pyttsx3:
 
 import io
 import logging
-from typing import ClassVar, TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from src.core.interfaces.speech_service import ITextToSpeechService
+
 
 if TYPE_CHECKING:
     from src.infra.cache.cache_service import CacheService
@@ -57,12 +58,12 @@ class EdgeTTSAdapter(ITextToSpeechService):
         try:
             import edge_tts
         except ImportError as e:
-            logger.error("edge-tts not installed: %s. Run: pip install edge-tts", e)
+            logger.exception("edge-tts not installed: %s. Run: pip install edge-tts", e)
             return b""
 
         voice = voice_id or self.default_voice
         cache_key = f"{voice}:{hash(text)}"
-        
+
         # 1. Try Redis cache
         if self.cache_service:
             cached_audio = await self.cache_service.get_tts(text, voice)
@@ -95,16 +96,16 @@ class EdgeTTSAdapter(ITextToSpeechService):
                 del self._cache[oldest_key]
 
             self._cache[cache_key] = audio_bytes
-            
+
             # Store in Redis
             if self.cache_service:
                 await self.cache_service.set_tts(text, voice, audio_bytes)
-                
+
             logger.debug("TTS synthesized %d bytes for: %s...", len(audio_bytes), text[:30])
             return audio_bytes
 
         except Exception as e:
-            logger.error("Edge TTS synthesis failed: %s", type(e).__name__)
+            logger.exception("Edge TTS synthesis failed: %s", type(e).__name__)
             return b""
 
     @classmethod

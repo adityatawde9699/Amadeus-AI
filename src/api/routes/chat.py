@@ -8,17 +8,24 @@ plus a server-sent events (SSE) streaming endpoint for lower TTFT.
 import asyncio
 import json
 import logging
+from collections.abc import AsyncGenerator, Mapping
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
-from src.container import get_amadeus_service, get_db_session
-from src.app.services.amadeus_service import AmadeusService
-from src.app.services.agent_loop import QueueFullError
 from src.api.middleware.authentication import get_optional_jwt_payload
+from src.app.services.agent_loop import QueueFullError
+from src.app.services.amadeus_service import AmadeusService
+from src.container import get_amadeus_service, get_db_session
+from src.core.domain.models import (
+    ChatRequest,
+    ChatResponse,
+    HistoryResponse,
+    MessageResponse,
+    PermissionProfile,
+    ToolListResponse,
+)
 from src.infra.persistence.repositories.conversation_repository import SQLConversationRepository
-from src.core.domain.models import ChatRequest, ChatResponse, ToolListResponse, MessageResponse, HistoryResponse, PermissionProfile
-from typing import Mapping
 
 
 logger = logging.getLogger(__name__)
@@ -42,7 +49,7 @@ async def chat(
 ) -> ChatResponse:
     """
     Main chat endpoint.
-    
+
     Processes user messages through the Amadeus AI assistant,
     using ML-based tool selection to optimize API usage.
     """
@@ -72,7 +79,7 @@ async def chat(
                 )
             except QueueFullError as e:
                 raise HTTPException(status_code=429, detail=str(e))
-                
+
         return ChatResponse(
             response=response,
             source=request.source,
@@ -93,7 +100,7 @@ async def get_history(
 ) -> HistoryResponse:
     """
     Get conversation history for a session.
-    
+
     Returns all messages from the specified session.
     """
     try:
@@ -105,6 +112,10 @@ async def get_history(
                 messages=[MessageResponse(**m) for m in messages],
                 total=len(messages),
             )
+        # Session generator yielded nothing — should not happen in practice
+        raise HTTPException(status_code=500, detail="Database session unavailable")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"History error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -116,7 +127,7 @@ async def list_tools(
 ) -> ToolListResponse:
     """
     List all available tools.
-    
+
     Returns tool names organized by category.
     """
     summary = amadeus.get_tool_summary()
@@ -164,7 +175,7 @@ async def chat_stream(
     if session_id:
         amadeus.session_id = session_id
 
-    async def event_generator():
+    async def event_generator() -> AsyncGenerator[str, None]:
         try:
             # --- Native Gemini streaming (lowest TTFT) ---
             gemini_model = getattr(amadeus, "model", None)
@@ -207,7 +218,7 @@ async def chat_stream(
 
             yield "data: [DONE]\n\n"
 
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.error("SSE stream error: %s", e, exc_info=True)
             yield f"data: {json.dumps({'error': 'Stream error'})}\n\n"
             yield "data: [DONE]\n\n"

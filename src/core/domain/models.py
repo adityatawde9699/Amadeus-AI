@@ -6,7 +6,7 @@ They are independent of the database (ORM) and external services.
 
 Usage:
     from src.core.domain.models import InteractionLog, RequestSource
-    
+
     log = InteractionLog(
         source=RequestSource.VOICE,
         input_text="What time is it?"
@@ -14,7 +14,7 @@ Usage:
 """
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -25,12 +25,12 @@ from pydantic import BaseModel, ConfigDict, Field
 # ENUMS
 # =============================================================================
 
-class PermissionProfile(str, Enum):
+class PermissionProfile(StrEnum):
     """Declared permission profile for the agent session."""
     READ_ONLY = "read_only"
     SYSTEM_FULL = "system_full"
 
-class RequestSource(str, Enum):
+class RequestSource(StrEnum):
     """Source of the user's request."""
     VOICE = "voice"
     TEXT = "text"
@@ -38,7 +38,7 @@ class RequestSource(str, Enum):
     DASHBOARD = "dashboard"
 
 
-class InteractionType(str, Enum):
+class InteractionType(StrEnum):
     """Type of interaction with the assistant."""
     COMMAND = "command"       # Execute a specific action
     QUERY = "query"           # Request information
@@ -46,27 +46,27 @@ class InteractionType(str, Enum):
     SYSTEM = "system"         # System-generated (reminders, alerts)
 
 
-class TaskStatus(str, Enum):
+class TaskStatus(StrEnum):
     """Status of a task."""
     PENDING = "pending"
     COMPLETED = "completed"
 
 
-class ReminderStatus(str, Enum):
+class ReminderStatus(StrEnum):
     """Status of a reminder."""
     ACTIVE = "active"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
 
 
-class EventStatus(str, Enum):
+class EventStatus(StrEnum):
     """Status of a calendar event."""
     ACTIVE = "active"
     CANCELLED = "cancelled"
     COMPLETED = "completed"
 
 
-class PomodoroState(str, Enum):
+class PomodoroState(StrEnum):
     """State of a Pomodoro session."""
     IDLE = "idle"
     WORKING = "working"
@@ -76,7 +76,7 @@ class PomodoroState(str, Enum):
     PAUSED = "paused"
 
 
-class AlertSeverity(str, Enum):
+class AlertSeverity(StrEnum):
     """Severity level for system alerts."""
     INFO = "info"
     WARNING = "warning"
@@ -90,12 +90,12 @@ class AlertSeverity(str, Enum):
 class UserContext(BaseModel):
     """
     Context about who is speaking/interacting with Amadeus.
-    
+
     In a multi-user system, this would include user ID, preferences,
     permissions, etc. For now, it's simplified for single-user use.
     """
     model_config = ConfigDict(frozen=True)
-    
+
     user_id: str = "admin"
     timezone: str = "UTC"
     language: str = "en"
@@ -105,7 +105,7 @@ class UserContext(BaseModel):
 class InteractionLog(BaseModel):
     """
     Represents a single exchange with Amadeus.
-    
+
     This is the primary record of all interactions, whether from
     voice, text, or API. Used for logging, analytics, and context.
     """
@@ -128,12 +128,12 @@ class InteractionLog(BaseModel):
 class SystemStatus(BaseModel):
     """
     Health check model for system monitoring.
-    
+
     Provides a snapshot of the current system state including
     resource usage and health indicators.
     """
     model_config = ConfigDict(frozen=True)
-    
+
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     cpu_usage: float = Field(ge=0, le=100)
     memory_usage: float = Field(ge=0, le=100)
@@ -170,7 +170,7 @@ class Task(BaseModel):
     status: TaskStatus = TaskStatus.PENDING
     created_at: datetime = Field(default_factory=datetime.utcnow)
     completed_at: datetime | None = None
-    
+
     def mark_complete(self) -> "Task":
         """Return a new Task marked as complete."""
         return self.model_copy(update={
@@ -187,7 +187,7 @@ class Note(BaseModel):
     tags: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
-    
+
     @property
     def tags_str(self) -> str:
         """Get tags as comma-separated string."""
@@ -202,7 +202,7 @@ class Reminder(BaseModel):
     description: str = ""
     status: ReminderStatus = ReminderStatus.ACTIVE
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    
+
     @property
     def is_due(self) -> bool:
         """Check if reminder is due (past its scheduled time)."""
@@ -222,13 +222,13 @@ class CalendarEvent(BaseModel):
     status: EventStatus = EventStatus.ACTIVE
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
-    
+
     @property
     def duration_minutes(self) -> int:
         """Get event duration in minutes."""
         delta = self.end_time - self.start_time
         return int(delta.total_seconds() / 60)
-    
+
     @property
     def is_active(self) -> bool:
         """Check if event is currently active (now is between start and end)."""
@@ -262,7 +262,7 @@ class PomodoroSession(BaseModel):
 class ToolDefinition(BaseModel):
     """Definition of a tool/function that Amadeus can execute."""
     model_config = ConfigDict(frozen=True)
-    
+
     name: str
     description: str
     category: str  # e.g., "system", "productivity", "information"
@@ -299,7 +299,7 @@ class ConversationContext(BaseModel):
     messages: list[ConversationMessage] = Field(default_factory=list)
     user_context: UserContext = Field(default_factory=UserContext)
     summary: str = ""
-    
+
     def add_message(
         self,
         role: str,
@@ -314,7 +314,7 @@ class ConversationContext(BaseModel):
             tool_used=tool_used,
             metadata=metadata,
         ))
-    
+
     def get_recent_messages(self, count: int = 10) -> list[ConversationMessage]:
         """Get the most recent messages."""
         return self.messages[-count:] if self.messages else []
@@ -329,7 +329,7 @@ class ChatRequest(BaseModel):
     source: str = Field(default="api", description="Source: api, text, voice")
     session_id: str | None = Field(default=None, description="Session ID for conversation continuity")
     request_id: str | None = Field(default=None, description="Optional request ID for tracing")
-    
+
     model_config = {
         "json_schema_extra": {
             "example": {
@@ -346,7 +346,7 @@ class ChatResponse(BaseModel):
     source: str = Field(..., description="Request source")
     session_id: str = Field(..., description="Session ID for this conversation")
     tools_used: list[str] = Field(default_factory=list, description="Tools that were used")
-    
+
     model_config = {
         "json_schema_extra": {
             "example": {
@@ -386,7 +386,7 @@ class HealthResponse(BaseModel):
     voice_enabled: bool
     classifier_enabled: bool
     cache_stats: dict | None = None
-    
+
     model_config = {
         "json_schema_extra": {
             "example": {
@@ -430,7 +430,7 @@ class SystemStatusResponse(BaseModel):
 class TaskCreate(BaseModel):
     """Schema for creating a task."""
     content: str = Field(..., min_length=1, max_length=1000, description="Task content")
-    
+
     model_config = {
         "json_schema_extra": {
             "example": {
@@ -446,9 +446,10 @@ class TaskResponse(BaseModel):
     status: str
     created_at: str
     completed_at: str | None = None
-    
+
     @classmethod
     def from_domain(cls, task: Task) -> "TaskResponse":
+        assert task.id is not None, "Cannot convert unsaved Task to TaskResponse"
         return cls(
             id=task.id,
             content=task.content,
@@ -456,7 +457,7 @@ class TaskResponse(BaseModel):
             created_at=task.created_at.isoformat(),
             completed_at=task.completed_at.isoformat() if task.completed_at else None,
         )
-        
+
     model_config = {
         "json_schema_extra": {
             "example": {
@@ -475,7 +476,7 @@ class TaskListResponse(BaseModel):
     total: int
     pending: int
     completed: int
-    
+
     model_config = {
         "json_schema_extra": {
             "example": {

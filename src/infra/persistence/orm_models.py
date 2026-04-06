@@ -9,20 +9,16 @@ The ORM models handle database-specific concerns like:
 - Primary keys and autoincrement
 - Indexes for query optimization
 - SQLAlchemy column types and constraints
+
+Migrated to SQLAlchemy 2.0 Mapped/mapped_column style for full type safety.
 """
 
 import enum
+from datetime import datetime
 
-from sqlalchemy import (
-    Boolean,
-    Column,
-    DateTime,
-    Enum as SAEnum,
-    Index,
-    Integer,
-    String,
-    Text,
-)
+from sqlalchemy import Index, String, Text
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from src.infra.persistence.database import Base
@@ -32,26 +28,26 @@ from src.infra.persistence.database import Base
 # ENUMS (SQLAlchemy compatible)
 # =============================================================================
 
-class UserRoleDB(str, enum.Enum):
+class UserRoleDB(enum.StrEnum):
     """RBAC Role enum for database."""
     ADMIN = "admin"
     USER = "user"
     GUEST = "guest"
 
-class TaskStatusDB(str, enum.Enum):
+class TaskStatusDB(enum.StrEnum):
     """Task status enum for database."""
     PENDING = "pending"
     COMPLETED = "completed"
 
 
-class ReminderStatusDB(str, enum.Enum):
+class ReminderStatusDB(enum.StrEnum):
     """Reminder status enum for database."""
     ACTIVE = "active"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
 
 
-class EventStatusDB(str, enum.Enum):
+class EventStatusDB(enum.StrEnum):
     """Calendar event status enum for database."""
     ACTIVE = "active"
     CANCELLED = "cancelled"
@@ -64,27 +60,24 @@ class EventStatusDB(str, enum.Enum):
 
 class UserORM(Base):
     """ORM model for users and RBAC."""
-    
+
     __tablename__ = "users"
-    
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    username = Column(String(50), unique=True, index=True, nullable=False)
-    email = Column(String(255), unique=True, index=True, nullable=False)
-    hashed_password = Column(String(255), nullable=False)
-    
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    hashed_password: Mapped[str] = mapped_column(String(255))
+
     # RBAC Fields
-    role = Column(
+    role: Mapped[UserRoleDB] = mapped_column(
         SAEnum(UserRoleDB),
         default=UserRoleDB.USER,
-        nullable=False,
     )
-    tenant_id = Column(String(36), index=True, nullable=True) # Groups users together
-    
-    is_active = Column(Boolean, default=True)
-    created_at = Column(
-        DateTime(timezone=True),
+    tenant_id: Mapped[str | None] = mapped_column(String(36), index=True, nullable=True)
+
+    is_active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(
         server_default=func.now(),
-        nullable=False,
     )
 
     def __repr__(self) -> str:
@@ -92,191 +85,174 @@ class UserORM(Base):
 
 class TaskORM(Base):
     """ORM model for tasks/todos."""
-    
+
     __tablename__ = "tasks"
-    
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    content = Column(Text, nullable=False)
-    status = Column(
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
+    content: Mapped[str] = mapped_column(Text)
+    status: Mapped[TaskStatusDB] = mapped_column(
         SAEnum(TaskStatusDB),
         default=TaskStatusDB.PENDING,
         index=True,
-        nullable=False,
     )
-    created_at = Column(
-        DateTime(timezone=True),
+    created_at: Mapped[datetime] = mapped_column(
         server_default=func.now(),
         index=True,
-        nullable=False,
     )
-    completed_at = Column(DateTime(timezone=True), nullable=True, index=True)
-    
+    completed_at: Mapped[datetime | None] = mapped_column(nullable=True, index=True)
+
     __table_args__ = (
         Index("idx_task_status_created", "status", "created_at"),
         Index("idx_task_status_completed", "status", "completed_at"),
     )
-    
+
     def __repr__(self) -> str:
         return f"<Task(id={self.id}, status={self.status.value})>"
 
 
 class NoteORM(Base):
     """ORM model for notes."""
-    
+
     __tablename__ = "notes"
-    
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    title = Column(String(256), nullable=False, index=True)
-    content = Column(Text, nullable=False)
-    tags = Column(String(512), default="", index=True)
-    created_at = Column(
-        DateTime(timezone=True),
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(256), index=True)
+    content: Mapped[str] = mapped_column(Text)
+    tags: Mapped[str] = mapped_column(String(512), default="", index=True)
+    created_at: Mapped[datetime] = mapped_column(
         server_default=func.now(),
         index=True,
-        nullable=False,
     )
-    updated_at = Column(
-        DateTime(timezone=True),
+    updated_at: Mapped[datetime | None] = mapped_column(
         server_default=func.now(),
         onupdate=func.now(),
         index=True,
     )
-    
+
     __table_args__ = (
         Index("idx_note_tags_created", "tags", "created_at"),
         Index("idx_note_created_desc", "created_at"),
     )
-    
+
     def __repr__(self) -> str:
         return f"<Note(id={self.id}, title='{self.title[:30]}...')>"
 
 
 class ReminderORM(Base):
     """ORM model for reminders."""
-    
+
     __tablename__ = "reminders"
-    
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    title = Column(String(256), nullable=False)
-    time = Column(DateTime(timezone=True), nullable=False, index=True)
-    description = Column(Text, default="")
-    status = Column(
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(256))
+    time: Mapped[datetime] = mapped_column(index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[ReminderStatusDB] = mapped_column(
         SAEnum(ReminderStatusDB),
         default=ReminderStatusDB.ACTIVE,
         index=True,
-        nullable=False,
     )
-    created_at = Column(
-        DateTime(timezone=True),
+    created_at: Mapped[datetime] = mapped_column(
         server_default=func.now(),
         index=True,
-        nullable=False,
     )
-    
+
     __table_args__ = (
         Index("idx_reminder_status_created", "status", "created_at"),
         Index("idx_reminder_status_time", "status", "time"),
     )
-    
+
     def __repr__(self) -> str:
         return f"<Reminder(id={self.id}, title='{self.title[:30]}', status={self.status.value})>"
 
 
 class CalendarEventORM(Base):
     """ORM model for calendar events."""
-    
+
     __tablename__ = "calendar_events"
-    
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    title = Column(String(256), nullable=False)
-    description = Column(Text, default="")
-    start_time = Column(DateTime(timezone=True), nullable=False, index=True)
-    end_time = Column(DateTime(timezone=True), nullable=False, index=True)
-    location = Column(String(256), default="")
-    all_day = Column(Boolean, default=False)
-    recurrence = Column(String(64), default="")
-    status = Column(
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(256))
+    description: Mapped[str] = mapped_column(Text, default="")
+    start_time: Mapped[datetime] = mapped_column(index=True)
+    end_time: Mapped[datetime] = mapped_column(index=True)
+    location: Mapped[str] = mapped_column(String(256), default="")
+    all_day: Mapped[bool] = mapped_column(default=False)
+    recurrence: Mapped[str] = mapped_column(String(64), default="")
+    status: Mapped[EventStatusDB] = mapped_column(
         SAEnum(EventStatusDB),
         default=EventStatusDB.ACTIVE,
         index=True,
-        nullable=False,
     )
-    created_at = Column(
-        DateTime(timezone=True),
+    created_at: Mapped[datetime] = mapped_column(
         server_default=func.now(),
         index=True,
-        nullable=False,
     )
-    updated_at = Column(
-        DateTime(timezone=True),
+    updated_at: Mapped[datetime | None] = mapped_column(
         server_default=func.now(),
         onupdate=func.now(),
     )
-    
+
     __table_args__ = (
         Index("idx_event_start_status", "start_time", "status"),
         Index("idx_event_date_range", "start_time", "end_time"),
         Index("idx_event_status_created", "status", "created_at"),
     )
-    
+
     def __repr__(self) -> str:
         return f"<CalendarEvent(id={self.id}, title='{self.title[:30]}', status={self.status.value})>"
 
 
 class InteractionLogORM(Base):
     """ORM model for interaction history."""
-    
+
     __tablename__ = "interaction_logs"
-    
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    uuid = Column(String(36), nullable=False, unique=True, index=True)
-    timestamp = Column(
-        DateTime(timezone=True),
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
+    uuid: Mapped[str] = mapped_column(String(36), unique=True, index=True)
+    timestamp: Mapped[datetime] = mapped_column(
         server_default=func.now(),
         index=True,
-        nullable=False,
     )
-    source = Column(String(32), nullable=False, index=True)  # voice, text, api
-    interaction_type = Column(String(32), default="conversation")
-    input_text = Column(Text, nullable=False)
-    response_text = Column(Text, nullable=True)
-    intent_detected = Column(String(128), nullable=True, index=True)
-    tool_used = Column(String(128), nullable=True, index=True)
-    success = Column(Boolean, default=False, index=True)
-    execution_time_ms = Column(Integer, default=0)
-    error_message = Column(Text, nullable=True)
-    
+    source: Mapped[str] = mapped_column(String(32), index=True)  # voice, text, api
+    interaction_type: Mapped[str] = mapped_column(String(32), default="conversation")
+    input_text: Mapped[str] = mapped_column(Text)
+    response_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    intent_detected: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    tool_used: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    success: Mapped[bool] = mapped_column(default=False, index=True)
+    execution_time_ms: Mapped[int] = mapped_column(default=0)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     __table_args__ = (
         Index("idx_log_source_timestamp", "source", "timestamp"),
         Index("idx_log_intent_timestamp", "intent_detected", "timestamp"),
     )
-    
+
     def __repr__(self) -> str:
         return f"<InteractionLog(id={self.id}, source={self.source})>"
 
 
 class MessageORM(Base):
     """ORM model for conversation messages (for persistence across restarts)."""
-    
+
     __tablename__ = "messages"
-    
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    session_id = Column(String(36), nullable=False, index=True)  # Group messages by session
-    role = Column(String(16), nullable=False)  # 'user' or 'assistant'
-    content = Column(Text, nullable=False)
-    tool_used = Column(String(128), nullable=True, index=True)
-    timestamp = Column(
-        DateTime(timezone=True),
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(String(36), index=True)
+    role: Mapped[str] = mapped_column(String(16))  # 'user' or 'assistant'
+    content: Mapped[str] = mapped_column(Text)
+    tool_used: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    timestamp: Mapped[datetime] = mapped_column(
         server_default=func.now(),
         index=True,
-        nullable=False,
     )
-    
+
     __table_args__ = (
         Index("idx_message_session_timestamp", "session_id", "timestamp"),
         Index("idx_message_role_timestamp", "role", "timestamp"),
     )
-    
+
     def __repr__(self) -> str:
         return f"<Message(id={self.id}, role={self.role}, session={self.session_id[:8]}...)>"
 
@@ -285,7 +261,7 @@ class MessageORM(Base):
 # POMODORO MODELS
 # =============================================================================
 
-class PomodoroStateDB(str, enum.Enum):
+class PomodoroStateDB(enum.StrEnum):
     """Pomodoro session state enum for database."""
     IDLE = "idle"
     WORKING = "working"
@@ -304,25 +280,22 @@ class PomodoroSessionORM(Base):
 
     __tablename__ = "pomodoro_sessions"
 
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    state = Column(
+    id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
+    state: Mapped[PomodoroStateDB] = mapped_column(
         SAEnum(PomodoroStateDB),
         default=PomodoroStateDB.IDLE,
-        nullable=False,
         index=True,
     )
-    task_description = Column(Text, default="")
-    started_at = Column(DateTime(timezone=True), nullable=True, index=True)
-    completed_at = Column(DateTime(timezone=True), nullable=True)
-    work_duration_minutes = Column(Integer, default=25, nullable=False)
-    short_break_minutes = Column(Integer, default=5, nullable=False)
-    long_break_minutes = Column(Integer, default=15, nullable=False)
-    cycles_completed = Column(Integer, default=0, nullable=False)
-    created_at = Column(
-        DateTime(timezone=True),
+    task_description: Mapped[str] = mapped_column(Text, default="")
+    started_at: Mapped[datetime | None] = mapped_column(nullable=True, index=True)
+    completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    work_duration_minutes: Mapped[int] = mapped_column(default=25)
+    short_break_minutes: Mapped[int] = mapped_column(default=5)
+    long_break_minutes: Mapped[int] = mapped_column(default=15)
+    cycles_completed: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(
         server_default=func.now(),
         index=True,
-        nullable=False,
     )
 
     __table_args__ = (
@@ -347,15 +320,13 @@ class ProcessedEmailORM(Base):
 
     __tablename__ = "processed_emails"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    message_id = Column(String(512), unique=True, nullable=False, index=True)
-    subject = Column(String(1024), default="")
-    sender = Column(String(512), default="")
-    action_taken = Column(String(256), default="read")  # read | replied | ignored
-    processed_at = Column(
-        DateTime(timezone=True),
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    message_id: Mapped[str] = mapped_column(String(512), unique=True, index=True)
+    subject: Mapped[str] = mapped_column(String(1024), default="")
+    sender: Mapped[str] = mapped_column(String(512), default="")
+    action_taken: Mapped[str] = mapped_column(String(256), default="read")
+    processed_at: Mapped[datetime] = mapped_column(
         server_default=func.now(),
-        nullable=False,
     )
 
     def __repr__(self) -> str:
@@ -376,14 +347,12 @@ class ConversationSummaryORM(Base):
 
     __tablename__ = "conversation_summaries"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    session_id = Column(String(256), nullable=True, index=True)
-    summary = Column(Text, nullable=False, default="")
-    messages_summarized = Column(Integer, default=0)
-    created_at = Column(
-        DateTime(timezone=True),
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    session_id: Mapped[str | None] = mapped_column(String(256), nullable=True, index=True)
+    summary: Mapped[str] = mapped_column(Text, default="")
+    messages_summarized: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(
         server_default=func.now(),
-        nullable=False,
         index=True,
     )
 
@@ -402,17 +371,14 @@ class EntityORM(Base):
     """
     __tablename__ = "graph_entities"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(256), nullable=False, index=True)
-    entity_type = Column(String(64), index=True)  # person, place, project, etc.
-    description = Column(Text, default="")
-    created_at = Column(
-        DateTime(timezone=True),
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(256), index=True)
+    entity_type: Mapped[str | None] = mapped_column(String(64), index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(
         server_default=func.now(),
-        nullable=False,
     )
-    updated_at = Column(
-        DateTime(timezone=True),
+    updated_at: Mapped[datetime | None] = mapped_column(
         server_default=func.now(),
         onupdate=func.now(),
     )
@@ -432,19 +398,16 @@ class RelationshipORM(Base):
     """
     __tablename__ = "graph_relationships"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    subject_id = Column(Integer, index=True, nullable=False)  # Links to EntityORM.id
-    predicate = Column(String(128), index=True, nullable=False) # is_boss_of, works_on, etc.
-    object_id = Column(Integer, index=True, nullable=False)   # Links to EntityORM.id
-    
-    strength = Column(Integer, default=1) # To handle recurring mentions
-    created_at = Column(
-        DateTime(timezone=True),
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    subject_id: Mapped[int] = mapped_column(index=True)
+    predicate: Mapped[str] = mapped_column(String(128), index=True)
+    object_id: Mapped[int] = mapped_column(index=True)
+
+    strength: Mapped[int] = mapped_column(default=1)
+    created_at: Mapped[datetime] = mapped_column(
         server_default=func.now(),
-        nullable=False,
     )
-    updated_at = Column(
-        DateTime(timezone=True),
+    updated_at: Mapped[datetime | None] = mapped_column(
         server_default=func.now(),
         onupdate=func.now(),
     )
@@ -456,5 +419,3 @@ class RelationshipORM(Base):
 
     def __repr__(self) -> str:
         return f"<Relationship(sub={self.subject_id}, pred='{self.predicate}', obj={self.object_id})>"
-
-

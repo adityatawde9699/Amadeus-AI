@@ -810,5 +810,3 @@ You may obtain a copy of the License at
 
 - GitHub: [@adityatawde9699](https://github.com/adityatawde9699)
 - Repository: [github.com/adityatawde9699/Amadeus-AI](https://github.com/adityatawde9699/Amadeus-AI)
-
-

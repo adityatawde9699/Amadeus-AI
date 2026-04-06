@@ -31,7 +31,7 @@ def get_cpu_usage() -> str:
         cpu = psutil.cpu_percent(interval=0.5)
         return f"CPU usage: {cpu:.1f}%"
     except Exception as e:
-        logger.error(f"Error getting CPU usage: {e}")
+        logger.exception(f"Error getting CPU usage: {e}")
         return "CPU information unavailable"
 
 
@@ -48,7 +48,7 @@ def get_memory_usage() -> str:
         total_gb = mem.total / (1024 ** 3)
         return f"Memory: {used_gb:.1f} GB / {total_gb:.1f} GB ({mem.percent:.1f}% used)"
     except Exception as e:
-        logger.error(f"Error getting memory usage: {e}")
+        logger.exception(f"Error getting memory usage: {e}")
         return "Memory information unavailable"
 
 
@@ -64,14 +64,14 @@ def get_disk_usage(path: str = "/") -> str:
         import platform
         if platform.system() == "Windows" and path == "/":
             path = "C:/"
-        
+
         disk = psutil.disk_usage(path)
         used_gb = disk.used / (1024 ** 3)
         total_gb = disk.total / (1024 ** 3)
         free_gb = disk.free / (1024 ** 3)
         return f"Disk: {used_gb:.1f} GB / {total_gb:.1f} GB ({disk.percent:.1f}% used, {free_gb:.1f} GB free)"
     except Exception as e:
-        logger.error(f"Error getting disk usage: {e}")
+        logger.exception(f"Error getting disk usage: {e}")
         return "Disk information unavailable"
 
 
@@ -90,24 +90,24 @@ def get_battery_info() -> str:
         battery = psutil.sensors_battery()
         if battery is None:
             return "No battery detected (desktop system)"
-        
+
         status = "Charging" if battery.power_plugged else "Discharging"
-        
+
         if battery.secsleft != psutil.POWER_TIME_UNLIMITED and battery.secsleft > 0:
             hours = battery.secsleft // 3600
             mins = (battery.secsleft % 3600) // 60
             time_left = f"{hours}h {mins}m remaining"
         else:
             time_left = ""
-        
+
         result = f"Battery: {battery.percent}% - {status}"
         if time_left:
             result += f" ({time_left})"
-        
+
         return result
-        
+
     except Exception as e:
-        logger.error(f"Error getting battery info: {e}")
+        logger.exception(f"Error getting battery info: {e}")
         return "Battery information unavailable"
 
 
@@ -124,7 +124,7 @@ def get_network_info() -> str:
         recv_mb = net.bytes_recv / (1024 ** 2)
         return f"Network: Sent {sent_mb:.1f} MB, Received {recv_mb:.1f} MB"
     except Exception as e:
-        logger.error(f"Error getting network info: {e}")
+        logger.exception(f"Error getting network info: {e}")
         return "Network information unavailable"
 
 
@@ -142,26 +142,23 @@ def get_system_uptime() -> str:
     try:
         import time
         from datetime import datetime
-        
+
         boot_time = psutil.boot_time()
         uptime_seconds = time.time() - boot_time
-        
+
         days = int(uptime_seconds // 86400)
         hours = int((uptime_seconds % 86400) // 3600)
         mins = int((uptime_seconds % 3600) // 60)
-        
+
         boot_datetime = datetime.fromtimestamp(boot_time)
         boot_str = boot_datetime.strftime("%Y-%m-%d %H:%M")
-        
-        if days > 0:
-            uptime_str = f"{days}d {hours}h {mins}m"
-        else:
-            uptime_str = f"{hours}h {mins}m"
-        
+
+        uptime_str = f"{days}d {hours}h {mins}m" if days > 0 else f"{hours}h {mins}m"
+
         return f"System uptime: {uptime_str} (since {boot_str})"
-        
+
     except Exception as e:
-        logger.error(f"Error getting uptime: {e}")
+        logger.exception(f"Error getting uptime: {e}")
         return "Uptime information unavailable"
 
 
@@ -174,30 +171,30 @@ def get_system_uptime() -> str:
 def get_running_processes(count: int = 10) -> str:
     """Get top running processes by memory usage."""
     try:
-        processes = []
-        for proc in psutil.process_iter(['pid', 'name', 'memory_percent']):
+        proc_list: list[dict[str, Any]] = []
+        for proc in psutil.process_iter(["pid", "name", "memory_percent"]):
             try:
-                info = proc.info
-                processes.append({
-                    'pid': info['pid'],
-                    'name': info['name'],
-                    'memory_percent': info['memory_percent'] or 0
+                info: Any = proc.info
+                proc_list.append({
+                    "pid": info.get("pid", 0),
+                    "name": info.get("name", "unknown"),
+                    "memory_percent": float(info.get("memory_percent") or 0),
                 })
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
-        
+
         # Sort by memory usage
-        processes.sort(key=lambda x: x['memory_percent'], reverse=True)
-        top_procs = processes[:count]
-        
+        proc_list.sort(key=lambda x: float(x["memory_percent"]), reverse=True)
+        top_procs = proc_list[:count]
+
         result = f"Top {len(top_procs)} processes by memory:\n"
-        for i, proc in enumerate(top_procs, 1):
-            result += f"{i}. {proc['name']} (PID: {proc['pid']}, Mem: {proc['memory_percent']:.1f}%)\n"
-        
+        for i, p in enumerate(top_procs, 1):
+            result += f"{i}. {p['name']} (PID: {p['pid']}, Mem: {float(p['memory_percent']):.1f}%)\n"
+
         return result.strip()
-        
+
     except Exception as e:
-        logger.error(f"Error getting processes: {e}")
+        logger.exception(f"Error getting processes: {e}")
         return "Process information unavailable"
 
 
@@ -215,7 +212,7 @@ def get_gpu_stats() -> str:
     try:
         # Try NVIDIA GPU via GPUtil
         try:
-            import GPUtil
+            import GPUtil  # type: ignore[import-not-found]
             gpus = GPUtil.getGPUs()
             if gpus:
                 result = "GPU Information:\n"
@@ -226,12 +223,12 @@ def get_gpu_stats() -> str:
                 return result.strip()
         except ImportError:
             pass
-        
+
         # Fallback message
         return "GPU monitoring requires GPUtil. Install with: pip install gputil"
-        
+
     except Exception as e:
-        logger.error(f"Error getting GPU stats: {e}")
+        logger.exception(f"Error getting GPU stats: {e}")
         return "GPU information unavailable"
 
 
@@ -243,22 +240,22 @@ def get_gpu_stats() -> str:
 def get_temperature_sensors() -> str:
     """Get temperature sensor readings."""
     try:
-        temps = psutil.sensors_temperatures()
-        
+        temps = psutil.sensors_temperatures()  # type: ignore[attr-defined]
+
         if not temps:
             return "No temperature sensors found (common on Windows)"
-        
+
         result = "Temperature Sensors:\n"
         for chip, sensors in list(temps.items())[:3]:
             for sensor in sensors[:2]:
                 current = sensor.current
                 label = sensor.label or "Core"
                 result += f"  {chip} {label}: {current}°C\n"
-        
+
         return result.strip()
-        
+
     except Exception as e:
-        logger.error(f"Error getting temperatures: {e}")
+        logger.exception(f"Error getting temperatures: {e}")
         return "Temperature information unavailable"
 
 
@@ -275,17 +272,17 @@ def generate_system_summary() -> str:
     """Generate a comprehensive system status summary."""
     try:
         lines = ["System Status Report", "=" * 30]
-        
+
         # CPU
         cpu = psutil.cpu_percent(interval=0.5)
         lines.append(f"CPU: {cpu:.1f}%")
-        
+
         # Memory
         mem = psutil.virtual_memory()
         mem_used_gb = mem.used / (1024 ** 3)
         mem_total_gb = mem.total / (1024 ** 3)
         lines.append(f"Memory: {mem_used_gb:.1f}/{mem_total_gb:.1f} GB ({mem.percent:.1f}%)")
-        
+
         # Disk
         import platform
         disk_path = "C:/" if platform.system() == "Windows" else "/"
@@ -293,13 +290,13 @@ def generate_system_summary() -> str:
         disk_used_gb = disk.used / (1024 ** 3)
         disk_total_gb = disk.total / (1024 ** 3)
         lines.append(f"Disk: {disk_used_gb:.1f}/{disk_total_gb:.1f} GB ({disk.percent:.1f}%)")
-        
+
         # Battery
         battery = psutil.sensors_battery()
         if battery:
             status = "⚡" if battery.power_plugged else "🔋"
             lines.append(f"Battery: {battery.percent}% {status}")
-        
+
         # Alerts
         alerts = []
         if cpu > 80:
@@ -308,16 +305,16 @@ def generate_system_summary() -> str:
             alerts.append("⚠️ High memory usage")
         if disk.percent > 90:
             alerts.append("⚠️ Low disk space")
-        
+
         if alerts:
             lines.append("")
             lines.append("Alerts:")
             lines.extend(f"  {a}" for a in alerts)
-        
+
         return "\n".join(lines)
-        
+
     except Exception as e:
-        logger.error(f"Error generating system summary: {e}")
+        logger.exception(f"Error generating system summary: {e}")
         return "Error generating system summary"
 
 
@@ -330,21 +327,21 @@ def check_system_alerts() -> str:
     """Check for system alerts and warnings."""
     try:
         alerts = []
-        
+
         # CPU check
         cpu = psutil.cpu_percent(interval=0.5)
         if cpu > 90:
             alerts.append(f"🔴 Critical: CPU usage at {cpu:.1f}%")
         elif cpu > 80:
             alerts.append(f"🟡 Warning: CPU usage at {cpu:.1f}%")
-        
+
         # Memory check
         mem = psutil.virtual_memory()
         if mem.percent > 90:
             alerts.append(f"🔴 Critical: Memory usage at {mem.percent:.1f}%")
         elif mem.percent > 80:
             alerts.append(f"🟡 Warning: Memory usage at {mem.percent:.1f}%")
-        
+
         # Disk check
         import platform
         disk_path = "C:/" if platform.system() == "Windows" else "/"
@@ -353,20 +350,20 @@ def check_system_alerts() -> str:
             alerts.append(f"🔴 Critical: Disk usage at {disk.percent:.1f}%")
         elif disk.percent > 85:
             alerts.append(f"🟡 Warning: Disk usage at {disk.percent:.1f}%")
-        
+
         # Battery check
         battery = psutil.sensors_battery()
         if battery and not battery.power_plugged and battery.percent < 15:
             alerts.append(f"🔴 Critical: Battery at {battery.percent}%")
         elif battery and not battery.power_plugged and battery.percent < 25:
             alerts.append(f"🟡 Warning: Battery at {battery.percent}%")
-        
+
         if alerts:
             return f"System Alerts ({len(alerts)}):\n" + "\n".join(alerts)
         return "✅ No system alerts. All metrics normal."
-        
+
     except Exception as e:
-        logger.error(f"Error checking alerts: {e}")
+        logger.exception(f"Error checking alerts: {e}")
         return "Error checking system alerts"
 
 
@@ -380,7 +377,7 @@ def get_full_system_report() -> str:
     try:
         import platform
         from datetime import datetime
-        
+
         lines = [
             "=" * 50,
             "FULL SYSTEM REPORT",
@@ -396,37 +393,37 @@ def get_full_system_report() -> str:
             "PERFORMANCE",
             "-" * 30,
         ]
-        
+
         # CPU
         cpu = psutil.cpu_percent(interval=0.5)
         cpu_count = psutil.cpu_count()
         lines.append(f"CPU: {cpu:.1f}% ({cpu_count} cores)")
-        
+
         # Memory
         mem = psutil.virtual_memory()
         lines.append(f"Memory: {mem.percent:.1f}% ({mem.used // (1024**3)}/{mem.total // (1024**3)} GB)")
-        
+
         # Disk
         disk_path = "C:/" if platform.system() == "Windows" else "/"
         disk = psutil.disk_usage(disk_path)
         lines.append(f"Disk: {disk.percent:.1f}% ({disk.used // (1024**3)}/{disk.total // (1024**3)} GB)")
-        
+
         # Network
         net = psutil.net_io_counters()
         lines.append(f"Network: ↑{net.bytes_sent // (1024**2)} MB ↓{net.bytes_recv // (1024**2)} MB")
-        
+
         # Battery
         battery = psutil.sensors_battery()
         if battery:
             lines.append(f"Battery: {battery.percent}% ({'Charging' if battery.power_plugged else 'Discharging'})")
-        
+
         lines.append("")
         lines.append("=" * 50)
-        
+
         return "\n".join(lines)
-        
+
     except Exception as e:
-        logger.error(f"Error generating report: {e}")
+        logger.exception(f"Error generating report: {e}")
         return "Error generating full report"
 
 
@@ -437,7 +434,7 @@ def get_full_system_report() -> str:
 def get_monitor_tools() -> list[Tool]:
     """Get all monitor tools for manual registration."""
     tools = []
-    for name, obj in globals().items():
+    for _name, obj in globals().items():
         if hasattr(obj, "_tool_metadata"):
             tools.append(obj._tool_metadata)
     return tools

@@ -21,8 +21,8 @@ Usage:
 import hashlib
 import json
 import logging
-import pickle
-from typing import Optional, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -51,7 +51,7 @@ class CacheService:
     Unified cache for Amadeus AI services.
 
     If a Redis client is provided, it acts as a distributed Redis cache.
-    If Redis is unavailable (Local Zero-Dependency Mode), it falls back seamlessly 
+    If Redis is unavailable (Local Zero-Dependency Mode), it falls back seamlessly
     to a thread-safe in-memory dictionary cache.
     """
 
@@ -66,7 +66,7 @@ class CacheService:
         self._redis = redis
         self._hits = 0
         self._misses = 0
-        
+
         # In-Memory Fallback Cache: dict[key, tuple[expiry_timestamp, value]]
         self._local_cache: dict[str, tuple[float, Any]] = {}
 
@@ -78,7 +78,7 @@ class CacheService:
     # -------------------------------------------------------------------------
     # Core Cache Implementation (Routing between Redis and Local)
     # -------------------------------------------------------------------------
-    
+
     async def _get(self, key: str) -> Any | None:
         if self._redis:
             try:
@@ -100,9 +100,8 @@ class CacheService:
                 if time.time() < expiry:
                     self._hits += 1
                     return value
-                else:
-                    # Evict expired key
-                    del self._local_cache[key]
+                # Evict expired key
+                del self._local_cache[key]
             self._misses += 1
             return None
 

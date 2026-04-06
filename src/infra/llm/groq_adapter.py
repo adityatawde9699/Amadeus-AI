@@ -125,7 +125,7 @@ class GroqAdapter(ILLMService):
                 raise LLMRateLimitError("Groq", retry_after=60)
             if "connection" in error_str or "network" in error_str:
                 raise LLMConnectionError("Groq", str(e))
-            logger.error("Groq error: %s", type(e).__name__)
+            logger.exception("Groq error: %s", type(e).__name__)
             raise LLMResponseError(str(e)) from e
 
     async def generate_with_tools(

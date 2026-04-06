@@ -5,10 +5,8 @@ Implements IConversationRepository using SQLAlchemy async sessions.
 """
 
 import logging
-from datetime import datetime
-from typing import Any
 
-from sqlalchemy import delete, desc, distinct, func, select
+from sqlalchemy import delete, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.interfaces.repositories import IConversationRepository
@@ -20,10 +18,10 @@ logger = logging.getLogger(__name__)
 
 class SQLConversationRepository(IConversationRepository):
     """SQLAlchemy implementation of conversation repository."""
-    
+
     def __init__(self, session: AsyncSession):
         self.session = session
-    
+
     async def add_message(
         self,
         session_id: str,
@@ -41,7 +39,7 @@ class SQLConversationRepository(IConversationRepository):
         self.session.add(message)
         await self.session.commit()
         logger.debug(f"Saved message: session={session_id[:8]}..., role={role}")
-    
+
     async def get_recent_context(
         self,
         session_id: str,
@@ -56,7 +54,7 @@ class SQLConversationRepository(IConversationRepository):
         )
         result = await self.session.execute(stmt)
         messages = result.scalars().all()
-        
+
         # Convert to dicts and reverse to get chronological order
         return [
             {
@@ -67,7 +65,7 @@ class SQLConversationRepository(IConversationRepository):
             }
             for msg in reversed(messages)
         ]
-    
+
     async def get_session_history(self, session_id: str) -> list[dict]:
         """Get all messages for a session."""
         stmt = (
@@ -77,7 +75,7 @@ class SQLConversationRepository(IConversationRepository):
         )
         result = await self.session.execute(stmt)
         messages = result.scalars().all()
-        
+
         return [
             {
                 "id": msg.id,
@@ -88,16 +86,16 @@ class SQLConversationRepository(IConversationRepository):
             }
             for msg in messages
         ]
-    
+
     async def clear_session(self, session_id: str) -> int:
         """Clear all messages for a session."""
         stmt = delete(MessageORM).where(MessageORM.session_id == session_id)
         result = await self.session.execute(stmt)
         await self.session.commit()
-        count = result.rowcount
+        count = result.rowcount  # type: ignore[attr-defined]
         logger.info(f"Cleared {count} messages from session {session_id[:8]}...")
-        return count
-    
+        return int(count) if count is not None else 0
+
     async def list_sessions(self, limit: int = 20) -> list[str]:
         """List recent session IDs."""
         # Get distinct session_ids with their most recent timestamp
