@@ -627,7 +627,7 @@ Guidelines:
                 return (final_response, tool_name)
 
             # Step 7: Parse direct response
-            direct_response = gemini_response.text if hasattr(gemini_response, "text") else str(gemini_response)
+            direct_response = str(gemini_response.text) if hasattr(gemini_response, "text") and gemini_response.text else str(gemini_response)
 
             # Increment Prometheus LLM call counter (conversational, no tool)
             try:
