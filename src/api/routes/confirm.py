@@ -12,6 +12,8 @@ injected here via FastAPI's dependency injection system.
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 
@@ -41,7 +43,7 @@ class ConfirmStatusResponse(BaseModel):
 # DEPENDENCY: Get callback singleton from app.state
 # =============================================================================
 
-def get_confirmation_callback(request: Request):
+def get_confirmation_callback(request: Request) -> Any:
     """Retrieve the shared APIConfirmationCallback from application state."""
     callback = getattr(request.app.state, "confirmation_callback", None)
     if callback is None:
@@ -64,8 +66,8 @@ def get_confirmation_callback(request: Request):
 async def resolve_confirmation(
     request_id: str,
     body: ConfirmRequest,
-    callback=Depends(get_confirmation_callback),
-):
+    callback: Any = Depends(get_confirmation_callback),
+) -> dict[str, str]:
     """
     Resolve a HITL confirmation request.
 
@@ -93,8 +95,8 @@ async def resolve_confirmation(
 )
 async def get_confirmation_status(
     request_id: str,
-    callback=Depends(get_confirmation_callback),
-):
+    callback: Any = Depends(get_confirmation_callback),
+) -> ConfirmStatusResponse:
     """
     Return the current status of a pending HITL confirmation request.
 
@@ -121,7 +123,7 @@ async def get_confirmation_status(
     summary="List all pending confirmation requests (admin/debug)",
 )
 async def list_pending_confirmations(
-    callback=Depends(get_confirmation_callback),
-):
+    callback: Any = Depends(get_confirmation_callback),
+) -> dict[str, list[Any]]:
     """List all currently pending HITL approval requests."""
     return {"pending": callback.list_pending()}

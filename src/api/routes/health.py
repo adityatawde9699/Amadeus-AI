@@ -3,27 +3,27 @@ Health and system status API routes.
 """
 
 import psutil
-
 from fastapi import APIRouter, Depends
 
-from src.core.config import get_settings
-from src.core.domain.models import SystemStatus, HealthResponse, SystemStatusResponse
-from src.container import get_amadeus_service
 from src.app.services.amadeus_service import AmadeusService
+from src.container import get_amadeus_service
+from src.core.config import get_settings
+from src.core.domain.models import HealthResponse, SystemStatusResponse
+
 
 router = APIRouter()
 settings = get_settings()
 
 
 @router.get("/health/detailed", response_model=HealthResponse, tags=["Health"])
-async def detailed_health(amadeus: AmadeusService = Depends(get_amadeus_service)):
+async def detailed_health(amadeus: AmadeusService = Depends(get_amadeus_service)) -> HealthResponse:
     """
     Detailed health check with component status.
     """
     cache_stats = None
     if amadeus.cache_service:
         cache_stats = amadeus.cache_service.get_stats()
-        
+
     return HealthResponse(
         status="healthy",
         service=settings.ASSISTANT_NAME,
@@ -31,64 +31,64 @@ async def detailed_health(amadeus: AmadeusService = Depends(get_amadeus_service)
         environment=settings.ENV,
         database="connected" if settings.DATABASE_URL else "not configured",
         voice_enabled=settings.VOICE_ENABLED,
-        classifier_enabled=getattr(amadeus, 'classifier_enabled', False),
+        classifier_enabled=getattr(amadeus, "classifier_enabled", False),
         cache_stats=cache_stats,
     )
 
 
 @router.get("/system/status", response_model=SystemStatusResponse, tags=["System"])
-async def get_system_status():
+async def get_system_status() -> SystemStatusResponse:
     """
     Get current system status including CPU, memory, disk, and battery.
     """
     # CPU usage
     cpu_usage = psutil.cpu_percent(interval=0.1)
-    
+
     # Memory usage
     memory = psutil.virtual_memory()
     memory_usage = memory.percent
-    
+
     # Disk usage
     disk = psutil.disk_usage("/")
     disk_usage = disk.percent
-    
+
     # Battery (may not exist on desktop)
     battery = psutil.sensors_battery()
     battery_percent = battery.percent if battery else None
     is_charging = battery.power_plugged if battery else False
-    
+
     # Uptime
     boot_time = psutil.boot_time()
     import time
     uptime_seconds = time.time() - boot_time
-    
+
     # Check for alerts
     alerts = []
     thresholds = settings.get_system_thresholds()
-    
+
     if cpu_usage >= thresholds["cpu"]["critical"]:
         alerts.append(f"CRITICAL: CPU usage at {cpu_usage:.1f}%")
     elif cpu_usage >= thresholds["cpu"]["warning"]:
         alerts.append(f"WARNING: CPU usage at {cpu_usage:.1f}%")
-    
+
     if memory_usage >= thresholds["memory"]["critical"]:
         alerts.append(f"CRITICAL: Memory usage at {memory_usage:.1f}%")
     elif memory_usage >= thresholds["memory"]["warning"]:
         alerts.append(f"WARNING: Memory usage at {memory_usage:.1f}%")
-    
+
     if disk_usage >= thresholds["disk"]["critical"]:
         alerts.append(f"CRITICAL: Disk usage at {disk_usage:.1f}%")
     elif disk_usage >= thresholds["disk"]["warning"]:
         alerts.append(f"WARNING: Disk usage at {disk_usage:.1f}%")
-    
+
     if battery_percent is not None:
         if battery_percent <= thresholds["battery"]["critical"] and not is_charging:
             alerts.append(f"CRITICAL: Battery at {battery_percent:.1f}%")
         elif battery_percent <= thresholds["battery"]["low"] and not is_charging:
             alerts.append(f"WARNING: Battery at {battery_percent:.1f}%")
-    
+
     is_healthy = len([a for a in alerts if "CRITICAL" in a]) == 0
-    
+
     return SystemStatusResponse(
         cpu_usage=cpu_usage,
         memory_usage=memory_usage,
@@ -101,19 +101,20 @@ async def get_system_status():
     )
 
 @router.get("/usage/daily", tags=["Health"])
-async def get_daily_usage():
+async def get_daily_usage() -> dict[str, object]:
     """Monitor daily API usage to stay within free tiers."""
-    from src.container import get_llm_router
     from datetime import date
-    
+
+    from src.container import get_llm_router
+
     llm_router = get_llm_router()
-    
+
     # Get SearchRouter instance (you'll need to make this accessible)
     # For now, return static structure
-    
+
     return {
         "date": date.today().isoformat(),
-        "llm": getattr(llm_router, "get_usage_report", lambda: {})() if hasattr(llm_router, "get_usage_report") else {},
+        "llm": getattr(llm_router, "get_usage_report", dict)() if hasattr(llm_router, "get_usage_report") else {},
         "search": {
             "brave_daily_count": "See logs",  # Add monitoring
             "brave_daily_limit": 60,

@@ -139,7 +139,7 @@ class WhatsAppAdapter:
                 logger.info("whatsapp_message_sent", extra={"to": to_phone})
                 return True
         except httpx.HTTPStatusError as exc:
-            logger.error(
+            logger.exception(
                 "whatsapp_send_failed",
                 extra={"status": exc.response.status_code, "body": exc.response.text},
             )
@@ -262,7 +262,7 @@ class WhatsAppAdapter:
                 )
                 return True
         except httpx.HTTPStatusError as exc:
-            logger.error(
+            logger.exception(
                 "whatsapp_interactive_buttons_failed status=%s body=%s",
                 exc.response.status_code,
                 exc.response.text,
@@ -333,7 +333,7 @@ class WhatsAppAdapter:
                 )
                 return True
         except httpx.HTTPStatusError as exc:
-            logger.error(
+            logger.exception(
                 "whatsapp_template_failed status=%s body=%s",
                 exc.response.status_code,
                 exc.response.text,

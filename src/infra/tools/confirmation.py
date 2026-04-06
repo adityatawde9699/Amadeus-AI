@@ -182,7 +182,7 @@ class APIConfirmationCallback(ConfirmationCallback):
                 asyncio.shield(confirmation.future),
                 timeout=self.timeout_seconds,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(
                 "confirmation_timeout",
                 extra={"tool": tool_name, "request_id": request_id},

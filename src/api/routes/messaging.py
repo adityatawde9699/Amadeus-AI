@@ -16,9 +16,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from src.api.middleware.authentication import verify_jwt_token
+from src.infra.messaging.email_adapter import EmailAdapter
 from src.infra.messaging.telegram_adapter import TelegramAdapter
 from src.infra.messaging.whatsapp_adapter import WhatsAppAdapter
-from src.infra.messaging.email_adapter import EmailAdapter
 
 
 logger = logging.getLogger(__name__)
@@ -129,7 +129,7 @@ async def send_message(
             detail=f"Invalid recipient for {req.channel} channel: {e}",
         ) from e
     except Exception as e:
-        logger.error("messaging_send_error channel=%s error=%s", req.channel, type(e).__name__)
+        logger.exception("messaging_send_error channel=%s error=%s", req.channel, type(e).__name__)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to send message",

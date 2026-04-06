@@ -6,7 +6,7 @@ defining and managing tools in a consistent way.
 
 Usage:
     from src.infra.tools.base import tool, ToolCategory
-    
+
     @tool(
         name="get_weather",
         description="Get current weather for a location",
@@ -20,16 +20,18 @@ Usage:
 import asyncio
 import inspect
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from functools import partial, wraps
-from typing import TYPE_CHECKING, Any, Callable, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar, cast
+
 
 if TYPE_CHECKING:
     from src.infra.tools.confirmation import ConfirmationCallback
 
-from src.core.domain.models import ToolDefinition, ToolExecutionResult, PermissionProfile
+from src.core.domain.models import PermissionProfile, ToolDefinition, ToolExecutionResult
 
 
 logger = logging.getLogger(__name__)
@@ -41,7 +43,7 @@ F = TypeVar("F", bound=Callable[..., Any])
 # TOOL CATEGORIES
 # =============================================================================
 
-class ToolCategory(str, Enum):
+class ToolCategory(StrEnum):
     """Categories for organizing tools."""
     SYSTEM = "system"           # Hardware, OS, files
     INFORMATION = "information"  # Web, search, calculations
@@ -57,7 +59,7 @@ class ToolCategory(str, Enum):
 class Tool:
     """
     Enhanced tool definition with metadata and execution support.
-    
+
     Attributes:
         name: Unique identifier for the tool
         function: The callable to execute
@@ -74,7 +76,7 @@ class Tool:
     parameters: dict = field(default_factory=dict)
     requires_confirmation: bool = False
     is_async: bool = False
-    
+
     def get_preview(self, args: dict[str, Any]) -> str:
         """
         Generate a human-readable preview of what this tool will do.
@@ -83,11 +85,11 @@ class Tool:
         params = ", ".join(f"{k}={v}" for k, v in args.items())
         return f"Execute {self.name}({params})"
 
-    
-    def __post_init__(self):
+
+    def __post_init__(self) -> None:
         """Auto-detect if function is async."""
         self.is_async = asyncio.iscoroutinefunction(self.function)
-    
+
     def to_definition(self) -> ToolDefinition:
         """Convert to domain ToolDefinition model."""
         return ToolDefinition(
@@ -98,23 +100,23 @@ class Tool:
             requires_confirmation=self.requires_confirmation,
             is_async=self.is_async,
         )
-    
+
     def to_gemini_declaration(self) -> dict:
         """
         Convert to Gemini function declaration format.
-        
+
         Returns:
             Dict in format expected by google.generativeai
         """
         # Build parameter properties
         properties = {}
         required = []
-        
+
         for param_name, param_info in self.parameters.items():
             if isinstance(param_info, dict):
                 # FIXED: Capitalize type for Gemini SDK (string -> STRING)
                 p_type = param_info.get("type", "string").upper()
-                
+
                 properties[param_name] = {
                     "type": p_type,
                     "description": param_info.get("description", ""),
@@ -124,16 +126,16 @@ class Tool:
             else:
                 # Simple type string like 'str', 'int'
                 type_map = {
-                    "str": "STRING", 
-                    "int": "INTEGER", 
-                    "float": "NUMBER", 
+                    "str": "STRING",
+                    "int": "INTEGER",
+                    "float": "NUMBER",
                     "bool": "BOOLEAN"
                 }
                 properties[param_name] = {
                     "type": type_map.get(param_info, "STRING"),
                 }
                 required.append(param_name)
-        
+
         return {
             "name": self.name,
             "description": self.description,
@@ -158,7 +160,7 @@ def tool(
 ) -> Callable[[F], F]:
     """
     Decorator to register a function as a tool.
-    
+
     Usage:
         @tool(
             name="get_weather",
@@ -168,30 +170,30 @@ def tool(
         )
         async def get_weather(location: str) -> str:
             ...
-    
+
     Args:
         name: Unique tool name
         description: Description for LLM
         category: Tool category
         parameters: Parameter schema dict
         requires_confirmation: Whether to confirm before executing
-    
+
     Returns:
         Decorated function with _tool_metadata attribute
     """
     def decorator(func: F) -> F:
         @wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
             return func(*args, **kwargs)
-        
+
         @wraps(func)
-        async def async_wrapper(*args, **kwargs):
+        async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             return await func(*args, **kwargs)
-        
+
         # Choose wrapper based on async
-        final_func = async_wrapper if asyncio.iscoroutinefunction(func) else wrapper
-        
-        # Attach metadata
+        final_func: Any = async_wrapper if asyncio.iscoroutinefunction(func) else wrapper
+
+        # Attach metadata as a runtime attribute (cast tells mypy to treat it as F)
         final_func._tool_metadata = Tool(
             name=name,
             function=func,  # Store original function
@@ -200,9 +202,9 @@ def tool(
             parameters=parameters or {},
             requires_confirmation=requires_confirmation,
         )
-        
-        return final_func
-    
+
+        return cast(F, final_func)
+
     return decorator
 
 
@@ -236,7 +238,7 @@ class ToolExecutor:
         self.retry_delay = retry_delay
         self.confirmation_callback = confirmation_callback
         self.execution_history: list[dict] = []
-    
+
     async def execute(
         self,
         tool: Tool,
@@ -245,12 +247,12 @@ class ToolExecutor:
     ) -> ToolExecutionResult:
         """
         Execute a tool with proper error handling and async support.
-        
+
         Args:
             tool: The tool to execute
             args: Arguments to pass to the tool function
             permission_profile: The security profile of the requesting user
-            
+
         Returns:
             ToolExecutionResult with success status and result/error
         """
@@ -323,7 +325,7 @@ class ToolExecutor:
 
                 # Validate arguments against expected parameters
                 validated_args = self._validate_args(tool, args)
-                
+
                 # Execute based on async or sync
                 if tool.is_async:
                     result = await tool.function(**validated_args)
@@ -334,10 +336,10 @@ class ToolExecutor:
                         None,
                         partial(tool.function, **validated_args)
                     )
-                
+
                 # Calculate execution time
                 execution_time_ms = (datetime.now() - start_time).total_seconds() * 1000
-                
+
                 # Log successful execution
                 self.execution_history.append({
                     "tool": tool.name,
@@ -345,14 +347,14 @@ class ToolExecutor:
                     "success": True,
                     "timestamp": datetime.now().isoformat(),
                 })
-                
+
                 return ToolExecutionResult(
                     tool_name=tool.name,
                     success=True,
                     result=result,
                     execution_time_ms=execution_time_ms,
                 )
-                
+
             except TypeError as e:
                 logger.warning(f"Argument error for {tool.name}: {e}")
                 if attempt == self.max_retries:
@@ -362,7 +364,7 @@ class ToolExecutor:
                         error_message=f"Invalid arguments for {tool.name}: {e}",
                         execution_time_ms=(datetime.now() - start_time).total_seconds() * 1000,
                     )
-                    
+
             except Exception as e:
                 logger.error(f"Tool execution error ({tool.name}): {e}", exc_info=True)
                 if attempt == self.max_retries:
@@ -380,34 +382,34 @@ class ToolExecutor:
                         execution_time_ms=(datetime.now() - start_time).total_seconds() * 1000,
                     )
                 await asyncio.sleep(self.retry_delay)
-        
+
         return ToolExecutionResult(
             tool_name=tool.name,
             success=False,
             error_message="Max retries exceeded",
             execution_time_ms=(datetime.now() - start_time).total_seconds() * 1000,
         )
-    
+
     def _validate_args(self, tool: Tool, args: dict[str, Any]) -> dict[str, Any]:
         """Validate and clean arguments for a tool."""
         sig = inspect.signature(tool.function)
         valid_params = set(sig.parameters.keys())
-        
+
         # Filter to only valid parameters
         cleaned = {k: v for k, v in args.items() if k in valid_params}
-        
+
         # Check for required parameters
         for name, param in sig.parameters.items():
             if param.default == inspect.Parameter.empty and name not in cleaned:
                 if name not in ("self", "cls"):
                     logger.warning(f"Missing required parameter '{name}' for {tool.name}")
-        
+
         return cleaned
-    
+
     def get_recent_executions(self, limit: int = 10) -> list[dict]:
         """Get recent execution history."""
         return self.execution_history[-limit:]
-    
+
     def clear_history(self) -> None:
         """Clear execution history."""
         self.execution_history.clear()

@@ -10,9 +10,8 @@ Endpoints:
 import logging
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Header, Query, Request, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request, status
 
-from src.core.config import get_settings
 from src.infra.messaging.telegram_adapter import TelegramAdapter
 from src.infra.messaging.whatsapp_adapter import WhatsAppAdapter
 
@@ -37,7 +36,7 @@ async def _process_and_reply_telegram(chat_id: int, user_text: str) -> None:
 
         service = AmadeusService(session_id=str(chat_id))
         await service.initialize()
-        
+
         response = await service.handle_command(user_text, source="telegram")
         reply_text = response if isinstance(response, str) else str(response)
         await _telegram.send_message(chat_id, reply_text)
@@ -53,7 +52,7 @@ async def _process_and_reply_whatsapp(phone: str, user_text: str, message_id: st
 
         service = AmadeusService(session_id=phone)
         await service.initialize()
-        
+
         response = await service.handle_command(user_text, source="whatsapp")
         reply_text = response if isinstance(response, str) else str(response)
         await _whatsapp.send_message(phone, reply_text)

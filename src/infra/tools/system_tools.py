@@ -11,7 +11,6 @@ import platform
 import shutil
 import subprocess
 import tempfile
-import time
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +22,7 @@ from src.infra.tools.base import Tool, ToolCategory, tool
 logger = logging.getLogger(__name__)
 
 from src.infra.system.app_registry import AppRegistry
+
 
 # Initialize global registry locally for tools since tool execution happens statically
 # In a fully DI environment, this might be injected into ToolConfig
@@ -44,13 +44,13 @@ def open_program(app_name: str | None = None, program_name: str | None = None, *
     target_app = app_name or program_name or kwargs.get("name")
     if not target_app:
         return "Error: No application name provided."
-    
+
     app_exec = app_registry.get_executable(target_app)
     if not app_exec:
         return f"Cannot find '{target_app}' on this system. You may need to trigger a system scan using `scan_system_applications`."
-    
+
     logger.info(f"Opening application: {target_app} ({app_exec})")
-    
+
     try:
         if platform.system() == "Windows":
             try:
@@ -65,11 +65,11 @@ def open_program(app_name: str | None = None, program_name: str | None = None, *
             subprocess.Popen(["gtk-launch", app_exec], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)  # noqa: S603
         else:
             return f"Unsupported operating system: {platform.system()}"
-        
+
         return f"Opening {target_app}..."
-        
+
     except Exception as e:
-        logger.error(f"Error launching app {target_app}: {e}")
+        logger.exception(f"Error launching app {target_app}: {e}")
         return f"Failed to open {target_app}: {e}"
 
 @tool(
@@ -100,24 +100,24 @@ def terminate_program(process_name: str | None = None, app_name: str | None = No
     target = process_name or app_name or kwargs.get("name")
     if not target:
         return "Error: No process name provided."
-    
+
     try:
         count = 0
-        for proc in psutil.process_iter(['pid', 'name']):
+        for proc in psutil.process_iter(["pid", "name"]):
             try:
-                if target.lower() in proc.info['name'].lower():
-                    psutil.Process(proc.info['pid']).terminate()
+                if target.lower() in proc.info["name"].lower():
+                    psutil.Process(proc.info["pid"]).terminate()
                     count += 1
                     logger.info(f"Terminated: {proc.info['name']} (PID: {proc.info['pid']})")
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
-        
+
         if count > 0:
             return f"Terminated {count} process(es) matching '{target}'"
         return f"No processes found matching '{target}'"
-        
+
     except Exception as e:
-        logger.error(f"Error terminating '{target}': {e}")
+        logger.exception(f"Error terminating '{target}': {e}")
         return f"Error terminating process: {e}"
 
 
@@ -157,7 +157,7 @@ def search_file(file_name: str | None = None, name: str | None = None, **kwargs:
     if not search_roots:
         return (
             "Search is restricted to configured directories, but none of them exist "
-            f"on this system. Check SEARCH_ALLOWED_DIRS in your .env file."
+            "on this system. Check SEARCH_ALLOWED_DIRS in your .env file."
         )
 
     logger.info("Searching for '%s' across %d allowed dirs", target, len(search_roots))
@@ -205,25 +205,25 @@ def copy_file(source_path: str | None = None, destination_path: str | None = Non
     """Copy a file from source to destination."""
     src = source_path or kwargs.get("source") or kwargs.get("src")
     dst = destination_path or kwargs.get("destination") or kwargs.get("dest")
-    
+
     if not src or not dst:
         return "Error: Source and destination paths required."
-    
+
     try:
         src_path = Path(src).resolve()
         dst_path = Path(dst).resolve()
-        
+
         if not src_path.is_file():
             return f"Source file does not exist: {src}"
-        
+
         dst_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src_path, dst_path)
-        
+
         logger.info(f"File copied: {src_path} → {dst_path}")
         return f"File copied to {dst_path}"
-        
+
     except Exception as e:
-        logger.error(f"Error copying file: {e}")
+        logger.exception(f"Error copying file: {e}")
         return f"Error copying file: {e}"
 
 
@@ -240,25 +240,25 @@ def move_file(source_path: str | None = None, destination_path: str | None = Non
     """Move a file from source to destination."""
     src = source_path or kwargs.get("source")
     dst = destination_path or kwargs.get("destination")
-    
+
     if not src or not dst:
         return "Error: Source and destination paths required."
-    
+
     try:
         src_path = Path(src).resolve()
         dst_path = Path(dst).resolve()
-        
+
         if not src_path.is_file():
             return f"Source file does not exist: {src}"
-        
+
         dst_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(src_path), str(dst_path))
-        
+
         logger.info(f"File moved: {src_path} → {dst_path}")
         return f"File moved to {dst_path}"
-        
+
     except Exception as e:
-        logger.error(f"Error moving file: {e}")
+        logger.exception(f"Error moving file: {e}")
         return f"Error moving file: {e}"
 
 
@@ -274,25 +274,25 @@ def delete_file(file_path: str | None = None, path: str | None = None, **kwargs:
     target = file_path or path or kwargs.get("file")
     if not target:
         return "Error: No file path provided."
-    
+
     try:
         file_to_delete = Path(target).resolve()
-        
+
         if not file_to_delete.is_file():
             return f"File does not exist: {target}"
-        
+
         # Create backup in temp directory
         backup_dir = Path(tempfile.gettempdir()) / "deleted_files_backup"
         backup_dir.mkdir(exist_ok=True)
         backup_path = backup_dir / file_to_delete.name
         shutil.copy2(file_to_delete, backup_path)
-        
+
         os.remove(file_to_delete)
         logger.info(f"File deleted: {file_to_delete} (backup: {backup_path})")
-        return f"File deleted (backup saved to temp folder)"
-        
+        return "File deleted (backup saved to temp folder)"
+
     except Exception as e:
-        logger.error(f"Error deleting file: {e}")
+        logger.exception(f"Error deleting file: {e}")
         return f"Error deleting file: {e}"
 
 
@@ -307,21 +307,21 @@ def create_folder(folder_name: str | None = None, name: str | None = None, **kwa
     target = folder_name or name or kwargs.get("path")
     if not target:
         return "Error: No folder name provided."
-    
+
     try:
         folder_path = Path(target).resolve()
-        
+
         if folder_path.exists():
             if folder_path.is_dir():
                 return f"Folder already exists: {folder_path}"
             return f"Path exists but is not a directory: {folder_path}"
-        
+
         folder_path.mkdir(parents=True, exist_ok=True)
         logger.info(f"Folder created: {folder_path}")
         return f"Folder created: {folder_path}"
-        
+
     except Exception as e:
-        logger.error(f"Error creating folder: {e}")
+        logger.exception(f"Error creating folder: {e}")
         return f"Error creating folder: {e}"
 
 
@@ -335,17 +335,18 @@ def create_folder(folder_name: str | None = None, name: str | None = None, **kwa
 from src.infra.tools.office_tools import get_office_tools
 from src.infra.tools.slack_tools import get_slack_tools
 
+
 def get_system_tools() -> list[Tool]:
     """Get all system tools for manual registration."""
     tools = []
     # Collect tools from this module (system_tools.py)
-    for name, obj in globals().items():
+    for _name, obj in globals().items():
         if hasattr(obj, "_tool_metadata"):
             tools.append(obj._tool_metadata)
-    
+
     # Collect from office and slack sub-modules
     tools.extend(get_office_tools())
     tools.extend(get_slack_tools())
-    
+
     return tools
 

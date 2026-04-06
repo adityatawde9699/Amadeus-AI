@@ -11,15 +11,14 @@ Production notes:
 
 import asyncio
 import logging
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Any
 
 import aiosmtplib
 from bs4 import BeautifulSoup
-from imap_tools import MailBox, AND
+from imap_tools import AND, MailBox
 
 from src.core.config import get_settings
 
@@ -105,16 +104,17 @@ class EmailAdapter:
         """Synchronous IMAP fetch — called inside asyncio.to_thread."""
         results: list[ParsedEmail] = []
 
+        assert self._email is not None and self._password is not None
         with MailBox(self._imap_server).login(self._email, self._password) as mailbox:
             for msg in mailbox.fetch(AND(seen=False), limit=limit, reverse=True):
                 body = msg.text or _strip_html(msg.html or "")
                 results.append(
                     ParsedEmail(
-                        uid=msg.uid,
+                        uid=str(msg.uid or ""),
                         message_id=msg.headers.get("message-id", [""])[0],
                         subject=msg.subject or "(no subject)",
                         sender=msg.from_ or "unknown",
-                        date=msg.date or datetime.now(tz=timezone.utc),
+                        date=msg.date or datetime.now(tz=UTC),
                         body_plain=body[:4000],
                         has_attachments=bool(msg.attachments),
                     )
@@ -151,7 +151,7 @@ class EmailAdapter:
             return False
 
         message = MIMEMultipart()
-        message["From"] = self._email
+        message["From"] = self._email or ""
         message["To"] = to
         message["Subject"] = subject
         if reply_to_message_id:
@@ -160,6 +160,7 @@ class EmailAdapter:
         message.attach(MIMEText(body, "plain"))
 
         try:
+            assert self._email is not None and self._password is not None
             await aiosmtplib.send(
                 message,
                 hostname=self._smtp_server,

@@ -5,8 +5,7 @@ Implements IPomodoroRepository using async SQLAlchemy sessions.
 Follows the same pattern as SQLAlchemyTaskRepository.
 """
 
-from datetime import datetime, timezone
-from typing import Sequence
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -86,9 +85,9 @@ class SQLAlchemyPomodoroRepository(IPomodoroRepository):
             return None
         orm.state = PomodoroStateDB(new_state.value)
         if new_state == PomodoroState.WORKING and orm.started_at is None:
-            orm.started_at = datetime.now(timezone.utc)
+            orm.started_at = datetime.now(UTC)
         if new_state == PomodoroState.COMPLETED:
-            orm.completed_at = datetime.now(timezone.utc)
+            orm.completed_at = datetime.now(UTC)
         if cycles_completed is not None:
             orm.cycles_completed = cycles_completed
         await self._session.flush()
@@ -105,8 +104,8 @@ class SQLAlchemyPomodoroRepository(IPomodoroRepository):
 
     async def count_completed_today(self) -> int:
         """Count Pomodoro cycles completed today (UTC)."""
-        from sqlalchemy import func, and_
-        today_start = datetime.now(timezone.utc).replace(
+        from sqlalchemy import and_, func
+        today_start = datetime.now(UTC).replace(
             hour=0, minute=0, second=0, microsecond=0
         )
         result = await self._session.execute(

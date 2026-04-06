@@ -12,12 +12,13 @@ The container.py calls `build_*_tools(repo)` at startup and registers them.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from src.core.domain.models import PomodoroSession, PomodoroState
 from src.core.interfaces.repositories import IPomodoroRepository, ITaskRepository
 from src.infra.tools.base import Tool, ToolCategory, tool
+
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 # The injected factory functions below are the preferred approach.
 # =============================================================================
 
-def _get_session():
+def _get_session() -> Any:
     """Get async session — used by legacy bare-function tools."""
     from src.infra.persistence.database import get_session
     return get_session()
@@ -53,7 +54,7 @@ def build_task_tools(task_repo: ITaskRepository) -> list[Tool]:
             created = await task_repo.create(Task(content=text))
             return f"Task added: '{text}' (ID: {created.id})"
         except Exception as e:
-            logger.error("add_task failed: %s", e)
+            logger.exception("add_task failed: %s", e)
             return f"Error adding task: {e}"
 
     async def list_tasks(status_filter: str | None = None, **kwargs: Any) -> str:
@@ -72,7 +73,7 @@ def build_task_tools(task_repo: ITaskRepository) -> list[Tool]:
                 lines.append(f"  {icon} [{t.id}] {t.content}")
             return "\n".join(lines)
         except Exception as e:
-            logger.error("list_tasks failed: %s", e)
+            logger.exception("list_tasks failed: %s", e)
             return f"Error listing tasks: {e}"
 
     async def complete_task(identifier: str | None = None, task_id: str | None = None, **kwargs: Any) -> str:
@@ -88,12 +89,14 @@ def build_task_tools(task_repo: ITaskRepository) -> list[Tool]:
             # Fallback: find by content
             tasks = await task_repo.get_all()
             match = next((t for t in tasks if target.lower() in t.content.lower()), None)
-            if not match:
-                return f"Task '{target}' not found."
-            updated = await task_repo.mark_complete(match.id)
-            return f"✅ Task '{updated.content}' marked as completed."
+            if match and match.id is not None:
+                updated = await task_repo.mark_complete(match.id)
+                if updated:
+                    return f"✅ Task '{updated.content}' marked as completed."
+                return f"Task '{target}' could not be completed."
+            return f"Task '{target}' not found."
         except Exception as e:
-            logger.error("complete_task failed: %s", e)
+            logger.exception("complete_task failed: %s", e)
             return f"Error completing task: {e}"
 
     async def get_task_summary(**kwargs: Any) -> str:
@@ -106,7 +109,7 @@ def build_task_tools(task_repo: ITaskRepository) -> list[Tool]:
                 f"({summary['pending']} pending, {summary['completed']} completed)"
             )
         except Exception as e:
-            logger.error("get_task_summary failed: %s", e)
+            logger.exception("get_task_summary failed: %s", e)
             return f"Error getting summary: {e}"
 
     return [
@@ -162,7 +165,7 @@ def build_pomodoro_tools(pomodoro_repo: IPomodoroRepository) -> list[Tool]:
             state=PomodoroState.WORKING,
             task_description=task,
             work_duration_minutes=duration,
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
         ))
         return (
             f"🍅 Pomodoro started! Task: '{task}' | Duration: {duration} min | ID: {session.id}\n"
@@ -174,7 +177,8 @@ def build_pomodoro_tools(pomodoro_repo: IPomodoroRepository) -> list[Tool]:
         active = await pomodoro_repo.get_active()
         if not active:
             return "No active Pomodoro session to stop."
-        updated = await pomodoro_repo.update_state(active.id, PomodoroState.COMPLETED)
+        if active and active.id is not None:
+            updated = await pomodoro_repo.update_state(active.id, PomodoroState.COMPLETED)
         if updated:
             return f"⏹️ Pomodoro session stopped (ID: {updated.id}, task: '{updated.task_description}')"
         return "Could not stop the Pomodoro session."
@@ -188,7 +192,7 @@ def build_pomodoro_tools(pomodoro_repo: IPomodoroRepository) -> list[Tool]:
 
         elapsed = ""
         if active.started_at:
-            diff = datetime.now(timezone.utc) - active.started_at.replace(tzinfo=timezone.utc)
+            diff = datetime.now(UTC) - active.started_at.replace(tzinfo=UTC)
             mins = int(diff.total_seconds() // 60)
             elapsed = f" | Elapsed: {mins} min"
 
@@ -229,7 +233,7 @@ def build_pomodoro_tools(pomodoro_repo: IPomodoroRepository) -> list[Tool]:
 # These use _get_session() directly and will be removed in Phase 4.
 # =============================================================================
 
-from sqlalchemy import case, delete, func, select, update  # noqa: E402
+from sqlalchemy import select  # noqa: E402
 
 
 @tool(
@@ -253,7 +257,7 @@ async def create_note(title: str | None = None, content: str | None = None, **kw
             await db.refresh(note)
             return f"📝 Note created: '{note_title}' (ID: {note.id})"
     except Exception as e:
-        logger.error("create_note failed: %s", e)
+        logger.exception("create_note failed: %s", e)
         return f"Error creating note: {e}"
 
 
@@ -279,7 +283,7 @@ async def list_notes(**kwargs: Any) -> str:
                 lines.append(f"  ... and {len(notes) - 15} more")
             return "\n".join(lines)
     except Exception as e:
-        logger.error("list_notes failed: %s", e)
+        logger.exception("list_notes failed: %s", e)
         return f"Error listing notes: {e}"
 
 
@@ -307,7 +311,7 @@ async def get_note(identifier: str | None = None, **kwargs: Any) -> str:
                 return f"Note '{target}' not found."
             return f"📝 {note.title}\n{'─' * 30}\n{note.content}"
     except Exception as e:
-        logger.error("get_note failed: %s", e)
+        logger.exception("get_note failed: %s", e)
         return f"Error getting note: {e}"
 
 
@@ -330,7 +334,7 @@ async def add_reminder(title: str | None = None, time: str | None = None, **kwar
         parsed_time = parse_date(reminder_time) if reminder_time else None
     except ImportError:
         parsed_time = None
-    parsed_time = parsed_time or datetime.now(timezone.utc)
+    parsed_time = parsed_time or datetime.now(UTC)
 
     try:
         async with _get_session() as db:
@@ -342,7 +346,7 @@ async def add_reminder(title: str | None = None, time: str | None = None, **kwar
             time_str = parsed_time.strftime("%Y-%m-%d %H:%M")
             return f"⏰ Reminder set: '{reminder_title}' at {time_str}"
     except Exception as e:
-        logger.error("add_reminder failed: %s", e)
+        logger.exception("add_reminder failed: %s", e)
         return f"Error adding reminder: {e}"
 
 
@@ -370,7 +374,7 @@ async def list_reminders(**kwargs: Any) -> str:
                 lines.append(f"  [{r.id}] {r.title} - {time_str}")
             return "\n".join(lines)
     except Exception as e:
-        logger.error("list_reminders failed: %s", e)
+        logger.exception("list_reminders failed: %s", e)
         return f"Error listing reminders: {e}"
 
 

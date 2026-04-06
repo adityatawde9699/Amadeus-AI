@@ -1,0 +1,22 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.12.9, pytest-9.0.2, pluggy-1.6.0
+rootdir: C:\Users\ASUS\Downloads\vs code\.vscode\python\Amadeus-AI
+configfile: pyproject.toml
+plugins: anyio-4.12.1, asyncio-1.3.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+collected 132 items / 1 error
+
+=================================== ERRORS ====================================
+_______________ ERROR collecting tests/unit/test_llm_router.py ________________
+tests\unit\test_llm_router.py:15: in <module>
+    from src.infra.llm.router import LLMRouter
+src\infra\llm\router.py:36: in <module>
+    class _RedisCounterBackend:
+src\infra\llm\router.py:50: in _RedisCounterBackend
+    async def _get_client(self) -> Any | None:
+                                   ^^^
+E   NameError: name 'Any' is not defined
+=========================== short test summary info ===========================
+ERROR tests/unit/test_llm_router.py - NameError: name 'Any' is not defined
+!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+============================== 1 error in 2.23s ===============================

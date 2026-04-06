@@ -22,7 +22,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from src.core.config import Settings, get_settings
@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 class MemoryResult:
     """A single semantic memory retrieved from the vector store."""
 
-    __slots__ = ("session_id", "role", "text", "timestamp", "distance")
+    __slots__ = ("distance", "role", "session_id", "text", "timestamp")
 
     def __init__(
         self,
@@ -91,23 +91,23 @@ class QdrantMemoryService:
     async def _setup(self) -> None:
         """Initialize Qdrant async client and Gemini embedding model."""
         try:
-            from qdrant_client import AsyncQdrantClient
-            from qdrant_client.models import Distance, VectorParams
-            
             # Using the same persist path but handled by Qdrant
             import os
+
+            from qdrant_client import AsyncQdrantClient
+            from qdrant_client.models import Distance, VectorParams
             os.makedirs(self._settings.CHROMA_PERSIST_DIR, exist_ok=True)
 
             self._client = AsyncQdrantClient(path=self._settings.CHROMA_PERSIST_DIR)
-            
+
             # Setup embedding model first to get expected dimension
             self._setup_embedding_model()
-            
+
             if not self._enabled:
                 return
 
             collection_name = self._settings.CHROMA_COLLECTION_NAME
-            
+
             # Check if collection exists
             if not await self._client.collection_exists(collection_name=collection_name):
                 # We need to know the dimension. Gemini embeddings are typically 768.
@@ -115,7 +115,7 @@ class QdrantMemoryService:
                     collection_name=collection_name,
                     vectors_config=VectorParams(size=768, distance=Distance.COSINE),
                 )
-            
+
             logger.info(
                 "Qdrant memory initialized — collection=%s, persist_dir=%s",
                 collection_name,
@@ -123,7 +123,7 @@ class QdrantMemoryService:
             )
             self._initialized = True
         except Exception as exc:
-            logger.error("Qdrant setup failed — memory disabled: %s", exc)
+            logger.exception("Qdrant setup failed — memory disabled: %s", exc)
             self._enabled = False
 
     def _setup_embedding_model(self) -> None:
@@ -142,7 +142,7 @@ class QdrantMemoryService:
             self._embed_model = self._settings.MEMORY_EMBED_MODEL
             logger.info("Gemini embedding model ready: %s", self._embed_model)
         except Exception as exc:
-            logger.error("Gemini embedding setup failed — memory disabled: %s", exc)
+            logger.exception("Gemini embedding setup failed — memory disabled: %s", exc)
             self._enabled = False
 
     # -------------------------------------------------------------------------
@@ -153,15 +153,19 @@ class QdrantMemoryService:
         """Embed text asynchronously using an executor."""
         if not self._enabled or not self._embed_model:
             return None
-        
-        def _sync_embed():
+
+        def _sync_embed() -> list[float]:
             from google.genai import types
             result = self._genai_client.models.embed_content(
                 model=self._embed_model,
                 contents=text,
                 config=types.EmbedContentConfig(task_type=task_type)
             )
-            return result.embeddings[0].values
+            embeddings = result.embeddings
+            assert embeddings is not None and len(embeddings) > 0
+            values = embeddings[0].values
+            assert values is not None
+            return list(values)
 
         try:
             loop = asyncio.get_running_loop()
@@ -186,14 +190,14 @@ class QdrantMemoryService:
             return False
 
         # Build a stable, unique document ID
-        timestamp_str = datetime.now(timezone.utc).isoformat()
+        timestamp_str = datetime.now(UTC).isoformat()
         id_str = hashlib.sha256(
             f"{session_id}:{role}:{text}:{timestamp_str}".encode()
         ).hexdigest()
 
         try:
             from qdrant_client.models import PointStruct
-            
+
             await self._client.upsert(
                 collection_name=self._settings.CHROMA_COLLECTION_NAME,
                 points=[
@@ -262,8 +266,8 @@ class QdrantMemoryService:
             return 0
 
         try:
-            from qdrant_client.models import Filter, FieldCondition, MatchValue
-            
+            from qdrant_client.models import FieldCondition, Filter, MatchValue
+
             # Count how many we are about to delete
             count_result = await self._client.count(
                 collection_name=self._settings.CHROMA_COLLECTION_NAME,
@@ -291,7 +295,7 @@ class QdrantMemoryService:
                     )
                 )
                 logger.info("Cleared %d memories for session=%s", count, session_id[:8])
-            return count
+            return int(count)
         except Exception as exc:
             logger.warning("Qdrant session clear failed: %s", exc)
             return 0
@@ -315,7 +319,7 @@ class QdrantMemoryService:
             return 0
         try:
             count = await self._client.count(self._settings.CHROMA_COLLECTION_NAME)
-            return count.count
+            return int(count.count)
         except Exception:
             return 0
 

@@ -75,7 +75,7 @@ class SearchRouter:
             logger.warning(
                 f"Brave search quota approaching limit: {self._brave_daily_count}/{self.BRAVE_DAILY_LIMIT}"
             )
-            
+
         if self._brave_daily_count >= self.BRAVE_DAILY_LIMIT:
             self._force_free_search = True
 
@@ -134,7 +134,7 @@ class SearchRouter:
         """Query DuckDuckGo Instant Answer API — no key required."""
         try:
             url = "https://api.duckduckgo.com/"
-            params = {"q": query, "format": "json", "no_redirect": 1, "no_html": 1}
+            params: dict[str, str] = {"q": query, "format": "json", "no_redirect": "1", "no_html": "1"}
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
                 async with session.get(url, params=params) as r:
                     if r.status == 200:
@@ -159,7 +159,7 @@ class SearchRouter:
                 "Accept-Encoding": "gzip",
                 "X-Subscription-Token": self._brave_key or "",
             }
-            params = {"q": query, "count": 5}
+            params: dict[str, str] = {"q": query, "count": "5"}
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=8)) as session:
                 async with session.get(url, headers=headers, params=params) as r:
                     if r.status == 200:

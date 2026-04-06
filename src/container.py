@@ -6,13 +6,24 @@ For simplicity, this module provides factory functions that can be used
 directly or with a DI framework.
 """
 
-import logging
-from functools import lru_cache
-from typing import AsyncGenerator
+from __future__ import annotations
 
-from src.core.config import Settings, get_settings
-from src.app.services.tool_registry import ToolRegistry
+import logging
+from collections.abc import AsyncGenerator
+from functools import lru_cache
+from typing import TYPE_CHECKING
+
 from src.app.services.amadeus_service import AmadeusService
+from src.app.services.tool_registry import ToolRegistry
+from src.core.config import get_settings
+
+if TYPE_CHECKING:
+    import redis.asyncio
+    from src.infra.cache.cache_service import CacheService
+    from src.infra.llm.router import LLMRouter
+    from src.infra.search.search_router import SearchRouter
+    from src.infra.tools.confirmation import ConfirmationCallback
+    from src.app.services.voice_service import VoiceService
 
 
 logger = logging.getLogger(__name__)
@@ -22,7 +33,7 @@ logger = logging.getLogger(__name__)
 # CACHED SINGLETONS
 # =============================================================================
 
-@lru_cache()
+@lru_cache
 def get_tool_registry() -> ToolRegistry:
     """
     Get the tool registry singleton.
@@ -38,19 +49,21 @@ def get_tool_registry() -> ToolRegistry:
     # ── Repository-injected tools ─────────────────────────────────────────────
     try:
         from src.infra.persistence.database import get_session
+        from src.infra.persistence.repositories.pomodoro_repository import (
+            SQLAlchemyPomodoroRepository,
+        )
         from src.infra.persistence.repositories.task_repository import SQLAlchemyTaskRepository
-        from src.infra.persistence.repositories.pomodoro_repository import SQLAlchemyPomodoroRepository
-        from src.infra.tools.productivity_tools import build_task_tools, build_pomodoro_tools
+        from src.infra.tools.productivity_tools import build_pomodoro_tools, build_task_tools
 
         # We create thin ``SessionProxy`` wrappers that open a fresh session per call.
         # This avoids holding a long-lived session in the singleton.
         class _SessionProxy:
             """Thin wrapper to give repository factories a lazy session per call."""
-            def __init__(self, repo_cls):
+            def __init__(self, repo_cls: type) -> None:
                 self._repo_cls = repo_cls
 
-            def __getattr__(self, method_name):
-                async def _caller(*args, **kwargs):
+            def __getattr__(self, method_name: str) -> object:
+                async def _caller(*args: object, **kwargs: object) -> object:
                     async with get_session() as session:
                         repo = self._repo_cls(session)
                         return await getattr(repo, method_name)(*args, **kwargs)
@@ -66,15 +79,15 @@ def get_tool_registry() -> ToolRegistry:
 
         logger.info("Registered repository-injected tools (task, pomodoro)")
     except Exception as e:
-        logger.error("Error registering injected tools: %s", e)
+        logger.exception("Error registering injected tools: %s", e)
 
     # ── Auto-discovered tools (info, system, monitor, legacy productivity) ────
     try:
+        from src.infra.tools.filesystem_tools import build_filesystem_tools
         from src.infra.tools.info_tools import get_info_tools
-        from src.infra.tools.system_tools import get_system_tools
         from src.infra.tools.monitor_tools import get_monitor_tools
         from src.infra.tools.productivity_tools import get_productivity_tools
-        from src.infra.tools.filesystem_tools import build_filesystem_tools
+        from src.infra.tools.system_tools import get_system_tools
 
         for tool in get_info_tools():
             registry.register(tool)
@@ -89,12 +102,12 @@ def get_tool_registry() -> ToolRegistry:
 
         logger.info("Tool registry initialized with %d tools", len(registry))
     except Exception as e:
-        logger.error("Error initializing tool registry: %s", e)
+        logger.exception("Error initializing tool registry: %s", e)
 
     return registry
 
 
-@lru_cache()
+@lru_cache
 def get_amadeus_service() -> AmadeusService:
     """
     Get the Amadeus service singleton.
@@ -121,7 +134,7 @@ def get_amadeus_service() -> AmadeusService:
     return service
 
 
-def inject_confirmation_callback(confirmation_callback: "ConfirmationCallback") -> None:  # noqa: F821
+def inject_confirmation_callback(confirmation_callback: ConfirmationCallback) -> None:
     """
     Inject the HITL ``ConfirmationCallback`` into the AmadeusService's
     ToolExecutor after the FastAPI app has started.
@@ -133,7 +146,6 @@ def inject_confirmation_callback(confirmation_callback: "ConfirmationCallback") 
     This pattern avoids importing FastAPI's ``app.state`` in the container,
     keeping the container fully framework-agnostic.
     """
-    from src.infra.tools.confirmation import ConfirmationCallback  # noqa: F811
     service = get_amadeus_service()
     service.tool_executor.confirmation_callback = confirmation_callback
     logger.info(
@@ -142,7 +154,7 @@ def inject_confirmation_callback(confirmation_callback: "ConfirmationCallback") 
     )
 
 
-@lru_cache()
+@lru_cache
 def get_llm_router() -> "LLMRouter":
     """
     Get the LLM Router singleton.
@@ -151,8 +163,8 @@ def get_llm_router() -> "LLMRouter":
     Daily usage counters are stored in Redis when available (multi-worker safe),
     falling back to in-memory counters for single-instance deployments.
     """
-    from src.infra.llm.router import LLMRouter
     from src.infra.llm.gemini_adapter import GeminiAdapter
+    from src.infra.llm.router import LLMRouter
 
     settings = get_settings()
 
@@ -203,7 +215,7 @@ def get_llm_router() -> "LLMRouter":
 async def get_db_session() -> AsyncGenerator:
     """
     FastAPI dependency for database sessions.
-    
+
     Usage in routes:
         @router.get("/tasks")
         async def list_tasks(db: AsyncSession = Depends(get_db_session)):
@@ -218,7 +230,7 @@ async def get_db_session() -> AsyncGenerator:
 # VOICE SERVICE INJECTION
 # =============================================================================
 
-@lru_cache()
+@lru_cache
 def get_voice_service() -> "VoiceService":
     """
     Get the Voice Service singleton.
@@ -226,11 +238,11 @@ def get_voice_service() -> "VoiceService":
     """
     from src.app.services.voice_service import VoiceService
     from src.infra.speech.adapters import WhisperVoiceInput
-    
+
     amadeus = get_amadeus_service()
     settings = get_settings()
     stt = WhisperVoiceInput()
-    
+
     # Build TTS router: EdgeTTS only
     try:
         from src.infra.speech.edge_tts_adapter import EdgeTTSAdapter
@@ -242,9 +254,9 @@ def get_voice_service() -> "VoiceService":
     except ImportError:
         # Fallback: edge-tts not installed, use silent adapter
         logger.warning("edge-tts not installed, TTS will return empty bytes. Install: pip install edge-tts")
-        from src.infra.speech.adapters import _SilentTTSAdapter  # type: ignore[attr-defined]
-        tts = _SilentTTSAdapter()
-    
+        from src.infra.speech.adapters import _SilentTTSAdapter
+        tts = _SilentTTSAdapter()  # type: ignore[assignment]
+
     service = VoiceService(
         amadeus_service=amadeus,
         stt_service=stt,
@@ -258,25 +270,25 @@ def get_voice_service() -> "VoiceService":
 # CACHE CLIENT
 # =============================================================================
 
-@lru_cache()
+@lru_cache
 def get_redis_client() -> "redis.asyncio.Redis | None":
     """
     Get the Redis cache client singleton.
-    
+
     Returns None if redis connection fails or is not configured properly.
     """
     import redis.asyncio as redis
     settings = get_settings()
-    
+
     try:
         client = redis.from_url(settings.REDIS_URL, decode_responses=False) # Wait, cache service expects bytes for tts? Actually it gets decoded in CacheService based on isinstance(bytes). Actually decode_responses=False is safer for bytes.
         logger.info("Redis cache client configured")
         return client
     except Exception as e:
-        logger.error(f"Failed to configure Redis client: {e}")
+        logger.exception(f"Failed to configure Redis client: {e}")
         return None
 
-@lru_cache()
+@lru_cache
 def get_cache_service() -> "CacheService":
     """
     Get the CacheService singleton.
@@ -294,7 +306,7 @@ def get_cache_service() -> "CacheService":
 # SEARCH ROUTER
 # =============================================================================
 
-@lru_cache()
+@lru_cache
 def get_search_router() -> "SearchRouter":
     """
     Get the SearchRouter singleton.
@@ -323,20 +335,20 @@ async def shutdown_services() -> None:
     Clean up all services on application shutdown.
     """
     logger.info("Shutting down services...")
-    
+
     # Clear cached instances
     get_tool_registry.cache_clear()
     get_amadeus_service.cache_clear()
     get_voice_service.cache_clear()
     get_llm_router.cache_clear()
     get_search_router.cache_clear()
-    
+
     # Close Redis connection if active
     redis_client = get_redis_client()
     if redis_client:
         await redis_client.aclose()
     get_redis_client.cache_clear()
-    
+
     logger.info("Services shut down complete")
 
 

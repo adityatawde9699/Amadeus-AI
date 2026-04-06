@@ -7,8 +7,8 @@ system tray interface.
 """
 
 import logging
-import logging
-from fastapi import APIRouter, status, Depends, Header, HTTPException
+
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel
 
 from src.core.config import get_settings
@@ -27,7 +27,7 @@ async def verify_ipc_token(x_ipc_token: str = Header(..., description="Secret to
         )
 
 router = APIRouter(
-    prefix="/ipc", 
+    prefix="/ipc",
     tags=["IPC"],
     dependencies=[Depends(verify_ipc_token)],
 )
@@ -43,7 +43,7 @@ class DaemonStatus(BaseModel):
 async def get_daemon_status() -> DaemonStatus:
     """
     Get the current active status of the Amadeus daemon.
-    
+
     Used by the system tray to ensure the daemon is running and display
     accurate icon states (e.g. mic muted vs unmuted).
     """
@@ -64,7 +64,7 @@ class VoiceToggleResponse(BaseModel):
 async def toggle_voice_activation() -> VoiceToggleResponse:
     """
     Toggle the voice/microphone listening state of the daemon.
-    
+
     Used when the user right-clicks the system tray and selects "Mute Mic"
     or "Unmute Mic". This modifies the running settings state.
     """
@@ -72,13 +72,13 @@ async def toggle_voice_activation() -> VoiceToggleResponse:
     # In a real daemon this needs to hit the observation loop or global state.
     # For now, we update the settings singleton so subsequent checks see the flip.
     settings.VOICE_ENABLED = not settings.VOICE_ENABLED
-    
+
     action = "unmuted" if settings.VOICE_ENABLED else "muted"
     logger.info(f"IPC Command: Microphone {action} via system tray")
-    
+
     # Optional: trigger a speech blurb via the actual voice service here so
     # the user hears "Microphone muted" audibly.
-    
+
     return VoiceToggleResponse(
         voice_enabled=settings.VOICE_ENABLED,
         message=f"Voice activation {action}"

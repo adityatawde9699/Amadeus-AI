@@ -77,7 +77,7 @@ class TestConfirmationGate:
         from src.infra.tools.confirmation import ConfirmationCallback
 
         class _DenyAll(ConfirmationCallback):
-            async def request_approval(self, tool_name, args, request_id):
+            async def request_approval(self, tool_name, args, request_id, preview=None):
                 return False
 
         executor = ToolExecutor(confirmation_callback=_DenyAll())
@@ -94,7 +94,7 @@ class TestConfirmationGate:
         from src.infra.tools.confirmation import ConfirmationCallback
 
         class _ApproveAll(ConfirmationCallback):
-            async def request_approval(self, tool_name, args, request_id):
+            async def request_approval(self, tool_name, args, request_id, preview=None):
                 return True
 
         executor = ToolExecutor(confirmation_callback=_ApproveAll())
@@ -124,7 +124,7 @@ class TestConfirmationGate:
         called = []
 
         class _TrackingCallback(ConfirmationCallback):
-            async def request_approval(self, tool_name, args, request_id):
+            async def request_approval(self, tool_name, args, request_id, preview=None):
                 called.append(True)
                 return True
 
@@ -144,7 +144,7 @@ class TestConfirmationGate:
         received_names = []
 
         class _RecordingCallback(ConfirmationCallback):
-            async def request_approval(self, tool_name, args, request_id):
+            async def request_approval(self, tool_name, args, request_id, preview=None):
                 received_names.append(tool_name)
                 return False
 

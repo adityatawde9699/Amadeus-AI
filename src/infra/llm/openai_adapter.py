@@ -48,7 +48,7 @@ class OpenAIAdapter(ILLMService):
             raise MissingAPIKeyError("OPENAI_API_KEY")
 
         try:
-            from openai import AsyncOpenAI  # type: ignore[import-untyped]
+            from openai import AsyncOpenAI
             self._client = AsyncOpenAI(api_key=self._api_key)
             self._configured = True
             model = getattr(self._settings, "OPENAI_MODEL", "gpt-4o-mini")
@@ -126,7 +126,7 @@ class OpenAIAdapter(ILLMService):
                 or "timeout" in error_str
             ):
                 raise LLMConnectionError("OpenAI", str(e))
-            logger.error("OpenAI error: %s", type(e).__name__)
+            logger.exception("OpenAI error: %s", type(e).__name__)
             raise LLMResponseError(str(e)) from e
 
     async def generate_with_tools(
@@ -197,5 +197,5 @@ class OpenAIAdapter(ILLMService):
             error_str = str(e).lower()
             if "429" in error_str or "rate_limit" in error_str:
                 raise LLMRateLimitError("OpenAI", retry_after=60)
-            logger.error("OpenAI tool-call error: %s", type(e).__name__)
+            logger.exception("OpenAI tool-call error: %s", type(e).__name__)
             raise LLMResponseError(str(e)) from e

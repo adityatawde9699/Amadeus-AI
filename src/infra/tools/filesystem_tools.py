@@ -7,10 +7,9 @@ directory (DATA_DIR/agent_workspace). Directory traversal is blocked.
 
 import logging
 from pathlib import Path
-from typing import Any
 
 from src.core.config import get_settings
-from src.infra.tools.base import tool, Tool, ToolCategory
+from src.infra.tools.base import Tool, ToolCategory, tool
 
 
 logger = logging.getLogger(__name__)
@@ -19,9 +18,7 @@ logger = logging.getLogger(__name__)
 def _get_workspace() -> Path:
     """Get the sandboxed workspace directory, creating it if needed."""
     settings = get_settings()
-    workspace = settings.DATA_DIR / "agent_workspace"
-    workspace.mkdir(parents=True, exist_ok=True)
-    return workspace
+    return settings.AGENT_WORKSPACE
 
 
 def _safe_resolve(user_path: str) -> Path | None:
@@ -150,8 +147,8 @@ async def fs_search_files(query: str, path: str = ".") -> str:
 def build_filesystem_tools() -> list[Tool]:
     """Build sandboxed filesystem tools for the LLM tool registry."""
     return [
-        fs_list_directory._tool_metadata,
-        fs_read_file._tool_metadata,
-        fs_write_file._tool_metadata,
-        fs_search_files._tool_metadata,
+        fs_list_directory._tool_metadata,  # type: ignore[attr-defined]
+        fs_read_file._tool_metadata,  # type: ignore[attr-defined]
+        fs_write_file._tool_metadata,  # type: ignore[attr-defined]
+        fs_search_files._tool_metadata,  # type: ignore[attr-defined]
     ]

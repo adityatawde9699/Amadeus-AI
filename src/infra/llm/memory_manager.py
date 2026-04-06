@@ -12,7 +12,10 @@ Strategy:
   4. Prune older messages from the active context.
 """
 
+from __future__ import annotations
+
 import logging
+from typing import Any
 
 from src.core.config import get_settings
 
@@ -33,7 +36,7 @@ Rules:
 async def summarize_conversation(
     messages: list[dict[str, str]],
     existing_summary: str = "",
-    llm_adapter=None,
+    llm_adapter: Any = None,
 ) -> str:
     """
     Generate a recursive summary of the conversation.

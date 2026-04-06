@@ -10,7 +10,8 @@ import logging
 import platform
 from pathlib import Path
 
-from rapidfuzz import process, fuzz
+from rapidfuzz import fuzz, process
+
 
 logger = logging.getLogger(__name__)
 
@@ -24,9 +25,9 @@ class AppRegistry:
         if cache_dir is None:
             # Default to user's home directory under .amadeus
             cache_dir = Path.home() / ".amadeus"
-        
+
         self.cache_file = cache_dir / "app_registry.json"
-        
+
         # In-memory dictionary mapped as { "lowercase friendly name": "absolute execution path" }
         self.apps: dict[str, str] = self._load_cache()
 
@@ -34,19 +35,19 @@ class AppRegistry:
         """Load from JSON cache if it exists, otherwise trigger a scan."""
         if self.cache_file.exists():
             try:
-                with open(self.cache_file, 'r', encoding='utf-8') as f:
-                    apps = json.load(f)
+                with open(self.cache_file, encoding="utf-8") as f:
+                    apps: dict[str, str] = json.load(f)
                     logger.debug(f"Loaded {len(apps)} applications from cache.")
                     return apps
             except Exception as e:
-                logger.error(f"Failed to load app cache: {e}. Rebuilding...")
+                logger.exception(f"Failed to load app cache: {e}. Rebuilding...")
         return self.scan_and_cache()
 
     def scan_and_cache(self) -> dict[str, str]:
         """Scans the OS, builds the dictionary, and caches it to disk."""
         discovered = {}
         system = platform.system()
-        
+
         logger.info(f"Starting application scan for {system}...")
 
         try:
@@ -57,18 +58,18 @@ class AppRegistry:
             elif system == "Linux":
                 discovered = self._scan_linux()
         except Exception as e:
-            logger.error(f"Error during system scan: {e}")
+            logger.exception(f"Error during system scan: {e}")
 
         # Ensure directory exists before writing
         self.cache_file.parent.mkdir(parents=True, exist_ok=True)
-        
+
         if discovered:
             try:
-                with open(self.cache_file, 'w', encoding='utf-8') as f:
+                with open(self.cache_file, "w", encoding="utf-8") as f:
                     json.dump(discovered, f, indent=2)
                 logger.info(f"Successfully cached {len(discovered)} applications to {self.cache_file}")
             except Exception as e:
-                logger.error(f"Failed to write cache file: {e}")
+                logger.exception(f"Failed to write cache file: {e}")
 
         self.apps = discovered
         return discovered
@@ -77,9 +78,9 @@ class AppRegistry:
         """Use the standard library winreg to find registered App Paths."""
         import winreg
         apps = {}
-        
+
         key_path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths"
-        
+
         for root in [winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER]:
             try:
                 with winreg.OpenKey(root, key_path) as key:
@@ -98,7 +99,7 @@ class AppRegistry:
                             continue
             except OSError:
                 continue
-                
+
         # Manually append common Windows root directories directly if winreg missed them (optional fallback)
         # Note: Winreg is usually sufficient for program execution (os.startfile safely resolves them)
         return apps
@@ -128,26 +129,26 @@ class AppRegistry:
     def get_executable(self, requested_name: str, score_cutoff: float = 80.0) -> str | None:
         """
         Safely match the AI's requested name to an actual installed application.
-        
+
         Args:
             requested_name: The application the user wants to open.
             score_cutoff: Minimum similarity score (0-100) to consider a match using RapidFuzz.
-            
+
         Returns:
             Absolute path to the executable, or the desktop-file stem for Linux, or None if not found.
         """
         if not self.apps:
             return None
-            
+
         requested_name = requested_name.lower().strip()
-        
+
         # 1. Exact Match Check (Highest Priority)
         # Check against the keys first
         if requested_name in self.apps:
             return self.apps[requested_name]
-            
+
         # 2. Substring or exact filename match (e.g. they ask for "chrome.exe" and we mapped "chrome")
-        for key_name, abs_path in self.apps.items():
+        for _key_name, abs_path in self.apps.items():
             if requested_name == Path(abs_path).name.lower():
                  return abs_path
 
@@ -159,11 +160,11 @@ class AppRegistry:
             scorer=fuzz.WRatio,
             score_cutoff=score_cutoff
         )
-        
+
         if match:
             best_match_key = match[0] # The string matched from the keys
             score = match[1]
             logger.debug(f"Fuzzy matched '{requested_name}' to '{best_match_key}' with score {score}")
             return self.apps[best_match_key]
-            
+
         return None

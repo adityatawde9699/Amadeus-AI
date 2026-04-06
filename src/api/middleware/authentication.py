@@ -6,11 +6,11 @@ Tokens must carry both `exp` (expiry) and `iat` (issued-at) claims.
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
-from typing import Mapping
+from collections.abc import Mapping
+from datetime import UTC, datetime, timedelta
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 
 from src.core.config import get_settings
@@ -41,14 +41,14 @@ def create_access_token(subject: str, extra_claims: dict | None = None) -> str:
         raise RuntimeError("SECRET_KEY is not configured — cannot issue tokens")
 
     expiry_hours = getattr(settings, "JWT_EXPIRY_HOURS", _DEFAULT_EXPIRY_HOURS)
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     payload: dict = {
         "sub": subject,
         "iat": now,
         "exp": now + timedelta(hours=expiry_hours),
         **(extra_claims or {}),
     }
-    return jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
+    return str(jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256"))
 
 # Security scheme for FastAPI OpenAPI docs
 security = HTTPBearer()
@@ -56,12 +56,12 @@ security = HTTPBearer()
 def verify_jwt_token(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Mapping:
     """
     Verify JWT Bearer token and extract payload.
-    
+
     Raises HTTPException 401 on invalid, expired, or missing tokens.
     """
     settings = get_settings()
     token = credentials.credentials
-    
+
     # We require a secret to validate the tokens
     if not settings.SECRET_KEY:
         logger.error("Authentication attempted but SECRET_KEY is not configured")
@@ -69,11 +69,11 @@ def verify_jwt_token(credentials: HTTPAuthorizationCredentials = Depends(securit
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Server configuration error"
         )
-        
+
     try:
         # python-jose automatically validates `exp` when present in the token.
         # Tokens without `exp` are accepted only when DEBUG=True (dev tokens).
-        payload = jwt.decode(
+        result: Mapping[str, object] = jwt.decode(
             token,
             settings.SECRET_KEY,
             algorithms=["HS256"],
@@ -84,14 +84,14 @@ def verify_jwt_token(credentials: HTTPAuthorizationCredentials = Depends(securit
         )
 
         # Extra guard: reject tokens missing exp in production
-        if settings.is_production and "exp" not in payload:
+        if settings.is_production and "exp" not in result:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Token missing expiry claim",
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        return payload
+        return result
     except JWTError as e:
         logger.warning(f"JWT verification failed: {e}")
         raise HTTPException(

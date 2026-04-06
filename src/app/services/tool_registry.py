@@ -6,10 +6,10 @@ lookup, and filtering of tools by category or name.
 
 Usage:
     from src.app.services.tool_registry import ToolRegistry
-    
+
     registry = ToolRegistry()
     registry.discover_tools()  # Auto-discover from src/infra/tools/
-    
+
     weather_tool = registry.get("get_weather")
     system_tools = registry.get_by_category("system")
 """
@@ -17,15 +17,18 @@ Usage:
 import importlib
 import logging
 import pkgutil
-from typing import Iterator, Any
+from collections.abc import Iterator
+from typing import Any
 
 from src.core.domain.models import ToolDefinition
 from src.infra.tools.base import Tool, ToolCategory
 
+
 # Try to import Gemini SDK types (High-Level)
 try:
     from google import genai
-    from google.genai.types import FunctionDeclaration, Tool as GenAITool
+    from google.genai.types import FunctionDeclaration
+    from google.genai.types import Tool as GenAITool
     HAS_GENAI = True
 except ImportError:
     HAS_GENAI = False
@@ -36,17 +39,17 @@ logger = logging.getLogger(__name__)
 class ToolRegistry:
     """
     Central registry for all Amadeus tools.
-    
+
     Provides tool discovery, registration, and lookup functionality.
     """
-    
-    def __init__(self):
+
+    def __init__(self) -> None:
         self._tools: dict[str, Tool] = {}
-    
+
     def register(self, tool: Tool) -> None:
         """
         Register a tool with the registry.
-        
+
         Args:
             tool: The Tool instance to register
         """
@@ -54,10 +57,10 @@ class ToolRegistry:
             logger.warning(f"Tool '{tool.name}' already registered, overwriting")
         self._tools[tool.name] = tool
         logger.debug(f"Registered tool: {tool.name} ({tool.category.value})")
-    
+
     def register_function(
         self,
-        func,
+        func: Any,
         name: str,
         description: str,
         category: ToolCategory,
@@ -66,7 +69,7 @@ class ToolRegistry:
     ) -> None:
         """
         Register a function as a tool.
-        
+
         Args:
             func: The callable to register
             name: Tool name
@@ -84,81 +87,78 @@ class ToolRegistry:
             requires_confirmation=requires_confirmation,
         )
         self.register(tool)
-    
+
     def get(self, name: str) -> Tool | None:
         """
         Get a tool by name.
-        
+
         Args:
             name: The tool name
-            
+
         Returns:
             The Tool if found, None otherwise
         """
         return self._tools.get(name)
-    
+
     def get_by_category(self, category: str | ToolCategory) -> list[Tool]:
         """
         Get all tools in a category.
-        
+
         Args:
             category: Category name or ToolCategory enum
-            
+
         Returns:
             List of tools in the category
         """
         if isinstance(category, str):
             category = ToolCategory(category)
         return [t for t in self._tools.values() if t.category == category]
-    
+
     def get_by_names(self, names: list[str]) -> list[Tool]:
         """
         Get multiple tools by their names.
-        
+
         Args:
             names: List of tool names
-            
+
         Returns:
             List of found tools (skips missing ones)
         """
         return [self._tools[n] for n in names if n in self._tools]
-    
+
     def list_all(self) -> list[Tool]:
         """Get all registered tools."""
         return list(self._tools.values())
-    
+
     def list_names(self) -> list[str]:
         """Get all tool names."""
         return list(self._tools.keys())
-    
+
     def __len__(self) -> int:
         return len(self._tools)
-    
+
     def __contains__(self, name: str) -> bool:
         return name in self._tools
-    
+
     def __iter__(self) -> Iterator[Tool]:
         return iter(self._tools.values())
-    
+
     # =========================================================================
     # GEMINI INTEGRATION
     # =========================================================================
-    
+
     def build_gemini_tools(self, tool_names: list[str] | None = None) -> Any:
         """
         Build Gemini function declarations for the specified tools.
-        
+
         Args:
             tool_names: List of tool names, or None for all tools
-            
+
         Returns:
             List of function declarations in Gemini format (Tool objects if SDK available)
         """
-        if tool_names is None:
-            tools = self.list_all()
-        else:
-            tools = self.get_by_names(tool_names)
-        
+        tools = self.list_all() if tool_names is None else self.get_by_names(tool_names)
+
         # If we have the SDK, use its types to be safe
         if HAS_GENAI:
             declarations = []
@@ -171,8 +171,8 @@ class ToolRegistry:
                 except Exception as e:
                     logger.warning(f"Failed to create FunctionDeclaration for {t.name}: {e}")
                     # Fallback to raw dict if wrapper fails
-                    declarations.append(d)
-            
+                    declarations.append(d)  # type: ignore[arg-type]
+
             # Return as a list of Tool objects (or FunctionDeclarations which might be auto-wrapped)
             # generate_content(tools=[...]) accepts a list of Tools.
             # We create one Tool containing all these functions.
@@ -181,97 +181,94 @@ class ToolRegistry:
             except Exception:
                 # If Tool wrapper fails, maybe passed list of Declarations directly?
                 return declarations
-            
+
         # Fallback to pure dict structure
         return [{"function_declarations": [t.to_gemini_declaration() for t in tools]}]
-    
+
     def build_gemini_declarations_for_category(self, category: ToolCategory) -> Any:
         """Build Gemini declarations for a specific category."""
         tools = self.get_by_category(category)
         if HAS_GENAI:
              declarations = [FunctionDeclaration(**t.to_gemini_declaration()) for t in tools]
              return [GenAITool(function_declarations=declarations)]
-             
+
         return [{"function_declarations": [t.to_gemini_declaration() for t in tools]}]
-    
+
     # =========================================================================
     # TOOL DEFINITIONS (DOMAIN MODELS)
     # =========================================================================
-    
+
     def get_definitions(self, tool_names: list[str] | None = None) -> list[ToolDefinition]:
         """
         Get ToolDefinition domain models for tools.
-        
+
         Args:
             tool_names: List of tool names, or None for all
-            
+
         Returns:
             List of ToolDefinition models
         """
-        if tool_names is None:
-            tools = self.list_all()
-        else:
-            tools = self.get_by_names(tool_names)
-        
+        tools = self.list_all() if tool_names is None else self.get_by_names(tool_names)
+
         return [t.to_definition() for t in tools]
-    
+
     # =========================================================================
     # AUTO-DISCOVERY
     # =========================================================================
-    
+
     def discover_tools(self, package_name: str = "src.infra.tools") -> int:
         """
         Auto-discover and register tools from a package.
-        
+
         Looks for functions decorated with @tool in the package.
-        
+
         Args:
             package_name: The package to scan for tools
-            
+
         Returns:
             Number of tools discovered
         """
         count = 0
-        
+
         try:
             package = importlib.import_module(package_name)
-            
+
             for _, module_name, _ in pkgutil.iter_modules(package.__path__):
                 if module_name.startswith("_"):
                     continue  # Skip private modules
-                
+
                 try:
                     module = importlib.import_module(f"{package_name}.{module_name}")
-                    
+
                     # Look for functions with _tool_metadata
                     for name in dir(module):
                         obj = getattr(module, name)
                         if hasattr(obj, "_tool_metadata"):
                             self.register(obj._tool_metadata)
                             count += 1
-                            
+
                 except Exception as e:
-                    logger.error(f"Error loading module {module_name}: {e}")
-                    
+                    logger.exception(f"Error loading module {module_name}: {e}")
+
         except Exception as e:
-            logger.error(f"Error discovering tools from {package_name}: {e}")
-        
+            logger.exception(f"Error discovering tools from {package_name}: {e}")
+
         logger.info(f"Discovered {count} tools from {package_name}")
         return count
-    
+
     # =========================================================================
     # SUMMARY
     # =========================================================================
-    
+
     def get_summary(self) -> dict:
         """Get a summary of registered tools."""
-        categories = {}
+        categories: dict[str, list[str]] = {}
         for tool in self._tools.values():
             cat = tool.category.value
             if cat not in categories:
                 categories[cat] = []
             categories[cat].append(tool.name)
-        
+
         return {
             "total": len(self._tools),
             "categories": categories,
