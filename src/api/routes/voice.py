@@ -15,10 +15,10 @@ from src.container import get_voice_service
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+
 @router.websocket("/ws/voice")
 async def voice_websocket_endpoint(
-    websocket: WebSocket,
-    voice_service: VoiceService = Depends(get_voice_service)
+    websocket: WebSocket, voice_service: VoiceService = Depends(get_voice_service)
 ) -> None:
     await websocket.accept()
     logger.info("🔌 Voice WebSocket connected")
@@ -36,16 +36,10 @@ async def voice_websocket_endpoint(
             # 3. Send Updates to Client
 
             # Message 1: Transcription (What server heard)
-            await websocket.send_json({
-                "type": "transcription",
-                "text": result.transcript
-            })
+            await websocket.send_json({"type": "transcription", "text": result.transcript})
 
             # Message 2: Text Response (What server thought)
-            await websocket.send_json({
-                "type": "response_text",
-                "text": result.response_text
-            })
+            await websocket.send_json({"type": "response_text", "text": result.response_text})
 
             # Message 3: Audio Response (What server speaks)
             if result.response_audio:

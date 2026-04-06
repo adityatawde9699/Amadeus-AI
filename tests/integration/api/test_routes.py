@@ -1,6 +1,7 @@
 import pytest
 from httpx import AsyncClient
 
+
 @pytest.mark.asyncio
 async def test_health_check(async_client: AsyncClient):
     """Test the basic health check endpoint."""
@@ -10,6 +11,7 @@ async def test_health_check(async_client: AsyncClient):
     assert data["status"] == "ok"
     assert "version" in data
 
+
 @pytest.mark.asyncio
 async def test_detailed_health_check(async_client: AsyncClient):
     """Test the detailed health check endpoint."""
@@ -18,6 +20,7 @@ async def test_detailed_health_check(async_client: AsyncClient):
     data = response.json()
     assert data["status"] == "healthy"
     assert data["service"] == "Amadeus"
+
 
 @pytest.mark.asyncio
 async def test_system_status(async_client: AsyncClient):
@@ -29,5 +32,6 @@ async def test_system_status(async_client: AsyncClient):
     assert "memory_usage" in data
     assert "is_healthy" in data
 
-# Note: Chat API and Tasks API require JWT authentication. 
+
+# Note: Chat API and Tasks API require JWT authentication.
 # They would be tested here by passing a valid Bearer token in headers.

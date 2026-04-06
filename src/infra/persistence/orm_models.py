@@ -12,12 +12,13 @@ The ORM models handle database-specific concerns like:
 
 Migrated to SQLAlchemy 2.0 Mapped/mapped_column style for full type safety.
 """
+# SQLAlchemy mapped_column() defaults are ORM column defs, not mutable attrs
 
 import enum
 from datetime import datetime
 
-from sqlalchemy import Index, String, Text
 from sqlalchemy import Enum as SAEnum
+from sqlalchemy import Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -28,20 +29,25 @@ from src.infra.persistence.database import Base
 # ENUMS (SQLAlchemy compatible)
 # =============================================================================
 
+
 class UserRoleDB(enum.StrEnum):
     """RBAC Role enum for database."""
+
     ADMIN = "admin"
     USER = "user"
     GUEST = "guest"
 
+
 class TaskStatusDB(enum.StrEnum):
     """Task status enum for database."""
+
     PENDING = "pending"
     COMPLETED = "completed"
 
 
 class ReminderStatusDB(enum.StrEnum):
     """Reminder status enum for database."""
+
     ACTIVE = "active"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
@@ -49,6 +55,7 @@ class ReminderStatusDB(enum.StrEnum):
 
 class EventStatusDB(enum.StrEnum):
     """Calendar event status enum for database."""
+
     ACTIVE = "active"
     CANCELLED = "cancelled"
     COMPLETED = "completed"
@@ -58,30 +65,38 @@ class EventStatusDB(enum.StrEnum):
 # ORM MODELS
 # =============================================================================
 
-class UserORM(Base):
-    """ORM model for users and RBAC."""
+from fastapi_users.db import SQLAlchemyBaseUserTable
+
+
+class UserORM(SQLAlchemyBaseUserTable[int], Base):
+    """ORM model for users and RBAC using fastapi-users."""
 
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
     username: Mapped[str] = mapped_column(String(50), unique=True, index=True)
-    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
-    hashed_password: Mapped[str] = mapped_column(String(255))
+
+    # The following are provided by SQLAlchemyBaseUserTable but can be overridden:
+    # email: Mapped[str]
+    # hashed_password: Mapped[str]
+    # is_active: Mapped[bool]
+    # is_superuser: Mapped[bool]
+    # is_verified: Mapped[bool]
 
     # RBAC Fields
     role: Mapped[UserRoleDB] = mapped_column(
         SAEnum(UserRoleDB),
-        default=UserRoleDB.USER,
+        default=UserRoleDB.GUEST,
     )
     tenant_id: Mapped[str | None] = mapped_column(String(36), index=True, nullable=True)
 
-    is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(
         server_default=func.now(),
     )
 
     def __repr__(self) -> str:
         return f"<User(id={self.id}, username={self.username}, role={self.role.value})>"
+
 
 class TaskORM(Base):
     """ORM model for tasks/todos."""
@@ -200,7 +215,9 @@ class CalendarEventORM(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<CalendarEvent(id={self.id}, title='{self.title[:30]}', status={self.status.value})>"
+        return (
+            f"<CalendarEvent(id={self.id}, title='{self.title[:30]}', status={self.status.value})>"
+        )
 
 
 class InteractionLogORM(Base):
@@ -261,8 +278,10 @@ class MessageORM(Base):
 # POMODORO MODELS
 # =============================================================================
 
+
 class PomodoroStateDB(enum.StrEnum):
     """Pomodoro session state enum for database."""
+
     IDLE = "idle"
     WORKING = "working"
     SHORT_BREAK = "short_break"
@@ -311,6 +330,7 @@ class PomodoroSessionORM(Base):
 # PROCESSED EMAIL (State Tracking)
 # =============================================================================
 
+
 class ProcessedEmailORM(Base):
     """
     Tracks which emails the agent has already read and processed.
@@ -336,6 +356,7 @@ class ProcessedEmailORM(Base):
 # =============================================================================
 # CONVERSATION SUMMARY (Rolling Memory)
 # =============================================================================
+
 
 class ConversationSummaryORM(Base):
     """
@@ -364,11 +385,13 @@ class ConversationSummaryORM(Base):
 # KNOWLEDGE GRAPH (Episodic Memory)
 # =============================================================================
 
+
 class EntityORM(Base):
     """
     ORM model for entities in the Knowledge Graph.
     Entities represent people, places, objects, or concepts the user mentions.
     """
+
     __tablename__ = "graph_entities"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -383,9 +406,7 @@ class EntityORM(Base):
         onupdate=func.now(),
     )
 
-    __table_args__ = (
-        Index("idx_entity_name_type", "name", "entity_type"),
-    )
+    __table_args__ = (Index("idx_entity_name_type", "name", "entity_type"),)
 
     def __repr__(self) -> str:
         return f"<Entity(name='{self.name}', type='{self.entity_type}')>"
@@ -396,6 +417,7 @@ class RelationshipORM(Base):
     ORM model for relationships in the Knowledge Graph (SPO Triples).
     Subject -> Predicate -> Object
     """
+
     __tablename__ = "graph_relationships"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -418,4 +440,6 @@ class RelationshipORM(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<Relationship(sub={self.subject_id}, pred='{self.predicate}', obj={self.object_id})>"
+        return (
+            f"<Relationship(sub={self.subject_id}, pred='{self.predicate}', obj={self.object_id})>"
+        )

@@ -49,6 +49,7 @@ class OpenAIAdapter(ILLMService):
 
         try:
             from openai import AsyncOpenAI
+
             self._client = AsyncOpenAI(api_key=self._api_key)
             self._configured = True
             model = getattr(self._settings, "OPENAI_MODEL", "gpt-4o-mini")
@@ -120,11 +121,7 @@ class OpenAIAdapter(ILLMService):
             error_str = str(e).lower()
             if "429" in error_str or "rate_limit" in error_str or "rate limit" in error_str:
                 raise LLMRateLimitError("OpenAI", retry_after=60)
-            if (
-                "connection" in error_str
-                or "network" in error_str
-                or "timeout" in error_str
-            ):
+            if "connection" in error_str or "network" in error_str or "timeout" in error_str:
                 raise LLMConnectionError("OpenAI", str(e))
             logger.exception("OpenAI error: %s", type(e).__name__)
             raise LLMResponseError(str(e)) from e
@@ -149,14 +146,16 @@ class OpenAIAdapter(ILLMService):
         # Convert ToolDefinition → OpenAI function schema
         openai_tools = []
         for tool in tools:
-            openai_tools.append({
-                "type": "function",
-                "function": {
-                    "name": tool.name,
-                    "description": tool.description,
-                    "parameters": tool.parameters or {"type": "object", "properties": {}},
-                },
-            })
+            openai_tools.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": tool.name,
+                        "description": tool.description,
+                        "parameters": tool.parameters or {"type": "object", "properties": {}},
+                    },
+                }
+            )
 
         try:
             response = await self._client.chat.completions.create(
@@ -171,6 +170,7 @@ class OpenAIAdapter(ILLMService):
             # If the model called a tool
             if choice.finish_reason == "tool_calls" and msg.tool_calls:
                 import json
+
                 tc = msg.tool_calls[0]
                 tool_name = tc.function.name
                 try:

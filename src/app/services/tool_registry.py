@@ -26,9 +26,9 @@ from src.infra.tools.base import Tool, ToolCategory
 
 # Try to import Gemini SDK types (High-Level)
 try:
-    from google import genai
     from google.genai.types import FunctionDeclaration
     from google.genai.types import Tool as GenAITool
+
     HAS_GENAI = True
 except ImportError:
     HAS_GENAI = False
@@ -189,8 +189,8 @@ class ToolRegistry:
         """Build Gemini declarations for a specific category."""
         tools = self.get_by_category(category)
         if HAS_GENAI:
-             declarations = [FunctionDeclaration(**t.to_gemini_declaration()) for t in tools]
-             return [GenAITool(function_declarations=declarations)]
+            declarations = [FunctionDeclaration(**t.to_gemini_declaration()) for t in tools]
+            return [GenAITool(function_declarations=declarations)]
 
         return [{"function_declarations": [t.to_gemini_declaration() for t in tools]}]
 

@@ -16,12 +16,13 @@ from typing import Any
 
 import psutil
 
+from src.infra.system.app_registry import AppRegistry
 from src.infra.tools.base import Tool, ToolCategory, tool
+from src.infra.tools.office_tools import get_office_tools
+from src.infra.tools.slack_tools import get_slack_tools
 
 
 logger = logging.getLogger(__name__)
-
-from src.infra.system.app_registry import AppRegistry
 
 
 # Initialize global registry locally for tools since tool execution happens statically
@@ -33,13 +34,16 @@ app_registry = AppRegistry()
 # APPLICATION TOOLS
 # =============================================================================
 
+
 @tool(
     name="open_program",
     description="Launch desktop apps (Chrome/VSCode/Word). Trigger: 'open app', 'start ___'",
     category=ToolCategory.SYSTEM,
-    parameters={"app_name": {"type": "string", "description": "Application name to open"}}
+    parameters={"app_name": {"type": "string", "description": "Application name to open"}},
 )
-def open_program(app_name: str | None = None, program_name: str | None = None, **kwargs: Any) -> str:
+def open_program(
+    app_name: str | None = None, program_name: str | None = None, **kwargs: Any
+) -> str:
     """Open an application using the dynamic AppRegistry with fuzzy matching."""
     target_app = app_name or program_name or kwargs.get("name")
     if not target_app:
@@ -47,22 +51,27 @@ def open_program(app_name: str | None = None, program_name: str | None = None, *
 
     app_exec = app_registry.get_executable(target_app)
     if not app_exec:
-        return f"Cannot find '{target_app}' on this system. You may need to trigger a system scan using `scan_system_applications`."
+        return (
+            f"Cannot find '{target_app}' on this system. "
+            "You may need to trigger a system scan using `scan_system_applications`."
+        )
 
     logger.info(f"Opening application: {target_app} ({app_exec})")
 
     try:
         if platform.system() == "Windows":
             try:
-                os.startfile(app_exec)  # noqa: S606
+                os.startfile(app_exec)
             except (FileNotFoundError, OSError):
-                subprocess.Popen([app_exec], shell=False)  # noqa: S603
+                subprocess.Popen([app_exec], shell=False)
         elif platform.system() == "Darwin":
             # On Mac, app_exec from registry is absolute path to .app bundle
-            subprocess.Popen(["open", app_exec])  # noqa: S603
+            subprocess.Popen(["open", app_exec])
         elif platform.system() == "Linux":
             # On Linux, app_exec is often the stem of the .desktop file
-            subprocess.Popen(["gtk-launch", app_exec], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)  # noqa: S603
+            subprocess.Popen(
+                ["gtk-launch", app_exec], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
         else:
             return f"Unsupported operating system: {platform.system()}"
 
@@ -72,11 +81,15 @@ def open_program(app_name: str | None = None, program_name: str | None = None, *
         logger.exception(f"Error launching app {target_app}: {e}")
         return f"Failed to open {target_app}: {e}"
 
+
 @tool(
     name="scan_system_applications",
-    description="Forces a deep scan of the local OS to find newly installed applications and rebuild the app cache. Trigger: 'scan apps', 'find new apps'",
+    description=(
+        "Forces a deep scan of the local OS to find newly installed applications "
+        "and rebuild the app cache. Trigger: 'scan apps', 'find new apps'"
+    ),
     category=ToolCategory.SYSTEM,
-    parameters={}
+    parameters={},
 )
 def scan_system_applications(**kwargs: Any) -> str:
     """Re-scans the system to update the application registry."""
@@ -95,7 +108,9 @@ def scan_system_applications(**kwargs: Any) -> str:
     parameters={"process_name": {"type": "string", "description": "Process name to terminate"}},
     requires_confirmation=True,
 )
-def terminate_program(process_name: str | None = None, app_name: str | None = None, **kwargs: Any) -> str:
+def terminate_program(
+    process_name: str | None = None, app_name: str | None = None, **kwargs: Any
+) -> str:
     """Terminate all processes matching the name."""
     target = process_name or app_name or kwargs.get("name")
     if not target:
@@ -125,11 +140,12 @@ def terminate_program(process_name: str | None = None, app_name: str | None = No
 # FILE OPERATION TOOLS
 # =============================================================================
 
+
 @tool(
     name="search_file",
     description="Find files by name (returns path). Trigger: 'find file', 'where is file', 'locate ___'",
     category=ToolCategory.SYSTEM,
-    parameters={"file_name": {"type": "string", "description": "File name or pattern to search"}}
+    parameters={"file_name": {"type": "string", "description": "File name or pattern to search"}},
 )
 def search_file(file_name: str | None = None, name: str | None = None, **kwargs: Any) -> str:
     """
@@ -145,6 +161,7 @@ def search_file(file_name: str | None = None, name: str | None = None, **kwargs:
         return "Error: No file name provided."
 
     from src.core.config import get_settings
+
     settings = get_settings()
     max_results = settings.FILE_SEARCH_MAX_RESULTS
     pattern = f"*{target}*" if "*" not in target else target
@@ -189,19 +206,18 @@ def search_file(file_name: str | None = None, name: str | None = None, **kwargs:
     return "\n".join(result_lines)
 
 
-
-
-
 @tool(
     name="copy_file",
     description="Duplicate file. Trigger: 'copy file'",
     category=ToolCategory.SYSTEM,
     parameters={
         "source_path": {"type": "string", "description": "Source file path"},
-        "destination_path": {"type": "string", "description": "Destination file path"}
-    }
+        "destination_path": {"type": "string", "description": "Destination file path"},
+    },
 )
-def copy_file(source_path: str | None = None, destination_path: str | None = None, **kwargs: Any) -> str:
+def copy_file(
+    source_path: str | None = None, destination_path: str | None = None, **kwargs: Any
+) -> str:
     """Copy a file from source to destination."""
     src = source_path or kwargs.get("source") or kwargs.get("src")
     dst = destination_path or kwargs.get("destination") or kwargs.get("dest")
@@ -233,10 +249,12 @@ def copy_file(source_path: str | None = None, destination_path: str | None = Non
     category=ToolCategory.SYSTEM,
     parameters={
         "source_path": {"type": "string", "description": "Source file path"},
-        "destination_path": {"type": "string", "description": "Destination file path"}
-    }
+        "destination_path": {"type": "string", "description": "Destination file path"},
+    },
 )
-def move_file(source_path: str | None = None, destination_path: str | None = None, **kwargs: Any) -> str:
+def move_file(
+    source_path: str | None = None, destination_path: str | None = None, **kwargs: Any
+) -> str:
     """Move a file from source to destination."""
     src = source_path or kwargs.get("source")
     dst = destination_path or kwargs.get("destination")
@@ -287,7 +305,7 @@ def delete_file(file_path: str | None = None, path: str | None = None, **kwargs:
         backup_path = backup_dir / file_to_delete.name
         shutil.copy2(file_to_delete, backup_path)
 
-        os.remove(file_to_delete)
+        Path(file_to_delete).unlink()
         logger.info(f"File deleted: {file_to_delete} (backup: {backup_path})")
         return "File deleted (backup saved to temp folder)"
 
@@ -300,7 +318,7 @@ def delete_file(file_path: str | None = None, path: str | None = None, **kwargs:
     name="create_folder",
     description="Create folder. Trigger: 'make folder'",
     category=ToolCategory.SYSTEM,
-    parameters={"folder_name": {"type": "string", "description": "Folder name or path"}}
+    parameters={"folder_name": {"type": "string", "description": "Folder name or path"}},
 )
 def create_folder(folder_name: str | None = None, name: str | None = None, **kwargs: Any) -> str:
     """Create a new folder."""
@@ -325,15 +343,10 @@ def create_folder(folder_name: str | None = None, name: str | None = None, **kwa
         return f"Error creating folder: {e}"
 
 
-
-
-
 # =============================================================================
 # TOOL COLLECTION
 # =============================================================================
 
-from src.infra.tools.office_tools import get_office_tools
-from src.infra.tools.slack_tools import get_slack_tools
 
 
 def get_system_tools() -> list[Tool]:
@@ -349,4 +362,3 @@ def get_system_tools() -> list[Tool]:
     tools.extend(get_slack_tools())
 
     return tools
-

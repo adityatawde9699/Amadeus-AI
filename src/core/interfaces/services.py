@@ -30,15 +30,12 @@ from src.core.domain.models import (
 # VOICE INTERFACES
 # =============================================================================
 
+
 class IVoiceInput(ABC):
     """Interface for speech-to-text services."""
 
     @abstractmethod
-    def listen(
-        self,
-        timeout: int | None = None,
-        phrase_time_limit: int | None = None
-    ) -> str:
+    def listen(self, timeout: int | None = None, phrase_time_limit: int | None = None) -> str:
         """
         Listen to microphone and return transcribed text.
 
@@ -84,6 +81,7 @@ class IVoiceOutput(ABC):
 # =============================================================================
 # AI/ML INTERFACES
 # =============================================================================
+
 
 class IIntentClassifier(ABC):
     """Interface for intent classification services."""
@@ -161,6 +159,7 @@ class ILLMService(ABC):
 # MEMORY / PERSISTENCE INTERFACES
 # =============================================================================
 
+
 class IMemoryService(ABC):
     """Interface for conversation memory and history services."""
 
@@ -203,6 +202,7 @@ class IMemoryService(ABC):
 # SYSTEM INTERFACES
 # =============================================================================
 
+
 class ISystemMonitor(ABC):
     """Interface for system monitoring services."""
 
@@ -241,6 +241,7 @@ class ISystemMonitor(ABC):
 # =============================================================================
 # TOOL EXECUTION INTERFACE
 # =============================================================================
+
 
 class IToolExecutor(ABC):
     """Interface for tool execution services."""

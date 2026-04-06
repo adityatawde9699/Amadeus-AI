@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 # Parsed Message Dataclass (preserved for backward compat with existing routes)
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class TelegramMessage:
     """Parsed incoming Telegram message (text only)."""
@@ -44,6 +45,7 @@ class TelegramMessage:
 # ---------------------------------------------------------------------------
 # Adapter
 # ---------------------------------------------------------------------------
+
 
 class TelegramAdapter:
     """
@@ -66,9 +68,7 @@ class TelegramAdapter:
         self._bot: Any = None
 
         if not self._token:
-            logger.warning(
-                "TELEGRAM_BOT_TOKEN is not configured — Telegram adapter disabled"
-            )
+            logger.warning("TELEGRAM_BOT_TOKEN is not configured — Telegram adapter disabled")
             return
 
         self._init_application()
@@ -95,8 +95,7 @@ class TelegramAdapter:
             logger.info("python-telegram-bot Application instance created for long polling")
         except ImportError:
             logger.exception(
-                "python-telegram-bot is not installed. "
-                "Run: pip install 'python-telegram-bot>=20.7'"
+                "python-telegram-bot is not installed. Run: pip install 'python-telegram-bot>=20.7'"
             )
             self._application = None
             self._bot = None
@@ -121,6 +120,7 @@ class TelegramAdapter:
 
         try:
             from src.app.services.amadeus_service import AmadeusService
+
             # Instantiate AmadeusService isolated to this user session (chat_id)
             service = AmadeusService(session_id=str(chat_id))
             await service.initialize()
@@ -133,7 +133,9 @@ class TelegramAdapter:
             await self.send_message(chat_id, reply_text)
         except Exception:
             logger.exception("telegram_polling_processing_failed")
-            await self.send_message(chat_id, "⚠️ Sorry, something went wrong processing your request.")
+            await self.send_message(
+                chat_id, "⚠️ Sorry, something went wrong processing your request."
+            )
 
     async def start_polling(self) -> bool:
         """
@@ -255,7 +257,9 @@ class TelegramAdapter:
                 text=text,
                 reply_markup=reply_markup,
             )
-            logger.info("telegram_buttons_sent chat_id=%s buttons=%d", chat_id, sum(len(r) for r in buttons))
+            logger.info(
+                "telegram_buttons_sent chat_id=%s buttons=%d", chat_id, sum(len(r) for r in buttons)
+            )
             return True
         except Exception as exc:
             logger.exception("telegram_buttons_send_failed chat_id=%s error=%s", chat_id, exc)
@@ -284,6 +288,7 @@ class TelegramAdapter:
 
         try:
             import io
+
             await self._bot.send_voice(
                 chat_id=chat_id,
                 voice=io.BytesIO(audio_bytes),

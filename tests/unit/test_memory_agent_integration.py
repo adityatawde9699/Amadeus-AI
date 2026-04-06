@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+
 # Stub heavy imports
 for _mod in ("joblib", "numpy", "google.generativeai", "openai", "groq", "sklearn"):
     if _mod not in sys.modules:
@@ -25,6 +26,7 @@ for _mod in ("joblib", "numpy", "google.generativeai", "openai", "groq", "sklear
 # =============================================================================
 # Helpers
 # =============================================================================
+
 
 def _make_tool_registry():
     registry = MagicMock()
@@ -49,6 +51,7 @@ def _make_memory_service(memories: list[str]):
 # Tests
 # =============================================================================
 
+
 class TestReActAgentMemoryInjection:
     """Verify memory injection into the _think_with_llm prompt."""
 
@@ -61,7 +64,7 @@ class TestReActAgentMemoryInjection:
 
         def fake_llm(prompt: str) -> str:
             captured_prompts.append(prompt)
-            return "Thought: done\nAction: FINISH\nAction Input: {\"answer\": \"Memory test done\"}"
+            return 'Thought: done\nAction: FINISH\nAction Input: {"answer": "Memory test done"}'
 
         memory_svc = _make_memory_service(["User prefers dark mode", "User is in Mumbai"])
 
@@ -89,7 +92,7 @@ class TestReActAgentMemoryInjection:
 
         def fake_llm(prompt: str) -> str:
             captured_prompts.append(prompt)
-            return "Thought: done\nAction: FINISH\nAction Input: {\"answer\": \"No memory\"}"
+            return 'Thought: done\nAction: FINISH\nAction Input: {"answer": "No memory"}'
 
         agent = ReActAgent(
             tool_registry=_make_tool_registry(),
@@ -110,7 +113,7 @@ class TestReActAgentMemoryInjection:
         from src.app.services.agent_loop import ReActAgent
 
         def fake_llm(prompt: str) -> str:
-            return "Thought: done\nAction: FINISH\nAction Input: {\"answer\": \"Resilient\"}"
+            return 'Thought: done\nAction: FINISH\nAction Input: {"answer": "Resilient"}'
 
         error_svc = MagicMock()
         error_svc.retrieve = AsyncMock(side_effect=RuntimeError("Qdrant unavailable"))

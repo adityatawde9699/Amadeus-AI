@@ -19,10 +19,12 @@ Example:
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 
 
 class QueueFullError(Exception):
     """Raised when the AgentOrchestrator queue is full and cannot accept new requests."""
+
 
 from src.app.services.tool_registry import ToolRegistry
 from src.core.domain.models import PermissionProfile
@@ -36,9 +38,11 @@ logger = logging.getLogger(__name__)
 # DATA STRUCTURES
 # =============================================================================
 
+
 @dataclass
 class AgentStep:
     """Single step in the agent's reasoning process."""
+
     step_number: int
     thought: str
     action: str | None = None
@@ -61,6 +65,7 @@ class AgentStep:
 @dataclass
 class AgentResult:
     """Final result from agent execution."""
+
     success: bool
     final_answer: str
     steps: list[AgentStep] = field(default_factory=list)
@@ -80,6 +85,7 @@ from enum import Enum
 
 class AgentState(Enum):
     """States for the Agent State Machine."""
+
     START = "START"
     THINK = "THINK"
     ACT = "ACT"
@@ -210,7 +216,9 @@ class ReActAgent:
                         action_input,
                         permission_profile=self.permission_profile,
                     )
-                    self.current_observation = str(result.result) if result.success else f"Error: {result.error_message}"
+                    self.current_observation = (
+                        str(result.result) if result.success else f"Error: {result.error_message}"
+                    )
                     self.tools_used.append(action)
                 except Exception as e:
                     self.current_observation = f"Error executing {action}: {e}"
@@ -234,7 +242,6 @@ class ReActAgent:
                 # 3. Learning Step - Extract entities/relationships from this interaction
                 await self._learn_from_interaction(self.task, final_answer)
                 break
-
 
         return AgentResult(
             success=success,
@@ -304,17 +311,15 @@ class ReActAgent:
         # All done - synthesize answer
         if observations:
             combined = "; ".join(observations)
-            return (
-                "All requested information gathered",
-                self.FINISH_ACTION,
-                {"answer": combined}
-            )
+            return ("All requested information gathered", self.FINISH_ACTION, {"answer": combined})
 
         # Nothing matched
         return (
             "I don't have a specific tool for this request",
             self.FINISH_ACTION,
-            {"answer": "I'm not sure how to help with that. Try asking about time, weather, tasks, or system status."}
+            {
+                "answer": "I'm not sure how to help with that. Try asking about time, weather, tasks, or system status."
+            },
         )
 
     async def _think_with_llm(
@@ -359,7 +364,9 @@ class ReActAgent:
                     try:
                         extract_prompt = f"Extract all named entities (people, places, projects, things) from the following text. Return ONLY a comma-separated list of names (no explanation).\\nText: {task}"
                         extracted = await self.llm_generate(extract_prompt)
-                        potential_entities = [e.strip(" '\\\"") for e in extracted.split(",") if e.strip()]
+                        potential_entities = [
+                            e.strip(" '\\\"") for e in extracted.split(",") if e.strip()
+                        ]
                     except Exception as e:
                         logger.debug(f"Entity extraction failed, falling back to heuristic: {e}")
 
@@ -374,7 +381,11 @@ class ReActAgent:
                         facts.append(f"{t['subject']} {t['predicate']} {t['object']}")
 
                 if facts:
-                    graph_block = "Known Facts (Relationships):\\n- " + "\\n- ".join(list(set(facts))[:10]) + "\\n\\n"
+                    graph_block = (
+                        "Known Facts (Relationships):\\n- "
+                        + "\\n- ".join(list(set(facts))[:10])
+                        + "\\n\\n"
+                    )
             except Exception as graph_err:
                 logger.debug("Graph fact retrieval skipped: %s", graph_err)
 
@@ -406,7 +417,6 @@ Your response:"""
             logger.exception(f"LLM reasoning error: {e}")
             # Fallback to keywords
             return await self._think_with_keywords(task, observations)
-
 
     def _parse_llm_response(self, response: str) -> tuple[str, str, dict]:
         """Parse LLM response into thought, action, input."""
@@ -477,7 +487,6 @@ Relationships:"""
             logger.debug("Learning step failed: %s", e)
 
     async def _synthesize_answer(self, task: str, observations: list[str]) -> str:
-
         """Combine observations into a final answer."""
         if not observations:
             return "I couldn't find relevant information for your request."
@@ -495,18 +504,23 @@ Relationships:"""
         return " ".join(parts)
 
 
-from collections.abc import Callable
-
 
 # =============================================================================
 # SPECIALIZED SUB-AGENTS
 # =============================================================================
 
+
 class SystemAgent(ReActAgent):
     """
     Specialized agent for OS-level interactions and system controls.
     """
-    def __init__(self, tool_registry: ToolRegistry, tool_executor: ToolExecutor, llm_generate: Callable[[str], Awaitable[str]] | None = None):
+
+    def __init__(
+        self,
+        tool_registry: ToolRegistry,
+        tool_executor: ToolExecutor,
+        llm_generate: Callable[[str], Awaitable[str]] | None = None,
+    ):
         super().__init__(
             tool_registry=tool_registry,
             tool_executor=tool_executor,
@@ -514,12 +528,19 @@ class SystemAgent(ReActAgent):
             max_iterations=3,
         )
 
+
 class ResearchAgent(ReActAgent):
     """
     Specialized agent for gathering information, checking the weather,
     getting news, and analyzing documents.
     """
-    def __init__(self, tool_registry: ToolRegistry, tool_executor: ToolExecutor, llm_generate: Callable[[str], Awaitable[str]] | None = None):
+
+    def __init__(
+        self,
+        tool_registry: ToolRegistry,
+        tool_executor: ToolExecutor,
+        llm_generate: Callable[[str], Awaitable[str]] | None = None,
+    ):
         super().__init__(
             tool_registry=tool_registry,
             tool_executor=tool_executor,
@@ -532,11 +553,13 @@ class ResearchAgent(ReActAgent):
 # AGENT ORCHESTRATOR
 # =============================================================================
 
+
 class AgentOrchestrator:
     """
     Central router that receives queries, predicts intent via an SVM text classifier,
     and dispatches the job to the appropriate specialized sub-agent via an asyncio.Queue.
     """
+
     def __init__(
         self,
         tool_registry: ToolRegistry,
@@ -551,13 +574,21 @@ class AgentOrchestrator:
         self.memory_service = memory_service
         self.max_queue_size = max_queue_size
 
-        self.queue: asyncio.Queue[tuple[str, str, PermissionProfile, asyncio.Future]] = asyncio.Queue(maxsize=self.max_queue_size)
+        self.queue: asyncio.Queue[tuple[str, str, PermissionProfile, asyncio.Future]] = (
+            asyncio.Queue(maxsize=self.max_queue_size)
+        )
 
         # Initialize Sub-Agents (all share the same memory_service)
         self.agents = {
             "system": SystemAgent(tool_registry, tool_executor, llm_generate),
             "research": ResearchAgent(tool_registry, tool_executor, llm_generate),
-            "general": ReActAgent(tool_registry, tool_executor, llm_generate, max_iterations=4, memory_service=memory_service),
+            "general": ReActAgent(
+                tool_registry,
+                tool_executor,
+                llm_generate,
+                max_iterations=4,
+                memory_service=memory_service,
+            ),
         }
 
         # Try loading SVM model for intent routing
@@ -570,20 +601,20 @@ class AgentOrchestrator:
 
     def _load_classifier(self) -> None:
         """Load TF-IDF vectorizer and SVM classifier tailored for intent routing."""
-        import os
-
         import joblib
 
         try:
             vectorizer_path = "Model/router_vectorizer.joblib"
             classifier_path = "Model/router_classifier.joblib"
 
-            if os.path.exists(vectorizer_path) and os.path.exists(classifier_path):
+            if Path(vectorizer_path).exists() and Path(classifier_path).exists():
                 self.vectorizer = joblib.load(vectorizer_path)
                 self.classifier = joblib.load(classifier_path)
                 logger.info("Agent Orchestrator SVM loaded. Dynamic routing enabled.")
             else:
-                logger.warning("Agent Orchestrator SVM not found. Falling back to fuzzy keyword routing.")
+                logger.warning(
+                    "Agent Orchestrator SVM not found. Falling back to fuzzy keyword routing."
+                )
         except Exception as e:
             logger.exception(f"Failed to load router classifier: {e}")
 
@@ -592,8 +623,9 @@ class AgentOrchestrator:
         if self.classifier and self.vectorizer:
             try:
                 import numpy as np
-                X = self.vectorizer.transform([task])
-                scores = self.classifier.decision_function(X)[0]
+
+                x_vec = self.vectorizer.transform([task])
+                scores = self.classifier.decision_function(x_vec)[0]
                 classes = self.classifier.classes_
                 best_agent_idx = np.argsort(scores)[-1]
                 predicted_agent = classes[best_agent_idx]
@@ -606,7 +638,9 @@ class AgentOrchestrator:
 
         # Fallback Keywords
         lower_task = task.lower()
-        if any(w in lower_task for w in ["open", "close", "system", "volume", "brightness", "battery"]):
+        if any(
+            w in lower_task for w in ["open", "close", "system", "volume", "brightness", "battery"]
+        ):
             return "system"
         if any(w in lower_task for w in ["search", "weather", "news", "summarize", "find"]):
             return "research"
@@ -626,7 +660,9 @@ class AgentOrchestrator:
                 logger.debug(f"Orchestrator executing task via {intent} agent...")
 
                 try:
-                    result = await target_agent.run(task, context, permission_profile=permission_profile)
+                    result = await target_agent.run(
+                        task, context, permission_profile=permission_profile
+                    )
                     if not future.done():
                         future.set_result(result)
                 except Exception as e:
@@ -657,7 +693,10 @@ class AgentOrchestrator:
         try:
             self.queue.put_nowait((task, context, permission_profile, future))
         except asyncio.QueueFull:
-            logger.warning("AgentOrchestrator queue is full (maxsize=%s), rejecting request.", self.max_queue_size)
+            logger.warning(
+                "AgentOrchestrator queue is full (maxsize=%s), rejecting request.",
+                self.max_queue_size,
+            )
             raise QueueFullError("Agent system is currently overloaded. Please try again later.")
 
         # Wait for the worker to process our specific task

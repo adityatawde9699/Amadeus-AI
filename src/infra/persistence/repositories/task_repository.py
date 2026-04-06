@@ -86,9 +86,11 @@ class SQLAlchemyTaskRepository(ITaskRepository):
         return int(result.scalar() or 0)
 
     async def get_by_status(self, status: TaskStatus) -> list[Task]:
-        query = select(TaskORM).where(
-            TaskORM.status == TaskStatusDB(status.value)
-        ).order_by(TaskORM.created_at.desc())
+        query = (
+            select(TaskORM)
+            .where(TaskORM.status == TaskStatusDB(status.value))
+            .order_by(TaskORM.created_at.desc())
+        )
         result = await self._session.execute(query)
         return [self._orm_to_domain(orm) for orm in result.scalars().all()]
 
@@ -110,14 +112,10 @@ class SQLAlchemyTaskRepository(ITaskRepository):
     async def get_summary(self) -> dict:
         total = await self.count()
         pending_count = await self._session.execute(
-            select(func.count(TaskORM.id)).where(
-                TaskORM.status == TaskStatusDB.PENDING
-            )
+            select(func.count(TaskORM.id)).where(TaskORM.status == TaskStatusDB.PENDING)
         )
         completed_count = await self._session.execute(
-            select(func.count(TaskORM.id)).where(
-                TaskORM.status == TaskStatusDB.COMPLETED
-            )
+            select(func.count(TaskORM.id)).where(TaskORM.status == TaskStatusDB.COMPLETED)
         )
         return {
             "total": total,

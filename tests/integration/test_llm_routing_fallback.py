@@ -9,11 +9,10 @@ from __future__ import annotations
 
 import sys
 import types
-from collections import defaultdict
-from datetime import date
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
 
 # Stub heavy imports
 for _mod in ("joblib", "numpy", "google.generativeai", "openai", "groq"):
@@ -29,6 +28,7 @@ def _make_mock_adapter(name: str, response: str = "ok") -> MagicMock:
 
 def _make_rate_limited_adapter(name: str) -> MagicMock:
     from src.core.exceptions import LLMRateLimitError
+
     adapter = MagicMock()
     adapter.generate_response = AsyncMock(side_effect=LLMRateLimitError(name))
     return adapter
@@ -38,13 +38,13 @@ def _make_rate_limited_adapter(name: str) -> MagicMock:
 # Fallback chain
 # =============================================================================
 
+
 class TestLLMRouterFallback:
     """Verify that the router falls through providers when rate-limited."""
 
     @pytest.mark.asyncio
     async def test_falls_back_groq_to_gemini(self):
         from src.infra.llm.router import LLMRouter
-        from src.core.exceptions import LLMRateLimitError
 
         groq = _make_rate_limited_adapter("groq")
         gemini = _make_mock_adapter("gemini", "gemini response")
@@ -72,8 +72,8 @@ class TestLLMRouterFallback:
 
     @pytest.mark.asyncio
     async def test_all_exhausted_raises_rate_limit_error(self):
-        from src.infra.llm.router import LLMRouter
         from src.core.exceptions import LLMRateLimitError
+        from src.infra.llm.router import LLMRouter
 
         groq = _make_rate_limited_adapter("groq")
         gemini = _make_rate_limited_adapter("gemini")
@@ -104,6 +104,7 @@ class TestLLMRouterFallback:
 # =============================================================================
 # Redis quota integration
 # =============================================================================
+
 
 class TestLLMRouterRedisQuota:
     @pytest.mark.asyncio

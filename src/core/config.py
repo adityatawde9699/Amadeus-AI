@@ -84,8 +84,8 @@ class Settings(BaseSettings):
     # When True: ONLY use Ollama, disable all cloud providers
     # When False: Ollama → Groq → Gemini → OpenAI fallback chain
     LOCAL_ONLY_MODE: bool = False
-    OLLAMA_TIMEOUT_SECONDS: float = 120.0   # CPU inference can be slow
-    OLLAMA_NUM_CTX: int = 4096             # Context window (tokens)
+    OLLAMA_TIMEOUT_SECONDS: float = 120.0  # CPU inference can be slow
+    OLLAMA_NUM_CTX: int = 4096  # Context window (tokens)
 
     # Search APIs
     BRAVE_SEARCH_API_KEY: str | None = None
@@ -214,10 +214,7 @@ class Settings(BaseSettings):
     API_WORKERS: int = Field(default=1, ge=1, le=32)
     # Include tauri:// and tauri.localhost for Tauri 2.0 desktop app
     ALLOWED_ORIGINS: str = (
-        "http://localhost:3000,"
-        "http://localhost:8765,"
-        "tauri://localhost,"
-        "https://tauri.localhost"
+        "http://localhost:3000,http://localhost:8765,tauri://localhost,https://tauri.localhost"
     )
 
     # Rate Limiting
@@ -384,10 +381,14 @@ def validate_settings(settings: Settings | None = None) -> dict:
         if not settings.GEMINI_API_KEY:
             errors.append("GEMINI_API_KEY is required in production")
         if not settings.SECRET_KEY:
-            errors.append("SECRET_KEY is required in production (generate with: openssl rand -hex 32)")
+            errors.append(
+                "SECRET_KEY is required in production (generate with: openssl rand -hex 32)"
+            )
 
         if getattr(settings, "ALLOW_DEBUG_RESPONSES", False):
-            warnings.append("SEVERE SECURITY WARNING: ALLOW_DEBUG_RESPONSES is True in production! Full stack traces may leak to clients.")
+            warnings.append(
+                "SEVERE SECURITY WARNING: ALLOW_DEBUG_RESPONSES is True in production! Full stack traces may leak to clients."
+            )
     else:
         if not settings.GEMINI_API_KEY:
             warnings.append("GEMINI_API_KEY not set - AI features will be limited")

@@ -25,13 +25,16 @@ router = APIRouter()
 # SCHEMAS
 # =============================================================================
 
+
 class ConfirmRequest(BaseModel):
     """Body for the approval/denial POST request."""
+
     approved: bool
 
 
 class ConfirmStatusResponse(BaseModel):
     """Status of a pending confirmation request."""
+
     request_id: str
     tool_name: str
     args: dict
@@ -42,6 +45,7 @@ class ConfirmStatusResponse(BaseModel):
 # =============================================================================
 # DEPENDENCY: Get callback singleton from app.state
 # =============================================================================
+
 
 def get_confirmation_callback(request: Request) -> Any:
     """Retrieve the shared APIConfirmationCallback from application state."""
@@ -57,6 +61,7 @@ def get_confirmation_callback(request: Request) -> Any:
 # =============================================================================
 # ROUTES
 # =============================================================================
+
 
 @router.post(
     "/confirm/{request_id}",
@@ -115,7 +120,6 @@ async def get_confirmation_status(
         preview=pending.preview,
         status="pending",
     )
-
 
 
 @router.get(

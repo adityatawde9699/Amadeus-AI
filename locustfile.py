@@ -5,8 +5,9 @@ Run with:
     locust -f locustfile.py --host=http://localhost:8000
 """
 
-from locust import HttpUser, task, between
-import json
+
+from locust import HttpUser, between, task
+
 
 class AmadeusUser(HttpUser):
     wait_time = between(1, 5)
@@ -35,8 +36,5 @@ class AmadeusUser(HttpUser):
     @task(1)
     def simulate_chat(self):
         """Simulate a chat request."""
-        payload = {
-            "message": "Hello Amadeus, what's my schedule today?",
-            "source": "api"
-        }
+        payload = {"message": "Hello Amadeus, what's my schedule today?", "source": "api"}
         self.client.post("/api/v1/chat", json=payload, headers=self.headers)

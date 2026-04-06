@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 # DATA STRUCTURES
 # =============================================================================
 
+
 @dataclass
 class PendingConfirmation:
     """State held while waiting for a user approval decision."""
@@ -41,13 +42,15 @@ class PendingConfirmation:
     args: dict[str, Any]
     preview: str = ""
     created_at: datetime = field(default_factory=datetime.now)
-    future: asyncio.Future[bool] = field(default_factory=lambda: asyncio.get_event_loop().create_future())
-
+    future: asyncio.Future[bool] = field(
+        default_factory=lambda: asyncio.get_event_loop().create_future()
+    )
 
 
 # =============================================================================
 # ABSTRACT BASE
 # =============================================================================
+
 
 class ConfirmationCallback(ABC):
     """
@@ -65,7 +68,6 @@ class ConfirmationCallback(ABC):
         request_id: str,
         preview: str = "",
     ) -> bool:
-
         """
         Ask for user approval.
 
@@ -85,6 +87,7 @@ class ConfirmationCallback(ABC):
 # =============================================================================
 # TERMINAL (CLI / TEST) IMPLEMENTATION
 # =============================================================================
+
 
 class TerminalConfirmationCallback(ConfirmationCallback):
     """
@@ -119,10 +122,10 @@ class TerminalConfirmationCallback(ConfirmationCallback):
         return approved
 
 
-
 # =============================================================================
 # API / HTTP IMPLEMENTATION
 # =============================================================================
+
 
 class APIConfirmationCallback(ConfirmationCallback):
     """
@@ -169,7 +172,6 @@ class APIConfirmationCallback(ConfirmationCallback):
             future=loop.create_future(),
         )
         self._pending[request_id] = confirmation
-
 
         logger.info(
             "confirmation_pending",
@@ -234,10 +236,10 @@ class APIConfirmationCallback(ConfirmationCallback):
         ]
 
 
-
 # =============================================================================
 # FACTORY HELPER
 # =============================================================================
+
 
 def make_request_id() -> str:
     """Generate a new unique confirmation request ID."""

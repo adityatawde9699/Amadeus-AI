@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+
 # ---------------------------------------------------------------------------
 # Patch heavy optional dependencies at sys.modules level BEFORE any import
 # of AmadeusService. These are all top-level imports in amadeus_service.py
@@ -35,6 +36,7 @@ if "google.genai" not in sys.modules:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_service(debug: bool = False) -> "AmadeusService":  # noqa: F821
     """Create a minimal AmadeusService with all heavy deps mocked out."""
@@ -68,10 +70,10 @@ def _make_service(debug: bool = False) -> "AmadeusService":  # noqa: F821
     return svc
 
 
-
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 class TestHandleCommandErrorHandling:
     @pytest.mark.asyncio

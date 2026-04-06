@@ -29,6 +29,7 @@ _whatsapp = WhatsAppAdapter()
 # HELPERS
 # ==========================================================================
 
+
 async def _process_and_reply_telegram(chat_id: int, user_text: str) -> None:
     """Background task: send user text through AmadeusService, reply via Telegram."""
     try:
@@ -70,6 +71,7 @@ async def _process_and_reply_whatsapp(phone: str, user_text: str, message_id: st
 # ==========================================================================
 # WHATSAPP WEBHOOK
 # ==========================================================================
+
 
 @router.get("/whatsapp", status_code=status.HTTP_200_OK)
 async def whatsapp_verify(

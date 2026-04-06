@@ -12,14 +12,10 @@ Usage tracking resets daily at midnight (UTC).
 """
 
 import asyncio
-import json
 import logging
-import os
-import time
 from collections import defaultdict
 from datetime import date
-from typing import Any
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from src.core.exceptions import LLMRateLimitError
 
@@ -36,6 +32,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # REDIS COUNTER BACKEND
 # =============================================================================
+
 
 class _RedisCounterBackend:
     """
@@ -57,13 +54,17 @@ class _RedisCounterBackend:
             return self._client
         try:
             import redis.asyncio as aioredis
+
             client = aioredis.from_url(self._redis_url, decode_responses=True)
             # Verify connectivity
             await client.ping()  # type: ignore[misc]
             self._client = client
             logger.info("LLMRouter connected to Redis for shared quota tracking")
         except Exception as e:
-            logger.warning("Redis unavailable for LLM quota tracking (%s) — using in-memory fallback", type(e).__name__)
+            logger.warning(
+                "Redis unavailable for LLM quota tracking (%s) — using in-memory fallback",
+                type(e).__name__,
+            )
             self._client = None
         return self._client
 
@@ -96,7 +97,6 @@ class _RedisCounterBackend:
             logger.debug("Redis increment failed: %s", e)
 
 
-
 class LLMRouter:
     """
     Routes LLM requests across providers to optimize cost and availability.
@@ -105,18 +105,18 @@ class LLMRouter:
     Daily counters reset automatically at UTC midnight.
     """
 
-    DAILY_LIMITS: dict[str, int] = {
+    DAILY_LIMITS: ClassVar[dict[str, int]] = {
         "ollama": 999_999,  # Local — effectively unlimited
-        "groq": 14400,      # Free tier — Llama 3.3 70B
-        "gemini": 1500,     # Free tier — Gemini 2.5 Flash
-        "openai": 100,      # Paid — $0.50/month safety buffer
+        "groq": 14400,  # Free tier — Llama 3.3 70B
+        "gemini": 1500,  # Free tier — Gemini 2.5 Flash
+        "openai": 100,  # Paid — $0.50/month safety buffer
     }
 
     # Cost per request in USD (for cost tracking)
-    COST_PER_REQUEST: dict[str, float] = {
-        "ollama": 0.0,    # Free — runs locally on your machine
-        "groq": 0.0,      # Free
-        "gemini": 0.0,    # Free tier
+    COST_PER_REQUEST: ClassVar[dict[str, float]] = {
+        "ollama": 0.0,  # Free — runs locally on your machine
+        "groq": 0.0,  # Free
+        "gemini": 0.0,  # Free tier
         "openai": 0.005,  # Paid
     }
 
@@ -143,10 +143,7 @@ class LLMRouter:
 
         self._local_only_mode = local_only_mode
         if local_only_mode:
-            logger.info(
-                "LLMRouter: LOCAL_ONLY_MODE active — "
-                "cloud providers disabled, Ollama only"
-            )
+            logger.info("LLMRouter: LOCAL_ONLY_MODE active — cloud providers disabled, Ollama only")
 
         # In-memory counters (always present; Redis supplements these)
         self._usage: dict[str, int] = defaultdict(int)
@@ -217,7 +214,8 @@ class LLMRouter:
             if current_usage >= limit:
                 logger.warning(
                     "Provider %s at daily limit (%d). Trying next.",
-                    provider_name, limit,
+                    provider_name,
+                    limit,
                 )
                 continue
 
@@ -258,7 +256,8 @@ class LLMRouter:
             except Exception as e:
                 logger.exception(
                     "Provider %s failed: %s. Trying next.",
-                    provider_name, type(e).__name__,
+                    provider_name,
+                    type(e).__name__,
                 )
                 continue
 
@@ -271,10 +270,7 @@ class LLMRouter:
             "date": self._usage_date.isoformat(),
             "providers_configured": list(self._providers.keys()),
             "usage": dict(self._usage),
-            "limits": {
-                k: v for k, v in self.DAILY_LIMITS.items()
-                if k in self._providers
-            },
+            "limits": {k: v for k, v in self.DAILY_LIMITS.items() if k in self._providers},
             "remaining": {
                 k: max(0, self.DAILY_LIMITS.get(k, 0) - self._usage.get(k, 0))
                 for k in self._providers
@@ -286,6 +282,5 @@ class LLMRouter:
     def _calculate_cost(self) -> float:
         """Calculate estimated cost for today's usage."""
         return sum(
-            self._usage.get(provider, 0) * cost
-            for provider, cost in self.COST_PER_REQUEST.items()
+            self._usage.get(provider, 0) * cost for provider, cost in self.COST_PER_REQUEST.items()
         )

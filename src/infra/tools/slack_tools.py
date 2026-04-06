@@ -18,10 +18,12 @@ logger = logging.getLogger(__name__)
 try:
     from slack_sdk import WebClient
     from slack_sdk.errors import SlackApiError
+
     HAS_SLACK_SDK = True
 except ImportError:
     HAS_SLACK_SDK = False
     logger.warning("slack-sdk not installed. Slack tools will be unavailable.")
+
 
 def _get_slack_client() -> tuple["WebClient | None", str | None]:
     """Build Slack client from environment token."""
@@ -29,11 +31,13 @@ def _get_slack_client() -> tuple["WebClient | None", str | None]:
         return None, "Error: slack-sdk is not installed. Please run 'pip install slack-sdk'."
 
     from src.core.config import get_settings
+
     token = getattr(get_settings(), "SLACK_TOKEN", os.environ.get("SLACK_TOKEN"))
     if not token:
         return None, "Error: SLACK_TOKEN environment variable not set."
 
     return WebClient(token=token), None
+
 
 @tool(
     name="send_slack_message",
@@ -42,7 +46,7 @@ def _get_slack_client() -> tuple["WebClient | None", str | None]:
     parameters={
         "channel": {"type": "string", "description": "Channel name or ID (e.g. #general)"},
         "message": {"type": "string", "description": "Message text content"},
-    }
+    },
 )
 def send_slack_message(channel: str, message: str, **kwargs: Any) -> str:
     """Send a message to Slack."""
@@ -62,11 +66,15 @@ def send_slack_message(channel: str, message: str, **kwargs: Any) -> str:
         logger.exception(f"Failed to send Slack message: {e}")
         return f"Error: Failed to send Slack message: {e}"
 
+
 def send_slack_preview(args: dict) -> str:
     channel = args.get("channel", "unknown channel")
     msg = args.get("message", "empty message")
     return f"Post message to Slack channel '{channel}': '{msg[:50]}...'"
+
+
 send_slack_message._tool_metadata.get_preview = send_slack_preview  # type: ignore[attr-defined]
+
 
 @tool(
     name="list_slack_channels",
@@ -90,9 +98,13 @@ def list_slack_channels(**kwargs: Any) -> str:
     except Exception as e:
         return f"Error: Failed to list Slack channels: {e}"
 
+
 def list_slack_channels_preview(args: dict) -> str:
     return "List all public Slack channels in the workspace."
+
+
 list_slack_channels._tool_metadata.get_preview = list_slack_channels_preview  # type: ignore[attr-defined]
+
 
 @tool(
     name="read_slack_messages",
@@ -100,8 +112,11 @@ list_slack_channels._tool_metadata.get_preview = list_slack_channels_preview  # 
     category=ToolCategory.COMMUNICATION,
     parameters={
         "channel": {"type": "string", "description": "Channel ID (e.g. C12345678)"},
-        "count": {"type": "integer", "description": "Number of recent messages to read (default: 10)"},
-    }
+        "count": {
+            "type": "integer",
+            "description": "Number of recent messages to read (default: 10)",
+        },
+    },
 )
 def read_slack_messages(channel: str, count: int = 10, **kwargs: Any) -> str:
     """Read recent messages from a Slack channel."""
@@ -124,8 +139,11 @@ def read_slack_messages(channel: str, count: int = 10, **kwargs: Any) -> str:
                 # Format timestamp
                 try:
                     import datetime
-                    time_str = datetime.datetime.fromtimestamp(float(ts)).strftime("%Y-%m-%d %H:%M:%S")
-                except Exception:  # noqa: BLE001
+
+                    time_str = datetime.datetime.fromtimestamp(float(ts)).strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    )
+                except Exception:
                     time_str = str(ts)
 
                 formatted.append(f"[{time_str}] User {user}: {text}")
@@ -137,11 +155,15 @@ def read_slack_messages(channel: str, count: int = 10, **kwargs: Any) -> str:
     except Exception as e:
         return f"Error: Failed to read Slack messages: {e}"
 
+
 def read_slack_preview(args: dict) -> str:
     channel = args.get("channel", "unknown channel")
     count = args.get("count", 10)
     return f"Read {count} most recent messages from Slack channel '{channel}'."
+
+
 read_slack_messages._tool_metadata.get_preview = read_slack_preview  # type: ignore[attr-defined]
+
 
 def get_slack_tools() -> list[Tool]:
     """Get all slack tools for registration."""

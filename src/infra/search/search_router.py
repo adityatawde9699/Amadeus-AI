@@ -31,8 +31,16 @@ class SearchRouter:
     BRAVE_DAILY_LIMIT: int = 60  # REDUCED from 66 for safety margin
 
     _FACTUAL_PATTERNS: tuple[str, ...] = (
-        "who is", "who was", "what is", "what are", "define",
-        "explain", "history of", "biography", "when was", "where is",
+        "who is",
+        "who was",
+        "what is",
+        "what are",
+        "define",
+        "explain",
+        "history of",
+        "biography",
+        "when was",
+        "where is",
     )
 
     def __init__(
@@ -93,13 +101,18 @@ class SearchRouter:
             return ddg_result
 
         # Tier 3: Brave Search (free: 2,000/month ≈ 66/day)
-        if self._brave_key and not self._force_free_search and self._brave_daily_count < self.BRAVE_DAILY_LIMIT:
+        if (
+            self._brave_key
+            and not self._force_free_search
+            and self._brave_daily_count < self.BRAVE_DAILY_LIMIT
+        ):
             result = await self._brave_search(query)
             if result:
                 self._brave_daily_count += 1
                 logger.debug(
                     "Search: Brave hit (daily: %d/%d)",
-                    self._brave_daily_count, self.BRAVE_DAILY_LIMIT,
+                    self._brave_daily_count,
+                    self.BRAVE_DAILY_LIMIT,
                 )
                 return result
 
@@ -118,13 +131,17 @@ class SearchRouter:
         try:
             url = "https://en.wikipedia.org/api/rest_v1/page/summary/"
             # Extract the main subject from the query for the Wikipedia title
-            subject = query.replace("who is ", "").replace("what is ", "").replace("define ", "").strip()
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
-                async with session.get(url + subject.replace(" ", "_")) as r:
-                    if r.status == 200:
-                        data = await r.json()
-                        extract = data.get("extract", "")
-                        return extract[:800] if extract else ""
+            subject = (
+                query.replace("who is ", "").replace("what is ", "").replace("define ", "").strip()
+            )
+            async with (
+                aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session,
+                session.get(url + subject.replace(" ", "_")) as r,
+            ):
+                if r.status == 200:
+                    data = await r.json()
+                    extract = data.get("extract", "")
+                    return extract[:800] if extract else ""
             return ""
         except Exception as e:
             logger.debug("Wikipedia search failed: %s", type(e).__name__)
@@ -134,17 +151,20 @@ class SearchRouter:
         """Query DuckDuckGo Instant Answer API — no key required."""
         try:
             url = "https://api.duckduckgo.com/"
-            params: dict[str, str] = {"q": query, "format": "json", "no_redirect": "1", "no_html": "1"}
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
-                async with session.get(url, params=params) as r:
-                    if r.status == 200:
-                        data = await r.json(content_type=None)
-                        # Prefer AbstractText, then Answer
-                        return (
-                            data.get("AbstractText")
-                            or data.get("Answer")
-                            or ""
-                        )
+            params: dict[str, str] = {
+                "q": query,
+                "format": "json",
+                "no_redirect": "1",
+                "no_html": "1",
+            }
+            async with (
+                aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session,
+                session.get(url, params=params) as r,
+            ):
+                if r.status == 200:
+                    data = await r.json(content_type=None)
+                    # Prefer AbstractText, then Answer
+                    return data.get("AbstractText") or data.get("Answer") or ""
             return ""
         except Exception as e:
             logger.debug("DuckDuckGo search failed: %s", type(e).__name__)
@@ -160,18 +180,20 @@ class SearchRouter:
                 "X-Subscription-Token": self._brave_key or "",
             }
             params: dict[str, str] = {"q": query, "count": "5"}
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=8)) as session:
-                async with session.get(url, headers=headers, params=params) as r:
-                    if r.status == 200:
-                        data = await r.json()
-                        results = data.get("web", {}).get("results", [])
-                        snippets = []
-                        for result in results[:3]:
-                            title = result.get("title", "")
-                            desc = result.get("description", "")
-                            if desc:
-                                snippets.append(f"{title}: {desc}")
-                        return "\n".join(snippets)
+            async with (
+                aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=8)) as session,
+                session.get(url, headers=headers, params=params) as r,
+            ):
+                if r.status == 200:
+                    data = await r.json()
+                    results = data.get("web", {}).get("results", [])
+                    snippets = []
+                    for result in results[:3]:
+                        title = result.get("title", "")
+                        desc = result.get("description", "")
+                        if desc:
+                            snippets.append(f"{title}: {desc}")
+                    return "\n".join(snippets)
             return ""
         except Exception as e:
             logger.debug("Brave search failed: %s", type(e).__name__)
@@ -187,17 +209,19 @@ class SearchRouter:
                 "search_depth": "advanced",
                 "max_results": 3,
             }
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
-                async with session.post(url, json=payload) as r:
-                    if r.status == 200:
-                        data = await r.json()
-                        results = data.get("results", [])
-                        snippets = []
-                        for result in results[:3]:
-                            content = result.get("content", "")
-                            if content:
-                                snippets.append(content[:300])
-                        return "\n\n".join(snippets)
+            async with (
+                aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session,
+                session.post(url, json=payload) as r,
+            ):
+                if r.status == 200:
+                    data = await r.json()
+                    results = data.get("results", [])
+                    snippets = []
+                    for result in results[:3]:
+                        content = result.get("content", "")
+                        if content:
+                            snippets.append(content[:300])
+                    return "\n\n".join(snippets)
             return ""
         except Exception as e:
             logger.debug("Tavily search failed: %s", type(e).__name__)

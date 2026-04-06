@@ -8,15 +8,21 @@ plus a server-sent events (SSE) streaming endpoint for lower TTFT.
 import asyncio
 import json
 import logging
-from collections.abc import AsyncGenerator, Mapping
+from collections.abc import AsyncGenerator
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
-from src.api.middleware.authentication import get_optional_jwt_payload
+from src.api.auth.manager import fastapi_users
+from src.infra.persistence.orm_models import UserORM
+
+
+optional_user = fastapi_users.current_user(active=True, optional=True)
+from dependency_injector.wiring import Provide, inject
+
 from src.app.services.agent_loop import QueueFullError
 from src.app.services.amadeus_service import AmadeusService
-from src.container import get_amadeus_service, get_db_session
+from src.container import Container, get_db_session
 from src.core.domain.models import (
     ChatRequest,
     ChatResponse,
@@ -41,11 +47,13 @@ _chat_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_CHATS)
 # ENDPOINTS
 # =============================================================================
 
+
 @router.post("", response_model=ChatResponse)
+@inject
 async def chat(
     request: ChatRequest,
-    amadeus: AmadeusService = Depends(get_amadeus_service),
-    jwt_payload: Mapping | None = Depends(get_optional_jwt_payload),
+    amadeus: AmadeusService = Depends(Provide[Container.amadeus_service]),
+    user: UserORM | None = Depends(optional_user),
 ) -> ChatResponse:
     """
     Main chat endpoint.
@@ -55,8 +63,10 @@ async def chat(
     """
     try:
         # Guard against too many simultaneous in-flight requests
-        if _chat_semaphore.locked() and _chat_semaphore._value == 0:  # noqa: SLF001
-            raise HTTPException(status_code=503, detail="Server busy — too many concurrent requests. Please retry.")
+        if _chat_semaphore.locked() and _chat_semaphore._value == 0:
+            raise HTTPException(
+                status_code=503, detail="Server busy — too many concurrent requests. Please retry."
+            )
 
         async with _chat_semaphore:
             # Use provided session_id or create new one from service
@@ -65,10 +75,8 @@ async def chat(
 
             # Extract Permission Profile
             profile = PermissionProfile.SYSTEM_FULL
-            if jwt_payload:
-                role = jwt_payload.get("role", "guest").lower()
-                if role == "guest":
-                    profile = PermissionProfile.READ_ONLY
+            if user is not None and user.role.value.lower() == "guest":
+                profile = PermissionProfile.READ_ONLY
 
             try:
                 response = await amadeus.handle_command(
@@ -122,8 +130,9 @@ async def get_history(
 
 
 @router.get("/tools", response_model=ToolListResponse)
+@inject
 async def list_tools(
-    amadeus: AmadeusService = Depends(get_amadeus_service),
+    amadeus: AmadeusService = Depends(Provide[Container.amadeus_service]),
 ) -> ToolListResponse:
     """
     List all available tools.
@@ -138,8 +147,9 @@ async def list_tools(
 
 
 @router.post("/clear")
+@inject
 async def clear_conversation(
-    amadeus: AmadeusService = Depends(get_amadeus_service),
+    amadeus: AmadeusService = Depends(Provide[Container.amadeus_service]),
 ) -> dict[str, str]:
     """
     Clear conversation history (cache and database).
@@ -153,12 +163,13 @@ async def clear_conversation(
     summary="Stream a chat response via Server-Sent Events (SSE)",
     response_class=StreamingResponse,
 )
+@inject
 async def chat_stream(
     message: str = Query(..., description="User message to send to Amadeus"),
     session_id: str | None = Query(default=None, description="Optional session ID for context"),
     source: str = Query(default="api", description="Request source identifier"),
-    amadeus: AmadeusService = Depends(get_amadeus_service),
-    jwt_payload: Mapping | None = Depends(get_optional_jwt_payload),
+    amadeus: AmadeusService = Depends(Provide[Container.amadeus_service]),
+    user: UserORM | None = Depends(optional_user),
 ) -> StreamingResponse:
     """
     Stream the Amadeus response as Server-Sent Events (SSE).
@@ -196,10 +207,8 @@ async def chat_stream(
             async with _chat_semaphore:
                 # Extract Permission Profile
                 profile = PermissionProfile.SYSTEM_FULL
-                if jwt_payload:
-                    role = jwt_payload.get("role", "guest").lower()
-                    if role == "guest":
-                        profile = PermissionProfile.READ_ONLY
+                if user is not None and user.role.value.lower() == "guest":
+                    profile = PermissionProfile.READ_ONLY
 
                 try:
                     response_text = await amadeus.handle_command(

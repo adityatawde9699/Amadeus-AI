@@ -23,6 +23,7 @@ import asyncio
 import hashlib
 import logging
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from src.core.config import Settings, get_settings
@@ -34,6 +35,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # RESULT DATACLASS
 # =============================================================================
+
 
 class MemoryResult:
     """A single semantic memory retrieved from the vector store."""
@@ -61,6 +63,7 @@ class MemoryResult:
 # =============================================================================
 # QDRANT MEMORY SERVICE
 # =============================================================================
+
 
 class QdrantMemoryService:
     """
@@ -92,11 +95,10 @@ class QdrantMemoryService:
         """Initialize Qdrant async client and Gemini embedding model."""
         try:
             # Using the same persist path but handled by Qdrant
-            import os
-
             from qdrant_client import AsyncQdrantClient
             from qdrant_client.models import Distance, VectorParams
-            os.makedirs(self._settings.CHROMA_PERSIST_DIR, exist_ok=True)
+
+            Path(str(self._settings.CHROMA_PERSIST_DIR)).mkdir(parents=True, exist_ok=True)
 
             self._client = AsyncQdrantClient(path=self._settings.CHROMA_PERSIST_DIR)
 
@@ -138,6 +140,7 @@ class QdrantMemoryService:
 
         try:
             from google import genai
+
             self._genai_client = genai.Client(api_key=self._settings.GEMINI_API_KEY)
             self._embed_model = self._settings.MEMORY_EMBED_MODEL
             logger.info("Gemini embedding model ready: %s", self._embed_model)
@@ -149,17 +152,20 @@ class QdrantMemoryService:
     # Async Embedding Helpers
     # -------------------------------------------------------------------------
 
-    async def _embed_async(self, text: str, task_type: str = "retrieval_document") -> list[float] | None:
+    async def _embed_async(
+        self, text: str, task_type: str = "retrieval_document"
+    ) -> list[float] | None:
         """Embed text asynchronously using an executor."""
         if not self._enabled or not self._embed_model:
             return None
 
         def _sync_embed() -> list[float]:
             from google.genai import types
+
             result = self._genai_client.models.embed_content(
                 model=self._embed_model,
                 contents=text,
-                config=types.EmbedContentConfig(task_type=task_type)
+                config=types.EmbedContentConfig(task_type=task_type),
             )
             embeddings = result.embeddings
             assert embeddings is not None and len(embeddings) > 0
@@ -191,9 +197,7 @@ class QdrantMemoryService:
 
         # Build a stable, unique document ID
         timestamp_str = datetime.now(UTC).isoformat()
-        id_str = hashlib.sha256(
-            f"{session_id}:{role}:{text}:{timestamp_str}".encode()
-        ).hexdigest()
+        id_str = hashlib.sha256(f"{session_id}:{role}:{text}:{timestamp_str}".encode()).hexdigest()
 
         try:
             from qdrant_client.models import PointStruct
@@ -209,9 +213,9 @@ class QdrantMemoryService:
                             "role": role,
                             "text": text,
                             "timestamp": timestamp_str,
-                        }
+                        },
                     )
-                ]
+                ],
             )
             logger.debug("Memory stored — id=%s, role=%s", id_str[:8], role)
             return True
@@ -235,7 +239,7 @@ class QdrantMemoryService:
                 collection_name=self._settings.CHROMA_COLLECTION_NAME,
                 query_vector=embedding,
                 limit=top_k,
-                with_payload=True
+                with_payload=True,
             )
 
             memories: list[MemoryResult] = []
@@ -247,7 +251,7 @@ class QdrantMemoryService:
                         role=payload.get("role", "unknown"),
                         text=payload.get("text", ""),
                         timestamp=payload.get("timestamp", ""),
-                        distance=hit.score, # Qdrant returns similarity score
+                        distance=hit.score,  # Qdrant returns similarity score
                     )
                 )
 
@@ -272,13 +276,8 @@ class QdrantMemoryService:
             count_result = await self._client.count(
                 collection_name=self._settings.CHROMA_COLLECTION_NAME,
                 count_filter=Filter(
-                    must=[
-                        FieldCondition(
-                            key="session_id",
-                            match=MatchValue(value=session_id)
-                        )
-                    ]
-                )
+                    must=[FieldCondition(key="session_id", match=MatchValue(value=session_id))]
+                ),
             )
             count = count_result.count
 
@@ -286,13 +285,8 @@ class QdrantMemoryService:
                 await self._client.delete(
                     collection_name=self._settings.CHROMA_COLLECTION_NAME,
                     points_selector=Filter(
-                        must=[
-                            FieldCondition(
-                                key="session_id",
-                                match=MatchValue(value=session_id)
-                            )
-                        ]
-                    )
+                        must=[FieldCondition(key="session_id", match=MatchValue(value=session_id))]
+                    ),
                 )
                 logger.info("Cleared %d memories for session=%s", count, session_id[:8])
             return int(count)

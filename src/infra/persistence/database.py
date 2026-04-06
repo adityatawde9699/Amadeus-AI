@@ -34,9 +34,11 @@ from src.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+
 class Base(DeclarativeBase):
     """Base class for all ORM models."""
-    pass
+
+
 
 # Global engine and session factory (initialized lazily)
 _engine: AsyncEngine | None = None
@@ -90,7 +92,9 @@ def get_engine() -> AsyncEngine:
             pool_pre_ping=True,
         )
 
-    logger.info(f"Database engine created: {async_db_url.split('@')[-1] if '@' in async_db_url else async_db_url}")
+    logger.info(
+        f"Database engine created: {async_db_url.split('@')[-1] if '@' in async_db_url else async_db_url}"
+    )
     return _engine
 
 
@@ -190,6 +194,7 @@ async def close_db() -> None:
 # =============================================================================
 # SQLITE OPTIMIZATION PRAGMAS
 # =============================================================================
+
 
 @event.listens_for(Engine, "connect")
 def set_sqlite_pragma(dbapi_conn: Any, connection_record: Any) -> None:

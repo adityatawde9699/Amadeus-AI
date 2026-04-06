@@ -12,9 +12,10 @@ Architecture:
 
 import asyncio
 import logging
-import os
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 
@@ -23,9 +24,15 @@ if TYPE_CHECKING:
 
     class IConversationRepository:
         """Protocol for conversation repository (typing only)."""
-        async def add_message(self, session_id: str, role: str, content: str, tool_used: str | None = None) -> None: ...
-        async def get_recent_context(self, session_id: str, limit: int = 20) -> list[dict[str, Any]]: ...
+
+        async def add_message(
+            self, session_id: str, role: str, content: str, tool_used: str | None = None
+        ) -> None: ...
+        async def get_recent_context(
+            self, session_id: str, limit: int = 20
+        ) -> list[dict[str, Any]]: ...
         async def clear_session(self, session_id: str) -> None: ...
+
 
 import joblib
 import numpy as np
@@ -48,9 +55,11 @@ logger = logging.getLogger(__name__)
 # CONVERSATION MANAGEMENT
 # =============================================================================
 
+
 @dataclass
 class ConversationMessage:
     """Structured conversation message."""
+
     role: str  # 'user' or 'assistant'
     content: str
     timestamp: datetime = field(default_factory=datetime.now)
@@ -85,11 +94,7 @@ class ConversationManager:
         self._cache_loaded = False
 
     async def add(
-        self,
-        role: str,
-        content: str,
-        tool_used: str | None = None,
-        **metadata: Any
+        self, role: str, content: str, tool_used: str | None = None, **metadata: Any
     ) -> None:
         """Add a message - goes to DB first if repo available."""
         msg = ConversationMessage(
@@ -128,19 +133,23 @@ class ConversationManager:
                     role=m["role"],
                     content=m["content"],
                     tool_used=m.get("tool_used"),
-                    timestamp=datetime.fromisoformat(m["timestamp"]) if m.get("timestamp") else datetime.now(),
+                    timestamp=datetime.fromisoformat(m["timestamp"])
+                    if m.get("timestamp")
+                    else datetime.now(),
                 )
                 for m in messages
             ]
             self._cache_loaded = True
-            logger.info(f"Loaded {len(self._cache)} messages from DB for session {self.session_id[:8]}...")
+            logger.info(
+                f"Loaded {len(self._cache)} messages from DB for session {self.session_id[:8]}..."
+            )
         except Exception as e:
             logger.exception(f"Failed to load conversation history: {e}")
 
     def _trim_cache(self) -> None:
         """Keep cache within limits — always preserves the most recent messages."""
         if len(self._cache) > self.max_context:
-            self._cache = self._cache[-self.max_context:]
+            self._cache = self._cache[-self.max_context :]
 
     def get_messages(self) -> list[ConversationMessage]:
         """Get cached messages."""
@@ -183,6 +192,7 @@ class ConversationManager:
 # AMADEUS SERVICE
 # =============================================================================
 
+
 class AmadeusService:
     """
     Main AI Assistant Orchestrator Service.
@@ -206,8 +216,6 @@ class AmadeusService:
         self.debug_mode = debug_mode
         self.cache_service = cache_service
 
-        # Session management
-        import uuid
         self.session_id = session_id or str(uuid.uuid4())
 
         # UNIFIED conversation manager (uses DB as source of truth)
@@ -222,7 +230,10 @@ class AmadeusService:
         # Long-term semantic memory (ChromaDB + Gemini embeddings)
         self.memory_service = QdrantMemoryService(settings=self.settings)
         if self.memory_service.is_enabled:
-            logger.info("Long-term memory ENABLED — ChromaDB ready (%d stored memories)", self.memory_service.memory_count)
+            logger.info(
+                "Long-term memory ENABLED — ChromaDB ready (%d stored memories)",
+                self.memory_service.memory_count,
+            )
         else:
             logger.info("Long-term memory DISABLED — operating with session-only context")
 
@@ -241,6 +252,7 @@ class AmadeusService:
         # Gemini SDK call in run_in_executor so it never blocks the event loop.
         llm_generate = None
         if hasattr(self, "client") and self.client:
+
             async def _generate(prompt: str) -> str:
                 loop = asyncio.get_running_loop()
                 assert self.client is not None
@@ -258,10 +270,12 @@ class AmadeusService:
         self.orchestrator = AgentOrchestrator(
             tool_registry=self.tool_registry,
             tool_executor=self.tool_executor,
-            llm_generate=llm_generate
+            llm_generate=llm_generate,
         )
 
-        logger.info(f"AmadeusService initialized with {len(self.tool_registry)} tools, session={self.session_id[:8]}...")
+        logger.info(
+            f"AmadeusService initialized with {len(self.tool_registry)} tools, session={self.session_id[:8]}..."
+        )
 
     async def initialize(self) -> None:
         """Async initialization - load conversation history from DB."""
@@ -293,7 +307,7 @@ class AmadeusService:
             vectorizer_path = "Model/tfidf_vectorizer.joblib"
             classifier_path = "Model/svm_classifier.joblib"
 
-            if os.path.exists(vectorizer_path) and os.path.exists(classifier_path):
+            if Path(vectorizer_path).exists() and Path(classifier_path).exists():
                 self.vectorizer = joblib.load(vectorizer_path)
                 self.classifier = joblib.load(classifier_path)
                 self.classifier_enabled = True
@@ -373,10 +387,10 @@ Guidelines:
 
         try:
             # Vectorize user query
-            X = self.vectorizer.transform([query])
+            x_vec = self.vectorizer.transform([query])
 
             # Get scores from SVM
-            scores = self.classifier.decision_function(X)[0]
+            scores = self.classifier.decision_function(x_vec)[0]
             classes = self.classifier.classes_
 
             # Sort by confidence
@@ -441,8 +455,7 @@ Guidelines:
             # Check if this is a multi-step query that needs the agent
             if self._is_multi_step_query(user_input):
                 response, tools_used = await self._process_with_agent(
-                    user_input,
-                    permission_profile=permission_profile
+                    user_input, permission_profile=permission_profile
                 )
                 tool_used = ", ".join(tools_used) if tools_used else None
             else:
@@ -462,6 +475,7 @@ Guidelines:
 
         except Exception as e:
             from src.app.services.agent_loop import QueueFullError
+
             if isinstance(e, QueueFullError):
                 raise  # Let backpressure errors propagate up to the API layer
 
@@ -536,7 +550,6 @@ Guidelines:
         except Exception as e:
             logger.exception(f"Error handling background event: {e}")
 
-
     async def _process_command_internal(
         self,
         user_input: str,
@@ -558,7 +571,9 @@ Guidelines:
         # Check if Gemini is available
         if not getattr(self, "client", None):
             # Without Gemini, try to execute tools directly based on keywords
-            return await self._process_without_gemini(user_input, permission_profile=permission_profile)
+            return await self._process_without_gemini(
+                user_input, permission_profile=permission_profile
+            )
 
         # Step 1: Predict relevant tools
         relevant_tools = self._predict_relevant_tools(user_input)
@@ -594,12 +609,12 @@ Guidelines:
                 logger.info("LLM cache hit (%d chars)", len(user_input))
                 try:
                     from src.infra.metrics import amadeus_cache_hit_rate
+
                     stats = self.cache_service.get_stats()
                     amadeus_cache_hit_rate.set(stats["hit_rate_pct"])
                 except Exception:
                     pass
                 return (cached_llm, None)
-
 
         # Step 5: Call Gemini
         try:
@@ -618,7 +633,9 @@ Guidelines:
                 fc = gemini_response.function_calls[0]
                 tool_name = fc.name or "unknown"
                 # Execute the function call
-                result = await self._execute_function_call(fc, permission_profile=permission_profile)
+                result = await self._execute_function_call(
+                    fc, permission_profile=permission_profile
+                )
 
                 # Generate a response incorporating the result
                 final_response = await self._generate_response_with_result(
@@ -627,11 +644,16 @@ Guidelines:
                 return (final_response, tool_name)
 
             # Step 7: Parse direct response
-            direct_response = str(gemini_response.text) if hasattr(gemini_response, "text") and gemini_response.text else str(gemini_response)
+            direct_response = (
+                str(gemini_response.text)
+                if hasattr(gemini_response, "text") and gemini_response.text
+                else str(gemini_response)
+            )
 
             # Increment Prometheus LLM call counter (conversational, no tool)
             try:
                 from src.infra.metrics import amadeus_llm_calls_total
+
                 amadeus_llm_calls_total.labels(provider="gemini").inc()
             except Exception:
                 pass
@@ -640,14 +662,13 @@ Guidelines:
                 await self.cache_service.set_llm(user_input, direct_response, "gemini")
             return (direct_response, None)
 
-
         except Exception as e:
             logger.exception("Gemini API error type: %s", type(e).__name__)
             logger.exception("Gemini API error: %s", repr(e))
             import traceback
+
             logger.exception("Traceback: %s", traceback.format_exc())
             return (f"I had trouble processing that: {e}", None)
-
 
     async def _process_without_gemini(
         self,
@@ -661,7 +682,9 @@ Guidelines:
         if any(kw in lower_input for kw in ["time", "date", "day"]):
             tool = self.tool_registry.get("get_datetime_info")
             if tool:
-                result = await self.tool_executor.execute(tool, {"query": user_input}, permission_profile=permission_profile)
+                result = await self.tool_executor.execute(
+                    tool, {"query": user_input}, permission_profile=permission_profile
+                )
                 if result.success:
                     return (result.result, "get_datetime_info")
                 return ("Could not get time info.", None)
@@ -670,7 +693,9 @@ Guidelines:
         if any(kw in lower_input for kw in ["system", "cpu", "memory", "status"]):
             tool = self.tool_registry.get("system_status")
             if tool:
-                result = await self.tool_executor.execute(tool, {}, permission_profile=permission_profile)
+                result = await self.tool_executor.execute(
+                    tool, {}, permission_profile=permission_profile
+                )
                 if result.success:
                     return (result.result, "system_status")
                 return ("Could not get system status.", None)
@@ -679,7 +704,9 @@ Guidelines:
         if "task" in lower_input and any(kw in lower_input for kw in ["list", "show", "what"]):
             tool = self.tool_registry.get("list_tasks")
             if tool:
-                result = await self.tool_executor.execute(tool, {}, permission_profile=permission_profile)
+                result = await self.tool_executor.execute(
+                    tool, {}, permission_profile=permission_profile
+                )
                 if result.success:
                     return (result.result, "list_tasks")
                 return ("Could not list tasks.", None)
@@ -687,7 +714,7 @@ Guidelines:
         return (
             "GEMINI_API_KEY is not configured. I can only perform basic commands. "
             "Set the GEMINI_API_KEY in your .env file for full AI capabilities.",
-            None
+            None,
         )
 
     async def _execute_function_call(
@@ -702,6 +729,7 @@ Guidelines:
         # Increment Prometheus tool call counter
         try:
             from src.infra.metrics import amadeus_tool_calls_total
+
             amadeus_tool_calls_total.labels(tool_name=tool_name).inc()
         except Exception:
             pass  # metrics unavailable in test / CLI context
@@ -714,12 +742,12 @@ Guidelines:
                 # Update cache hit rate gauge
                 try:
                     from src.infra.metrics import amadeus_cache_hit_rate
+
                     stats = self.cache_service.get_stats()
                     amadeus_cache_hit_rate.set(stats["hit_rate_pct"])
                 except Exception:
                     pass
                 return cached_result
-
 
         tool = self.tool_registry.get(tool_name)
         if not tool:
@@ -743,11 +771,13 @@ Guidelines:
         long_term_memories = await self.memory_service.retrieve(user_input, top_k=3)
         memory_context = self.memory_service.format_for_prompt(long_term_memories, max_chars=600)
 
-        prompt = f"""{self.identity_prompt.format(
-            current_time=current_time,
-            session_id=self.session_id,
-            context_summary=self.conversation_manager.get_context_summary(),
-        )}
+        prompt = f"""{
+            self.identity_prompt.format(
+                current_time=current_time,
+                session_id=self.session_id,
+                context_summary=self.conversation_manager.get_context_summary(),
+            )
+        }
 {memory_context}
 
 Recent conversation:
@@ -829,9 +859,7 @@ Provide a natural, concise response that incorporates this result. Don't just re
             # Store it in the conversation history as an assistant message
             # If the user_id corresponds to the active session_id, this keeps context sync'd
             await self.conversation_manager.add(
-                role="assistant",
-                content=message,
-                metadata={"outbound": True, "platform": platform}
+                role="assistant", content=message, metadata={"outbound": True, "platform": platform}
             )
 
             # Dispatch to the correct adapter
@@ -850,6 +878,7 @@ Provide a natural, concise response that incorporates this result. Don't just re
             return False
 
         except Exception as e:
-            logger.error(f"Failed to send outbound message to {user_id} on {platform}: {e}", exc_info=True)
+            logger.error(
+                f"Failed to send outbound message to {user_id} on {platform}: {e}", exc_info=True
+            )
             return False
-

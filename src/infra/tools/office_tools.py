@@ -18,10 +18,12 @@ logger = logging.getLogger(__name__)
 # Try to import win32com, but handle gracefully if not on Windows or not installed
 try:
     import win32com.client
+
     HAS_PYWIN32 = True
 except ImportError:
     HAS_PYWIN32 = False
     logger.warning("pywin32 not installed. Office tools will be unavailable.")
+
 
 def _check_windows_office() -> tuple[bool, str | None]:
     """Verify system is Windows and pywin32 is available."""
@@ -31,17 +33,28 @@ def _check_windows_office() -> tuple[bool, str | None]:
         return False, "Error: Local Office integration is only supported on Windows."
     return True, None
 
+
 @tool(
     name="create_excel_spreadsheet",
     description="Create a new Excel spreadsheet with specified data. Trigger: 'create excel', 'make spreadsheet'",
     category=ToolCategory.PRODUCTIVITY,
     parameters={
         "file_name": {"type": "string", "description": "Name of the Excel file to create"},
-        "columns": {"type": "array", "items": {"type": "string"}, "description": "List of column headers"},
-        "data": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}, "description": "2D array of row data"},
-    }
+        "columns": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "List of column headers",
+        },
+        "data": {
+            "type": "array",
+            "items": {"type": "array", "items": {"type": "string"}},
+            "description": "2D array of row data",
+        },
+    },
 )
-def create_excel_spreadsheet(file_name: str, columns: list[str], data: list[list[Any]], **kwargs: Any) -> str:
+def create_excel_spreadsheet(
+    file_name: str, columns: list[str], data: list[list[Any]], **kwargs: Any
+) -> str:
     """Create a new Excel spreadsheet using local Excel app."""
     ok, err = _check_windows_office()
     if not ok:
@@ -64,6 +77,7 @@ def create_excel_spreadsheet(file_name: str, columns: list[str], data: list[list
 
         # Save file in agent workspace
         from src.core.config import get_settings
+
         settings = get_settings()
         workspace = settings.AGENT_WORKSPACE
         workspace.mkdir(parents=True, exist_ok=True)
@@ -81,12 +95,14 @@ def create_excel_spreadsheet(file_name: str, columns: list[str], data: list[list
         logger.exception(f"Failed to create Excel spreadsheet: {e}")
         return f"Error: Failed to create Excel spreadsheet: {e}"
 
+
 def create_excel_preview(args: dict) -> str:
     """Generate a preview for Excel creation."""
     file_name = args.get("file_name", "untitled.xlsx")
     cols = args.get("columns", [])
     rows = len(args.get("data", []))
     return f"Create Excel file '{file_name}' with {len(cols)} columns and {rows} rows of data."
+
 
 # Assign the preview function to the tool metadata
 create_excel_spreadsheet._tool_metadata.get_preview = create_excel_preview  # type: ignore[attr-defined]
@@ -100,7 +116,7 @@ create_excel_spreadsheet._tool_metadata.get_preview = create_excel_preview  # ty
         "file_name": {"type": "string", "description": "Name of the document"},
         "title": {"type": "string", "description": "Title of the document"},
         "content": {"type": "string", "description": "Full text content of the document"},
-    }
+    },
 )
 def create_word_document(file_name: str, title: str, content: str, **kwargs: Any) -> str:
     """Create a new Word document using local Word app."""
@@ -114,10 +130,10 @@ def create_word_document(file_name: str, title: str, content: str, **kwargs: Any
         doc = word.Documents.Add()
 
         # Add Title
-        range = doc.Range(0, 0)
-        range.Text = title + "\n\n"
-        range.Font.Bold = True
-        range.Font.Size = 16
+        title_range = doc.Range(0, 0)
+        title_range.Text = title + "\n\n"
+        title_range.Font.Bold = True
+        title_range.Font.Size = 16
 
         # Add Content
         content_range = doc.Range(doc.Content.End - 1, doc.Content.End - 1)
@@ -126,6 +142,7 @@ def create_word_document(file_name: str, title: str, content: str, **kwargs: Any
         content_range.Font.Size = 11
 
         from src.core.config import get_settings
+
         settings = get_settings()
         workspace = settings.AGENT_WORKSPACE
         workspace.mkdir(parents=True, exist_ok=True)
@@ -143,11 +160,15 @@ def create_word_document(file_name: str, title: str, content: str, **kwargs: Any
         logger.exception(f"Failed to create Word document: {e}")
         return f"Error: Failed to create Word document: {e}"
 
+
 def create_word_preview(args: dict) -> str:
     file_name = args.get("file_name", "untitled.docx")
     title = args.get("title", "")
     return f"Create Word document '{file_name}' titled '{title}'."
+
+
 create_word_document._tool_metadata.get_preview = create_word_preview  # type: ignore[attr-defined]
+
 
 @tool(
     name="send_outlook_email",
@@ -157,7 +178,7 @@ create_word_document._tool_metadata.get_preview = create_word_preview  # type: i
         "to": {"type": "string", "description": "Recipient email address"},
         "subject": {"type": "string", "description": "Email subject"},
         "body": {"type": "string", "description": "Email message body"},
-    }
+    },
 )
 def send_outlook_email(to: str, subject: str, body: str, **kwargs: Any) -> str:
     """Send an email using the local Outlook app."""
@@ -177,11 +198,15 @@ def send_outlook_email(to: str, subject: str, body: str, **kwargs: Any) -> str:
         logger.exception(f"Failed to send Outlook email: {e}")
         return f"Error: Failed to send Outlook email: {e}"
 
+
 def send_email_preview(args: dict) -> str:
     to = args.get("to", "unknown recipient")
     subject = args.get("subject", "No subject")
     return f"Send email to '{to}' with subject '{subject}'."
+
+
 send_outlook_email._tool_metadata.get_preview = send_email_preview  # type: ignore[attr-defined]
+
 
 @tool(
     name="read_outlook_emails",
@@ -189,7 +214,7 @@ send_outlook_email._tool_metadata.get_preview = send_email_preview  # type: igno
     category=ToolCategory.COMMUNICATION,
     parameters={
         "count": {"type": "integer", "description": "Number of recent emails to read (default 5)"},
-    }
+    },
 )
 def read_outlook_emails(count: int = 5, **kwargs: Any) -> str:
     """Read recent emails using the local Outlook app."""
@@ -217,7 +242,9 @@ def read_outlook_emails(count: int = 5, **kwargs: Any) -> str:
             received = getattr(item, "ReceivedTime", "Unknown Time")
             body = getattr(item, "Body", "")[:200]  # First 200 chars
 
-            emails.append(f"From: {sender}\\nDate: {received}\\nSubject: {subject}\\nSnippet: {body}...\\n")
+            emails.append(
+                f"From: {sender}\\nDate: {received}\\nSubject: {subject}\\nSnippet: {body}...\\n"
+            )
 
         if not emails:
             return "No recent emails found."
@@ -227,22 +254,34 @@ def read_outlook_emails(count: int = 5, **kwargs: Any) -> str:
         logger.exception(f"Failed to read Outlook emails: {e}")
         return f"Error: Failed to read Outlook emails: {e}"
 
+
 def read_outlook_emails_preview(args: dict) -> str:
     count = args.get("count", 5)
     return f"Read the {count} most recent emails from your Outlook inbox."
+
+
 read_outlook_emails._tool_metadata.get_preview = read_outlook_emails_preview  # type: ignore[attr-defined]
+
 
 @tool(
     name="read_excel_spreadsheet",
     description="Read data from an Excel spreadsheet. Trigger: 'read excel', 'get data from spreadsheet'",
     category=ToolCategory.PRODUCTIVITY,
     parameters={
-        "file_path": {"type": "string", "description": "Absolute or relative path to the Excel file"},
+        "file_path": {
+            "type": "string",
+            "description": "Absolute or relative path to the Excel file",
+        },
         "sheet_name": {"type": "string", "description": "Optional sheet name to read"},
-        "max_rows": {"type": "integer", "description": "Maximum number of rows to read (default 20)"},
-    }
+        "max_rows": {
+            "type": "integer",
+            "description": "Maximum number of rows to read (default 20)",
+        },
+    },
 )
-def read_excel_spreadsheet(file_path: str, sheet_name: str | None = None, max_rows: int = 20, **kwargs: Any) -> str:
+def read_excel_spreadsheet(
+    file_path: str, sheet_name: str | None = None, max_rows: int = 20, **kwargs: Any
+) -> str:
     """Read data from an Excel file."""
     ok, err = _check_windows_office()
     if not ok:
@@ -250,6 +289,7 @@ def read_excel_spreadsheet(file_path: str, sheet_name: str | None = None, max_ro
 
     try:
         from src.core.config import get_settings
+
         settings = get_settings()
 
         # Handle relative paths by anchoring to workspace
@@ -299,12 +339,16 @@ def read_excel_spreadsheet(file_path: str, sheet_name: str | None = None, max_ro
         logger.exception(f"Failed to read Excel spreadsheet: {e}")
         return f"Error: Failed to read Excel spreadsheet: {e}"
 
+
 def read_excel_preview(args: dict) -> str:
     file_path = args.get("file_path", "unknown")
     sheet = args.get("sheet_name", "active sheet")
     rows = args.get("max_rows", 20)
     return f"Read up to {rows} rows from '{sheet}' in Excel file '{file_path}'."
+
+
 read_excel_spreadsheet._tool_metadata.get_preview = read_excel_preview  # type: ignore[attr-defined]
+
 
 def get_office_tools() -> list[Tool]:
     """Get all office tools for registration."""

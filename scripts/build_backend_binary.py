@@ -18,19 +18,19 @@ Requirements:
     pip install pyinstaller
 """
 
-import os
 import platform
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
+
 # ─── Config ──────────────────────────────────────────────────────────────────
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
-SRC_ENTRY    = PROJECT_ROOT / "src" / "api" / "server.py"
-OUTPUT_DIR   = PROJECT_ROOT / "clients" / "amadeus-desktop" / "src-tauri" / "resources"
-BUILD_DIR    = PROJECT_ROOT / "dist_backend"
+SRC_ENTRY = PROJECT_ROOT / "src" / "api" / "server.py"
+OUTPUT_DIR = PROJECT_ROOT / "clients" / "amadeus-desktop" / "src-tauri" / "resources"
+BUILD_DIR = PROJECT_ROOT / "dist_backend"
 
 BINARY_NAME = "amadeus-backend"
 if platform.system() == "Windows":
@@ -38,11 +38,19 @@ if platform.system() == "Windows":
 
 # Files/folders to exclude from the bundle (reduces binary size)
 EXCLUDES = [
-    "pytest", "IPython", "jupyter", "notebook",
-    "matplotlib", "scipy", "pandas",
-    "tkinter", "_tkinter",
-    "PIL", "cv2",
-    "test", "tests",
+    "pytest",
+    "IPython",
+    "jupyter",
+    "notebook",
+    "matplotlib",
+    "scipy",
+    "pandas",
+    "tkinter",
+    "_tkinter",
+    "PIL",
+    "cv2",
+    "test",
+    "tests",
     "locust",
 ]
 
@@ -56,6 +64,7 @@ DATAS = [
 ]
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
+
 
 def run(cmd: list[str], cwd: Path = PROJECT_ROOT) -> None:
     """Run a subprocess command and raise on failure."""
@@ -96,24 +105,39 @@ def build_binary() -> None:
         exclude_args += ["--exclude-module", mod]
 
     cmd = [
-        sys.executable, "-m", "PyInstaller",
-        "--onefile",                          # Single executable
-        "--name", BINARY_NAME.replace(".exe", ""),
-        "--distpath", str(BUILD_DIR),
-        "--workpath", str(BUILD_DIR / "work"),
-        "--specpath", str(BUILD_DIR),
+        sys.executable,
+        "-m",
+        "PyInstaller",
+        "--onefile",  # Single executable
+        "--name",
+        BINARY_NAME.replace(".exe", ""),
+        "--distpath",
+        str(BUILD_DIR),
+        "--workpath",
+        str(BUILD_DIR / "work"),
+        "--specpath",
+        str(BUILD_DIR),
         "--noconfirm",
         "--clean",
         # FastAPI / uvicorn need these hidden imports
-        "--hidden-import", "uvicorn.lifespan.on",
-        "--hidden-import", "uvicorn.lifespan.off",
-        "--hidden-import", "uvicorn.protocols.http.auto",
-        "--hidden-import", "uvicorn.protocols.websockets.auto",
-        "--hidden-import", "uvicorn.loops.auto",
-        "--hidden-import", "fastapi",
-        "--hidden-import", "aiosqlite",
-        "--hidden-import", "sqlalchemy.dialects.sqlite",
-        "--hidden-import", "src.api.server",
+        "--hidden-import",
+        "uvicorn.lifespan.on",
+        "--hidden-import",
+        "uvicorn.lifespan.off",
+        "--hidden-import",
+        "uvicorn.protocols.http.auto",
+        "--hidden-import",
+        "uvicorn.protocols.websockets.auto",
+        "--hidden-import",
+        "uvicorn.loops.auto",
+        "--hidden-import",
+        "fastapi",
+        "--hidden-import",
+        "aiosqlite",
+        "--hidden-import",
+        "sqlalchemy.dialects.sqlite",
+        "--hidden-import",
+        "src.api.server",
         *data_args,
         *exclude_args,
         str(SRC_ENTRY),

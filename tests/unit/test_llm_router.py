@@ -9,16 +9,18 @@ Tests cover:
 """
 
 import asyncio
-import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
-from src.infra.llm.router import LLMRouter
+import pytest
+
 from src.core.exceptions import LLMRateLimitError
+from src.infra.llm.router import LLMRouter
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_mock_provider(response: str = "ok") -> AsyncMock:
     provider = AsyncMock()
@@ -29,6 +31,7 @@ def _make_mock_provider(response: str = "ok") -> AsyncMock:
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 class TestLLMRouterFallback:
     @pytest.mark.asyncio

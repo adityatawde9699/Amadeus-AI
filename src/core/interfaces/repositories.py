@@ -117,6 +117,7 @@ class IRepository(ABC, Generic[T]):
 # TASK REPOSITORY
 # =============================================================================
 
+
 class ITaskRepository(IRepository[Task]):
     """Repository interface for Task entities."""
 
@@ -165,6 +166,7 @@ class ITaskRepository(IRepository[Task]):
 # =============================================================================
 # NOTE REPOSITORY
 # =============================================================================
+
 
 class INoteRepository(IRepository[Note]):
     """Repository interface for Note entities."""
@@ -218,6 +220,7 @@ class INoteRepository(IRepository[Note]):
 # =============================================================================
 # REMINDER REPOSITORY
 # =============================================================================
+
 
 class IReminderRepository(IRepository[Reminder]):
     """Repository interface for Reminder entities."""
@@ -278,6 +281,7 @@ class IReminderRepository(IRepository[Reminder]):
 # CALENDAR EVENT REPOSITORY
 # =============================================================================
 
+
 class ICalendarEventRepository(IRepository[CalendarEvent]):
     """Repository interface for CalendarEvent entities."""
 
@@ -334,6 +338,7 @@ class ICalendarEventRepository(IRepository[CalendarEvent]):
 # =============================================================================
 # CONVERSATION REPOSITORY
 # =============================================================================
+
 
 class IConversationRepository(ABC):
     """Repository interface for conversation history persistence."""
@@ -400,7 +405,7 @@ class IConversationRepository(ABC):
 # POMODORO REPOSITORY
 # =============================================================================
 
-from src.core.domain.models import PomodoroSession, PomodoroState  # noqa: E402
+from src.core.domain.models import PomodoroSession, PomodoroState
 
 
 class IPomodoroRepository(ABC):
@@ -445,7 +450,9 @@ class IKnowledgeGraphRepository(ABC):
     """Repository interface for Knowledge Graph (Episodic Memory)."""
 
     @abstractmethod
-    async def upsert_entity(self, name: str, entity_type: str | None = None, description: str | None = None) -> int:
+    async def upsert_entity(
+        self, name: str, entity_type: str | None = None, description: str | None = None
+    ) -> int:
         """
         Create or update an entity by name.
 
@@ -471,4 +478,3 @@ class IKnowledgeGraphRepository(ABC):
     @abstractmethod
     async def get_entity_by_name(self, name: str) -> dict | None:
         """Get entity details by name."""
-

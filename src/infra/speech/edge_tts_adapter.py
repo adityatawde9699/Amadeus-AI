@@ -37,7 +37,9 @@ class EdgeTTSAdapter(ITextToSpeechService):
     _cache: ClassVar[dict[str, bytes]] = {}
     _MAX_CACHE_ENTRIES: int = 200  # Cap memory usage (~200 phrases)
 
-    def __init__(self, voice: str = "en-US-JennyNeural", cache_service: "CacheService | None" = None) -> None:
+    def __init__(
+        self, voice: str = "en-US-JennyNeural", cache_service: "CacheService | None" = None
+    ) -> None:
         self.default_voice = voice
         self.cache_service = cache_service
 
