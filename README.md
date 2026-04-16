@@ -13,7 +13,6 @@
 > **Tech Stack Highlights:**
 > `Python 3.11+` · `FastAPI` · `SQLAlchemy 2.0` · `Ollama` · `Groq (Llama 3.3)` · `Gemini` · `OpenAI (GPT-4o-mini)` · `Redis` · `Qdrant` · `PostgreSQL` · `JWT Auth` · `SSE Streaming` · `faster-whisper` · `Edge TTS` · `Telegram` · `WhatsApp` · `Docker` · `GitHub Actions` · `scikit-learn (TF-IDF + SVM)` · `Prometheus`
 
-
 </div>
 
 ---
@@ -97,7 +96,6 @@ Amadeus AI is a FastAPI-based backend service that orchestrates a conversational
 - Prometheus metrics endpoint (`/api/v1/metrics`)
 - Sentry error tracking integration
 
-
 ### Caching (Redis)
 - LLM responses: 1-hour TTL — deduplicates identical prompts
 - **LLM daily usage quotas**: `llm_usage:{provider}:{date}` — 86400s TTL, shared across workers
@@ -122,7 +120,6 @@ Amadeus AI is a FastAPI-based backend service that orchestrates a conversational
 - **`train-model` CI job**: auto-retrains the ML classifier when `data/training_data.json` changes and commits updated model artifacts back to the repo
 - **Coverage threshold: 60%** enforced in CI (`--cov-fail-under=60`); **80%** enforced locally via `pyproject.toml`
 - Staging deploy to Railway on `develop` branch merge
-
 
 ---
 
@@ -401,22 +398,264 @@ curl -N -H "Authorization: Bearer $TOKEN" \
 
 ---
 
-## 8. System Architecture Overview
+## 8. System Architecture
 
+<table>
+<tr><td>
+
+<div align="center">
+
+<!-- ═══════════════════════════════════════════════════════
+     ARCHITECTURE DIAGRAM  —  rendered in browsers / GitHub
+     ═══════════════════════════════════════════════════════ -->
+
+<table width="100%" cellspacing="0" cellpadding="0" border="0">
+
+<!-- CLIENT LAYER -->
+<tr><td>
+<table width="100%" cellspacing="0" cellpadding="0" border="0"
+       style="border:1px solid #B5D4F4;border-left:4px solid #378ADD;border-radius:8px;background:#E6F1FB;margin-bottom:0">
+<tr>
+  <td style="padding:8px 14px 4px">
+    <strong style="font-size:11px;letter-spacing:.08em;color:#0C447C">CLIENT LAYER</strong>
+  </td>
+</tr>
+<tr>
+  <td style="padding:4px 14px 10px">
+    <code style="background:#dbedf9;border:1px solid #B5D4F4;border-radius:4px;padding:2px 8px;font-size:12px;color:#0C447C;margin-right:6px">HTTP / REST clients</code>
+    <code style="background:#dbedf9;border:1px solid #B5D4F4;border-radius:4px;padding:2px 8px;font-size:12px;color:#0C447C">WebSocket — voice stream</code>
+  </td>
+</tr>
+</table>
+</td></tr>
+
+<!-- ARROW -->
+<tr><td align="center" style="padding:4px 0;font-size:18px;color:#888">↓</td></tr>
+
+<!-- API LAYER -->
+<tr><td>
+<table width="100%" cellspacing="0" cellpadding="0" border="0"
+       style="border:1px solid #AFA9EC;border-left:4px solid #7F77DD;border-radius:8px;background:#EEEDFE;margin-bottom:0">
+<tr>
+  <td style="padding:8px 14px 4px">
+    <strong style="font-size:11px;letter-spacing:.08em;color:#26215C">API LAYER</strong>
+    &nbsp;<code style="font-size:10px;color:#534AB7;background:none;border:none">src/api/</code>
+  </td>
+</tr>
+<tr>
+  <td style="padding:2px 14px 4px">
+    <span style="font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:#534AB7">Routes</span><br>
+    <code style="background:#dddcf8;border:1px solid #AFA9EC;border-radius:4px;padding:2px 8px;font-size:12px;color:#3C3489;margin:2px 4px 2px 0;display:inline-block">/chat</code>
+    <code style="background:#dddcf8;border:1px solid #AFA9EC;border-radius:4px;padding:2px 8px;font-size:12px;color:#3C3489;margin:2px 4px 2px 0;display:inline-block">/tasks</code>
+    <code style="background:#dddcf8;border:1px solid #AFA9EC;border-radius:4px;padding:2px 8px;font-size:12px;color:#3C3489;margin:2px 4px 2px 0;display:inline-block">/voice</code>
+    <code style="background:#dddcf8;border:1px solid #AFA9EC;border-radius:4px;padding:2px 8px;font-size:12px;color:#3C3489;margin:2px 4px 2px 0;display:inline-block">/health</code>
+    <code style="background:#dddcf8;border:1px solid #AFA9EC;border-radius:4px;padding:2px 8px;font-size:12px;color:#3C3489;margin:2px 4px 2px 0;display:inline-block">/llm</code>
+  </td>
+</tr>
+<tr>
+  <td style="padding:4px 14px 10px">
+    <span style="font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:#534AB7">Middleware &amp; handlers</span><br>
+    <code style="background:#dddcf8;border:1px solid #AFA9EC;border-radius:4px;padding:2px 8px;font-size:12px;color:#3C3489;margin:2px 4px 2px 0;display:inline-block">JWT auth</code>
+    <code style="background:#dddcf8;border:1px solid #AFA9EC;border-radius:4px;padding:2px 8px;font-size:12px;color:#3C3489;margin:2px 4px 2px 0;display:inline-block">Audit logger</code>
+    <code style="background:#dddcf8;border:1px solid #AFA9EC;border-radius:4px;padding:2px 8px;font-size:12px;color:#3C3489;margin:2px 4px 2px 0;display:inline-block">SlowAPI rate limiter</code>
+    <code style="background:#dddcf8;border:1px solid #AFA9EC;border-radius:4px;padding:2px 8px;font-size:12px;color:#3C3489;margin:2px 4px 2px 0;display:inline-block">AmadeusError → 400</code>
+    <code style="background:#dddcf8;border:1px solid #AFA9EC;border-radius:4px;padding:2px 8px;font-size:12px;color:#3C3489;margin:2px 4px 2px 0;display:inline-block">Generic → 500</code>
+  </td>
+</tr>
+</table>
+</td></tr>
+
+<!-- ARROW -->
+<tr><td align="center" style="padding:4px 0;font-size:13px;color:#888">↓ &nbsp;<em style="font-size:11px">Depends()</em></td></tr>
+
+<!-- APPLICATION LAYER -->
+<tr><td>
+<table width="100%" cellspacing="0" cellpadding="0" border="0"
+       style="border:1px solid #9FE1CB;border-left:4px solid #1D9E75;border-radius:8px;background:#E1F5EE;margin-bottom:0">
+<tr>
+  <td style="padding:8px 14px 4px">
+    <strong style="font-size:11px;letter-spacing:.08em;color:#04342C">APPLICATION LAYER</strong>
+    &nbsp;<code style="font-size:10px;color:#0F6E56;background:none;border:none">src/app/</code>
+  </td>
+</tr>
+<tr>
+  <td style="padding:4px 14px 10px">
+    <code style="background:#c5edd9;border:1px solid #9FE1CB;border-radius:4px;padding:2px 8px;font-size:12px;color:#085041;margin:2px 4px 2px 0;display:inline-block">AmadeusService</code>
+    <code style="background:#c5edd9;border:1px solid #9FE1CB;border-radius:4px;padding:2px 8px;font-size:12px;color:#085041;margin:2px 4px 2px 0;display:inline-block">ML Classifier</code>
+    <code style="background:#c5edd9;border:1px solid #9FE1CB;border-radius:4px;padding:2px 8px;font-size:12px;color:#085041;margin:2px 4px 2px 0;display:inline-block">ToolRegistry</code>
+    <code style="background:#c5edd9;border:1px solid #9FE1CB;border-radius:4px;padding:2px 8px;font-size:12px;color:#085041;margin:2px 4px 2px 0;display:inline-block">VoiceService — STT → LLM → TTS</code>
+  </td>
+</tr>
+</table>
+</td></tr>
+
+<!-- SPLIT ARROWS -->
+<tr><td>
+<table width="100%" cellspacing="0" cellpadding="0" border="0"><tr>
+  <td width="30%" align="center" style="padding:4px 0;font-size:12px;color:#888">↓ Core interfaces</td>
+  <td width="70%" align="center" style="padding:4px 0;font-size:12px;color:#888">↓ Infrastructure services</td>
+</tr></table>
+</td></tr>
+
+<!-- CORE + INFRA ROW -->
+<tr><td>
+<table width="100%" cellspacing="6" cellpadding="0" border="0"><tr valign="top">
+
+  <!-- CORE -->
+  <td width="28%">
+  <table width="100%" cellspacing="0" cellpadding="0" border="0"
+         style="border:1px solid #FAC775;border-left:4px solid #BA7517;border-radius:8px;background:#FAEEDA;height:100%">
+  <tr><td style="padding:8px 12px 4px">
+    <strong style="font-size:11px;letter-spacing:.08em;color:#412402">CORE</strong>
+    &nbsp;<code style="font-size:10px;color:#854F0B;background:none;border:none">src/core/</code>
+  </td></tr>
+  <tr><td style="padding:4px 12px 10px">
+    <code style="background:#f5d998;border:1px solid #FAC775;border-radius:4px;padding:2px 7px;font-size:11px;color:#633806;margin:2px 0;display:block">Domain models</code>
+    <code style="background:#f5d998;border:1px solid #FAC775;border-radius:4px;padding:2px 7px;font-size:11px;color:#633806;margin:2px 0;display:block">Interfaces / ABCs</code>
+    <code style="background:#f5d998;border:1px solid #FAC775;border-radius:4px;padding:2px 7px;font-size:11px;color:#633806;margin:2px 0;display:block">Config (Settings)</code>
+    <code style="background:#f5d998;border:1px solid #FAC775;border-radius:4px;padding:2px 7px;font-size:11px;color:#633806;margin:2px 0;display:block">Exceptions</code>
+  </td></tr>
+  </table>
+  </td>
+
+  <!-- INFRA -->
+  <td width="72%">
+  <table width="100%" cellspacing="0" cellpadding="0" border="0"
+         style="border:1px solid #F5C4B3;border-left:4px solid #D85A30;border-radius:8px;background:#FAECE7">
+  <tr><td style="padding:8px 12px 4px">
+    <strong style="font-size:11px;letter-spacing:.08em;color:#4A1B0C">INFRASTRUCTURE</strong>
+    &nbsp;<code style="font-size:10px;color:#993C1D;background:none;border:none">src/infra/</code>
+  </td></tr>
+  <tr><td style="padding:4px 12px 10px">
+  <table width="100%" cellspacing="4" cellpadding="0" border="0"><tr valign="top">
+    <td width="33%">
+      <table width="100%" cellspacing="0" cellpadding="6" border="0" style="background:#f8d5c4;border:1px solid #F5C4B3;border-radius:6px">
+        <tr><td><strong style="font-size:12px;color:#4A1B0C">LLM router</strong><br><span style="font-size:11px;color:#993C1D">Groq · Gemini adapters</span></td></tr>
+      </table>
+    </td>
+    <td width="33%">
+      <table width="100%" cellspacing="0" cellpadding="6" border="0" style="background:#f8d5c4;border:1px solid #F5C4B3;border-radius:6px">
+        <tr><td><strong style="font-size:12px;color:#4A1B0C">Cache — Redis</strong><br><span style="font-size:11px;color:#993C1D">llm · tts · tool · search</span></td></tr>
+      </table>
+    </td>
+    <td width="33%">
+      <table width="100%" cellspacing="0" cellpadding="6" border="0" style="background:#f8d5c4;border:1px solid #F5C4B3;border-radius:6px">
+        <tr><td><strong style="font-size:12px;color:#4A1B0C">Persistence</strong><br><span style="font-size:11px;color:#993C1D">SQLAlchemy · Alembic</span></td></tr>
+      </table>
+    </td>
+  </tr><tr valign="top" style="padding-top:4px">
+    <td width="33%" style="padding-top:4px">
+      <table width="100%" cellspacing="0" cellpadding="6" border="0" style="background:#f8d5c4;border:1px solid #F5C4B3;border-radius:6px">
+        <tr><td><strong style="font-size:12px;color:#4A1B0C">Tools</strong><br><span style="font-size:11px;color:#993C1D">info · productivity · system</span></td></tr>
+      </table>
+    </td>
+    <td width="33%" style="padding-top:4px">
+      <table width="100%" cellspacing="0" cellpadding="6" border="0" style="background:#f8d5c4;border:1px solid #F5C4B3;border-radius:6px">
+        <tr><td><strong style="font-size:12px;color:#4A1B0C">Speech</strong><br><span style="font-size:11px;color:#993C1D">Whisper STT · Edge TTS</span></td></tr>
+      </table>
+    </td>
+    <td width="33%" style="padding-top:4px">
+      <table width="100%" cellspacing="0" cellpadding="6" border="0" style="background:#f8d5c4;border:1px solid #F5C4B3;border-radius:6px">
+        <tr><td><strong style="font-size:12px;color:#4A1B0C">Search router</strong><br><span style="font-size:11px;color:#993C1D">DDG → Brave → Tavily</span></td></tr>
+      </table>
+    </td>
+  </tr></table>
+  </td></tr>
+  </table>
+  </td>
+
+</tr></table>
+</td></tr>
+
+<!-- ARROW -->
+<tr><td align="center" style="padding:4px 0;font-size:18px;color:#888">↓</td></tr>
+
+<!-- DATA LAYER -->
+<tr><td>
+<table width="100%" cellspacing="0" cellpadding="0" border="0"
+       style="border:1px solid #C0DD97;border-left:4px solid #639922;border-radius:8px;background:#EAF3DE;margin-bottom:0">
+<tr>
+  <td style="padding:8px 14px 4px">
+    <strong style="font-size:11px;letter-spacing:.08em;color:#173404">DATA LAYER</strong>
+  </td>
+</tr>
+<tr><td style="padding:4px 14px 10px">
+<table width="100%" cellspacing="6" cellpadding="0" border="0"><tr>
+  <td width="25%">
+    <table width="100%" cellspacing="0" cellpadding="6" border="0" style="background:#d0e8a8;border:1px solid #C0DD97;border-radius:6px;text-align:center">
+      <tr><td><strong style="font-size:12px;color:#173404">PostgreSQL</strong><br><span style="font-size:10px;color:#3B6D11">prod</span></td></tr>
+    </table>
+  </td>
+  <td width="25%">
+    <table width="100%" cellspacing="0" cellpadding="6" border="0" style="background:#d0e8a8;border:1px solid #C0DD97;border-radius:6px;text-align:center">
+      <tr><td><strong style="font-size:12px;color:#173404">SQLite</strong><br><span style="font-size:10px;color:#3B6D11">dev</span></td></tr>
+    </table>
+  </td>
+  <td width="25%">
+    <table width="100%" cellspacing="0" cellpadding="6" border="0" style="background:#d0e8a8;border:1px solid #C0DD97;border-radius:6px;text-align:center">
+      <tr><td><strong style="font-size:12px;color:#173404">Redis</strong><br><span style="font-size:10px;color:#3B6D11">cache</span></td></tr>
+    </table>
+  </td>
+  <td width="25%">
+    <table width="100%" cellspacing="0" cellpadding="6" border="0" style="background:#d0e8a8;border:1px solid #C0DD97;border-radius:6px;text-align:center">
+      <tr><td><strong style="font-size:12px;color:#173404">Qdrant</strong><br><span style="font-size:10px;color:#3B6D11">vector DB</span></td></tr>
+    </table>
+  </td>
+</tr></table>
+</td></tr>
+</table>
+</td></tr>
+
+</table>
+
+</div>
+
+</td></tr></table>
+
+### LLM Routing Order
+
+Every request passes through the `LLMRouter` which checks Redis daily-quota counters (atomic `INCR`/`EXPIRE`) before dispatching:
+
+```mermaid
+flowchart TD
+    A([Incoming Request]) --> B{Ollama\nrunning locally?}
+
+    B -- Yes, quota unlimited --> C[🟢 Ollama\nLocal · Offline · Free]
+    B -- No / unavailable --> D{Groq quota\n< 14 400 / day?}
+
+    D -- Yes --> E[🟡 Groq\nLlama 3.3 70B · Free tier]
+    D -- Exhausted --> F{Gemini quota\n< 1 500 / day?}
+
+    F -- Yes --> G[🟠 Gemini\n2.5 Flash · Free tier]
+    F -- Exhausted --> H{OpenAI key\nconfigured?}
+
+    H -- Yes --> I[🔴 OpenAI\nGPT-4o-mini · Paid]
+    H -- No --> J([503 LLMRateLimitError])
+
+    C --> K([Response])
+    E --> K
+    G --> K
+    I --> K
+
+    style A fill:#E1F5EE,stroke:#1D9E75,color:#04342C
+    style C fill:#EAF3DE,stroke:#639922,color:#173404
+    style E fill:#FAEEDA,stroke:#BA7517,color:#412402
+    style G fill:#FAECE7,stroke:#D85A30,color:#4A1B0C
+    style I fill:#FCEBEB,stroke:#A32D2D,color:#501313
+    style J fill:#FCEBEB,stroke:#A32D2D,color:#501313
+    style K fill:#E1F5EE,stroke:#1D9E75,color:#04342C
 ```
 
+**Quota tracking keys in Redis:**
 
+| Provider | Redis key | Daily limit | TTL |
+|----------|-----------|-------------|-----|
+| Groq | `llm_usage:groq:{date}` | 14,400 req | 86400 s |
+| Gemini | `llm_usage:gemini:{date}` | 1,500 req | 86400 s |
+| OpenAI | `llm_usage:openai:{date}` | 100 req | 86400 s |
+| Ollama | — (local, unlimited) | ∞ | — |
 
-
-```
-
-
-**LLM Routing Order:**
-```
-Request → Ollama (Unlimited local) → Groq (14,400/day free) → Gemini (1,500/day free) → OpenAI (100/day paid)
-                                         ↓ all exhausted →
-                               LLMRateLimitError (503)
-```
+Counters are incremented atomically with `INCR` and set to expire at midnight via `EXPIREAT`. All workers share the same counter, preventing cross-process over-quota.
 
 ---
 
@@ -471,18 +710,9 @@ curl -X POST "http://localhost:8000/api/v1/chat/clear" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-### Tool Discovery
-
-```bash
-# List all available tools grouped by category
-curl "http://localhost:8000/api/v1/chat/tools" \
-  -H "Authorization: Bearer $TOKEN"
-```
-
 ### SSE Streaming
 
 ```bash
-# Stream a response token-by-token
 curl -N -H "Authorization: Bearer $TOKEN" \
   "http://localhost:8000/api/v1/chat/stream?message=Summarise+today%27s+news"
 ```
@@ -529,7 +759,7 @@ async def voice_session():
             await ws.send(f.read())
         transcription = await ws.recv()   # {"type": "transcription", "text": "..."}
         response_text = await ws.recv()   # {"type": "response_text", "text": "..."}
-        audio_bytes = await ws.recv()     # binary TTS audio
+        audio_bytes   = await ws.recv()   # binary TTS audio
 
 asyncio.run(voice_session())
 ```
@@ -538,98 +768,125 @@ asyncio.run(voice_session())
 
 ## 10. Project Structure
 
+<details>
+<summary><strong>Expand full tree</strong></summary>
+
 ```
 Amadeus-AI/
+│
 ├── .github/
 │   └── workflows/
-│       └── main.yml              # CI/CD: lint, test, deploy to Railway staging
+│       └── main.yml              # CI/CD: lint → test → train-model → deploy (Railway staging)
+│
 ├── alembic/                      # Database migration scripts
 │   ├── env.py
 │   └── versions/
-├── data/                         # Local data (SQLite db, ChromaDB)
-├── src/
-│   ├── container.py              # IoC container — wires all dependencies
-│   ├── api/
-│   │   ├── server.py             # FastAPI app, middleware, lifespan
-│   │   ├── middleware/
-│   │   │   ├── authentication.py # JWT Bearer token verification
-│   │   │   ├── rbac.py           # Role-based access control helpers
-│   │   │   └── audit_logger.py   # Request ID + timing middleware
-│   │   └── routes/
-│   │       ├── chat.py           # POST /chat, GET /chat/stream (SSE), /history, /tools
-│   │       ├── messaging.py      # POST /messaging/send, GET /messaging/status
-│   │       ├── webhooks.py       # Telegram + WhatsApp inbound webhooks
-│   │       ├── voice.py          # WebSocket /ws/voice
-│   │       ├── tasks.py          # CRUD /tasks
-│   │       ├── health.py         # GET /health/detailed
-│   │       └── llm.py            # GET /llm/usage
-│   ├── app/
-│   │   └── services/
-│   │       ├── amadeus_service.py # Main orchestrator
-│   │       ├── agent_loop.py      # LLM ↔ tool loop (memory-aware)
-│   │       ├── tool_registry.py   # Tool discovery and dispatch
-│   │       └── voice_service.py   # STT → LLM → TTS pipeline
-│   ├── core/
-│   │   ├── config.py             # Pydantic-settings: all env vars
-│   │   ├── exceptions.py         # Domain exception hierarchy
-│   │   ├── domain/
-│   │   │   └── models.py         # Pydantic domain models
-│   │   └── interfaces/
-│   │       └── repositories.py   # Abstract repository interfaces
-│   └── infra/
-│       ├── llm/
-│       │   ├── router.py         # Multi-LLM routing + Redis quota tracking
-│       │   ├── ollama_adapter.py # Ollama adapter (local offline inference)
-│       │   ├── gemini_adapter.py # Google Gemini adapter (supports stream=True)
-│       │   ├── groq_adapter.py   # Groq adapter
-│       │   ├── openai_adapter.py # OpenAI adapter (emergency fallback)
-│       │   └── memory_manager.py # Long-term semantic memory management
-│       ├── messaging/
-│       │   ├── telegram_adapter.py  # Telegram Bot API send + parse
-│       │   ├── whatsapp_adapter.py  # Meta WhatsApp Cloud API
-│       │   └── email_adapter.py     # SMTP (send) + IMAP (fetch unread)
-│       ├── cache/
-│       │   └── cache_service.py  # Redis cache (LLM, TTS, tool, search)
-│       ├── persistence/
-│       │   ├── database.py       # Engine, session factory
-│       │   ├── orm_models.py     # SQLAlchemy ORM models
-│       │   └── repositories/     # Concrete repository implementations
-│       ├── speech/
-│       │   ├── adapters.py       # Whisper STT, pyttsx3 TTS adapters
-│       │   ├── edge_tts_adapter.py # Edge TTS adapter
-│       │   └── tts_router.py     # TTS provider selector
-│       ├── search/
-│       │   └── search_router.py  # Tiered web search (DDG → Brave → Tavily)
-│       └── tools/
-│           ├── base.py           # Tool, ToolCategory, @tool decorator
-│           ├── info_tools.py     # Weather, news, Wikipedia, calculator, etc.
-│           ├── productivity_tools.py # Tasks, Pomodoro, notes, reminders
-│           ├── monitor_tools.py  # CPU, memory, disk, battery monitoring
-│           └── system_tools.py   # File ops, app launch, system commands
-├── Model/
-│   ├── tfidf_vectorizer.joblib    # TF-IDF feature extractor (trained)
-│   └── svm_classifier.joblib     # LinearSVC tool classifier (96.2% CV accuracy)
+│
 ├── data/
-│   └── training_data.json        # 3,168 labeled training examples (23 categories)
+│   ├── agent_workspace/          # Sandboxed LLM filesystem (path-traversal protected)
+│   ├── training_data.json        # 3 168 labeled examples across 23 tool categories
+│   └── amadeus.db                # SQLite database (development only)
+│
+├── Model/
+│   ├── tfidf_vectorizer.joblib   # TF-IDF feature extractor (trained artifact)
+│   └── svm_classifier.joblib     # LinearSVC tool classifier — 96.2% CV accuracy
+│
 ├── scripts/
 │   ├── generate_training_data.py # Generates training_data.json from templates
 │   └── train_classifier.py       # Trains and saves joblib model artifacts
+│
+├── src/
+│   ├── container.py              # IoC container — wires all dependencies (dependency-injector)
+│   │
+│   ├── api/                      # ── API LAYER ──────────────────────────────────────────
+│   │   ├── server.py             #    FastAPI app factory, middleware registration, lifespan
+│   │   ├── middleware/
+│   │   │   ├── authentication.py #    JWT Bearer token verification (HS256)
+│   │   │   ├── rbac.py           #    READ_ONLY / SYSTEM_FULL permission profiles
+│   │   │   └── audit_logger.py   #    Request ID injection, latency headers, client IP log
+│   │   └── routes/
+│   │       ├── chat.py           #    POST /chat · GET /chat/stream (SSE) · /history · /tools
+│   │       ├── messaging.py      #    POST /messaging/send · GET /messaging/status
+│   │       ├── webhooks.py       #    Telegram + WhatsApp inbound webhooks
+│   │       ├── voice.py          #    WS  /ws/voice  (real-time bidirectional)
+│   │       ├── tasks.py          #    CRUD /tasks
+│   │       ├── health.py         #    GET /health/detailed  (DB · Redis · classifier status)
+│   │       └── llm.py            #    GET /llm/usage  (daily quota report)
+│   │
+│   ├── app/                      # ── APPLICATION LAYER ──────────────────────────────────
+│   │   └── services/
+│   │       ├── amadeus_service.py #   Main orchestrator — routes request → agent / voice
+│   │       ├── agent_loop.py      #   LLM ↔ tool loop with memory injection
+│   │       ├── tool_registry.py   #   Tool discovery, ML classification, dispatch
+│   │       └── voice_service.py   #   STT → LLM → TTS pipeline
+│   │
+│   ├── core/                     # ── CORE LAYER (no external deps) ──────────────────────
+│   │   ├── config.py             #    Pydantic-settings: typed env var schema
+│   │   ├── exceptions.py         #    AmadeusError hierarchy (→ HTTP 400 / 503)
+│   │   ├── domain/
+│   │   │   └── models.py         #    Pydantic domain models (ChatRequest, Task, etc.)
+│   │   └── interfaces/
+│   │       └── repositories.py   #    Abstract repository interfaces (ABCs)
+│   │
+│   └── infra/                    # ── INFRASTRUCTURE LAYER ────────────────────────────────
+│       ├── llm/
+│       │   ├── router.py         #    Multi-LLM routing + Redis quota tracking (INCR/EXPIRE)
+│       │   ├── ollama_adapter.py #    Ollama — local offline inference
+│       │   ├── groq_adapter.py   #    Groq — Llama 3.3 70B cloud (free tier primary)
+│       │   ├── gemini_adapter.py #    Gemini 2.5 Flash — supports native stream=True
+│       │   ├── openai_adapter.py #    GPT-4o-mini — emergency paid fallback
+│       │   └── memory_manager.py #    Qdrant semantic memory + Knowledge Graph (SPO)
+│       ├── messaging/
+│       │   ├── telegram_adapter.py  # Telegram Bot API — send + parse inbound
+│       │   ├── whatsapp_adapter.py  # Meta WhatsApp Cloud API — challenge + messages
+│       │   └── email_adapter.py     # SMTP (aiosmtplib) send + IMAP (imap_tools) fetch
+│       ├── cache/
+│       │   └── cache_service.py  #    Redis async client — LLM / TTS / tool / search TTLs
+│       ├── persistence/
+│       │   ├── database.py       #    Async engine + session factory (asyncpg / aiosqlite)
+│       │   ├── orm_models.py     #    SQLAlchemy ORM models
+│       │   └── repositories/     #    Concrete repository implementations
+│       ├── speech/
+│       │   ├── adapters.py       #    faster-whisper STT + pyttsx3 TTS adapters
+│       │   ├── edge_tts_adapter.py #  Microsoft Edge TTS (free, unlimited)
+│       │   └── tts_router.py     #    TTS provider selector
+│       ├── search/
+│       │   └── search_router.py  #    Tiered web search: DuckDuckGo → Brave → Tavily
+│       └── tools/
+│           ├── base.py           #    Tool, ToolCategory, @tool decorator
+│           ├── info_tools.py     #    Weather · news · Wikipedia · calculator · search
+│           ├── productivity_tools.py # Tasks · Pomodoro · notes · reminders · Slack · Office
+│           ├── monitor_tools.py  #    CPU · memory · disk · battery with alert thresholds
+│           └── system_tools.py   #    File ops · app launch · system commands (sandboxed)
+│
 ├── tests/
-│   ├── conftest.py               # Pytest fixtures (async DB session, DI container)
-│   ├── unit/                     # Unit tests
+│   ├── conftest.py               # Pytest fixtures — async DB session, DI container
+│   ├── unit/
 │   │   ├── test_classifier_loading.py
 │   │   ├── test_openai_adapter.py
 │   │   └── test_memory_agent_integration.py
 │   └── integration/
-│       └── test_llm_routing_fallback.py
-├── Dockerfile                    # Multi-stage build (builder → model_cache → runtime)
-├── docker-compose.yml            # Development and production profiles
-├── pyproject.toml                # Project metadata, dependencies, tool configs
-├── alembic.ini                   # Alembic configuration
-├── .env.example                  # Environment variable documentation template
-└── locustfile.py                 # Load testing configuration (Locust)
+│       └── test_llm_routing_fallback.py  # testcontainers PostgreSQL
+│
+├── Dockerfile                    # 3-stage: builder → model_cache (Whisper) → runtime
+├── docker-compose.yml            # dev profile (API + PostgreSQL) + prod profile (gunicorn)
+├── locustfile.py                 # Load testing configuration
+├── pyproject.toml                # Project metadata, dependencies, ruff/mypy/coverage config
+├── alembic.ini                   # Alembic migration configuration
+└── .env.example                  # All environment variables documented with defaults
 ```
 
+</details>
+
+**Layer responsibilities at a glance:**
+
+| Layer | Path | Responsibility |
+|-------|------|----------------|
+| API | `src/api/` | HTTP routing, auth middleware, request/response serialization |
+| Application | `src/app/` | Orchestration, agent loop, tool dispatch, voice pipeline |
+| Core | `src/core/` | Domain models, interfaces, config, exceptions — zero external deps |
+| Infrastructure | `src/infra/` | LLM adapters, DB, cache, speech, search, messaging |
+| Data | — | PostgreSQL · SQLite · Redis · Qdrant |
 
 ---
 
@@ -648,24 +905,21 @@ pytest tests/ -v --cov=src --cov-report=term-missing
 ### Run by Marker
 
 ```bash
-# Unit tests only
-pytest tests/ -m unit -v
-
-# Integration tests (requires running PostgreSQL)
-pytest tests/ -m integration -v
-
-# Skip slow tests
-pytest tests/ -m "not slow" -v
+pytest tests/ -m unit        -v          # unit tests only
+pytest tests/ -m integration -v          # requires running PostgreSQL
+pytest tests/ -m "not slow"  -v          # skip slow tests
 ```
 
 ### Coverage Threshold
 
-The project enforces **80% coverage** locally via `fail_under = 80` in `pyproject.toml` and **60%** in the GitHub Actions CI baseline (`--cov-fail-under=60`).
-
+| Environment | Threshold | Enforced by |
+|-------------|-----------|-------------|
+| Local | 80% | `pyproject.toml` `fail_under = 80` |
+| CI (GitHub Actions) | 60% | `--cov-fail-under=60` |
 
 ### Integration Tests
 
-Integration tests use `testcontainers[postgres]` to spin up a temporary PostgreSQL container. No manual database setup required:
+Integration tests use `testcontainers[postgres]` to spin up a temporary PostgreSQL container — no manual database setup required:
 
 ```bash
 pytest tests/ -m integration
@@ -688,14 +942,8 @@ Merging a pull request into the `develop` branch triggers automatic deployment t
 ### Deploy to Railway (Manual)
 
 ```bash
-# Install Railway CLI
 npm install -g @railway/cli
-
-# Login and link
-railway login
-railway link
-
-# Deploy
+railway login && railway link
 railway up
 ```
 
@@ -718,12 +966,15 @@ docker-compose logs -f api-prod
 docker-compose exec api-prod python -m alembic upgrade head
 ```
 
-The Dockerfile is a **3-stage multi-stage build**:
-1. **builder** — installs Python dependencies
-2. **model_cache** — pre-downloads Whisper `small` model (~460 MB) to avoid cold-start latency
-3. **runtime** — minimal production image, non-root user (`amadeus`)
+The Dockerfile is a **3-stage multi-stage build:**
 
-The container starts with:
+| Stage | Purpose |
+|-------|---------|
+| `builder` | Installs Python dependencies |
+| `model_cache` | Pre-downloads Whisper `small` model (~460 MB) — eliminates cold-start latency |
+| `runtime` | Minimal production image, non-root user (`amadeus`) |
+
+The container entrypoint:
 ```bash
 alembic upgrade head && uvicorn src.api.server:app --host 0.0.0.0 --port 8000 --workers 1
 ```
@@ -748,7 +999,6 @@ alembic upgrade head && uvicorn src.api.server:app --host 0.0.0.0 --port 8000 --
 - **Mobile / browser SDK**: Thin client library for the SSE streaming and voice WebSocket endpoints.
 - **Fine-tuned classifier**: Replace the TF-IDF + SVM pipeline with a fine-tuned sentence-transformer model for even higher accuracy on ambiguous multi-intent queries.
 - **Cost dashboard**: Dedicated Grafana dashboard for the Prometheus cost gauges with daily/monthly aggregations.
-
 
 ---
 
