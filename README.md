@@ -404,48 +404,8 @@ curl -N -H "Authorization: Bearer $TOKEN" \
 ## 8. System Architecture Overview
 
 ```
-Amadeus-AI/
-┌──────────────────────────────────────────────────────────────────────┐
-│                         CLIENT LAYER                                 │
-│          HTTP / REST Clients         WebSocket (voice stream)        │
-└───────────────────────┬──────────────────────────┬───────────────────┘
-                        │                          │
-┌──────────────────────▼──────────────────────────▼───────────────────┐
-│                         API LAYER  (src/api/)                        │
-│  FastAPI routes: /chat, /tasks, /voice, /health, /llm               │
-│  Middleware: JWT Auth · Audit Logger · SlowAPI Rate Limiter          │
-│  Exception handlers: AmadeusError → 400, Generic → 500              │
-└───────────────────────┬──────────────────────────────────────────────┘
-                        │  Depends()
-┌──────────────────────▼──────────────────────────────────────────────┐
-│                   APPLICATION LAYER  (src/app/)                      │
-│  AmadeusService → ML Classifier → ToolRegistry                      │
-│  VoiceService (STT → LLM → TTS pipeline)                           │
-└────────┬──────────────────────────┬─────────────────────────────────┘
-         │ Core Interfaces          │ Infrastructure Services
-┌────────▼──────────────┐  ┌───────▼──────────────────────────────────┐
-│  CORE LAYER (src/core)│  │        INFRA LAYER  (src/infra/)          │
-│  Domain Models        │  │  ┌────────────┐  ┌──────────────────────┐│
-│  Interfaces / ABCs    │  │  │ LLMRouter   │  │ CacheService (Redis) ││
-│  Config (Settings)    │  │  │ Groq/Gemini │  │  llm / tts / tool   ││
-│  Exceptions           │  │  │ adapters    │  │  search namespaces  ││
-└───────────────────────┘  │  └────────────┘  └──────────────────────┘│
-                           │  ┌────────────┐  ┌──────────────────────┐│
-                           │  │ Persistence │  │  Tools               ││
-                           │  │ SQLAlchemy  │  │  info / productivity ││
-                           │  │ Alembic     │  │  system / monitor    ││
-                           │  └────────────┘  └──────────────────────┘│
-                           │  ┌────────────┐  ┌──────────────────────┐│
-                           │  │ Speech      │  │ SearchRouter          ││
-                           │  │ Whisper STT │  │ DDG → Brave → Tavily ││
-                           │  │ Edge TTS    │  └──────────────────────┘│
-                           │  └────────────┘                           │
-                           └──────────────────────────────────────────┘
-                                        │
-┌───────────────────────────────────────▼──────────────────────────────┐
-│                        DATA LAYER                                     │
-│     PostgreSQL (prod)   SQLite (dev)   Redis (cache)   Qdrant        │
-└───────────────────────────────────────────────────────────────────────┘
+<img width="1800" height="1546" alt="image" src="https://github.com/user-attachments/assets/f7b0ecc5-6af4-4143-a505-c3448bbeb699" />
+
 ```
 
 
