@@ -404,7 +404,200 @@ curl -N -H "Authorization: Bearer $TOKEN" \
 ## 8. System Architecture Overview
 
 ```
-<img width="1800" height="1546" alt="image" src="https://github.com/user-attachments/assets/f7b0ecc5-6af4-4143-a505-c3448bbeb699" />
+
+<style>
+.arch{width:100%;padding:.5rem 0;font-family:var(--font-sans)}
+.layer{border-radius:10px;border:.5px solid var(--color-border-tertiary);border-left-width:3px;border-left-style:solid;padding:14px 16px 13px;background:var(--color-background-primary)}
+.lh{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.ltag{font-size:10px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;padding:3px 8px;border-radius:4px;white-space:nowrap}
+.lpath{font-size:11px;color:var(--color-text-tertiary);font-family:var(--font-mono)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:12px;padding:3px 10px;border-radius:5px;border:.5px solid;display:inline-block;white-space:nowrap}
+.sub-label{font-size:10px;color:var(--color-text-tertiary);letter-spacing:.07em;text-transform:uppercase;margin:0 0 5px}
+.section{margin-bottom:9px}.section:last-child{margin-bottom:0}
+.arr{text-align:center;color:var(--color-text-tertiary);height:24px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:12px}
+.arr svg{opacity:.45}
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:10px;align-items:stretch}
+.igrid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.ibox{background:var(--color-background-secondary);border-radius:7px;padding:9px 11px;border:.5px solid var(--color-border-tertiary)}
+.ibox-title{font-size:12px;font-weight:500;margin-bottom:3px;color:var(--color-text-primary)}
+.ibox-sub{font-size:11px;color:var(--color-text-secondary);line-height:1.5}
+.dg{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.dbox{background:var(--color-background-secondary);border-radius:7px;padding:9px 10px;text-align:center;border:.5px solid var(--color-border-tertiary)}
+.dbox-name{font-size:12px;font-weight:500;margin-bottom:2px;color:var(--color-text-primary)}
+.dbox-role{font-size:10px;color:var(--color-text-tertiary)}
+.split-arr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:10px;height:26px}
+.split-arr-item{display:flex;align-items:center;justify-content:center;gap:4px;color:var(--color-text-tertiary);font-size:10px}
+
+.c-blue-layer{border-left-color:#378ADD}
+.c-blue-tag{background:#E6F1FB;color:#0C447C}
+.c-blue-chip{background:#E6F1FB;border-color:#B5D4F4;color:#0C447C}
+.c-purple-layer{border-left-color:#7F77DD}
+.c-purple-tag{background:#EEEDFE;color:#26215C}
+.c-purple-chip{background:#EEEDFE;border-color:#AFA9EC;color:#3C3489}
+.c-teal-layer{border-left-color:#1D9E75}
+.c-teal-tag{background:#E1F5EE;color:#04342C}
+.c-teal-chip{background:#E1F5EE;border-color:#9FE1CB;color:#085041}
+.c-amber-layer{border-left-color:#BA7517}
+.c-amber-tag{background:#FAEEDA;color:#412402}
+.c-amber-chip{background:#FAEEDA;border-color:#FAC775;color:#633806}
+.c-coral-layer{border-left-color:#D85A30}
+.c-coral-tag{background:#FAECE7;color:#4A1B0C}
+.c-green-layer{border-left-color:#639922}
+.c-green-tag{background:#EAF3DE;color:#173404}
+.c-green-chip{background:#EAF3DE;border-color:#C0DD97;color:#27500A}
+
+@media(prefers-color-scheme:dark){
+  .c-blue-tag{background:#042C53;color:#85B7EB}
+  .c-blue-chip{background:#042C53;border-color:#185FA5;color:#85B7EB}
+  .c-purple-tag{background:#26215C;color:#AFA9EC}
+  .c-purple-chip{background:#26215C;border-color:#534AB7;color:#AFA9EC}
+  .c-teal-tag{background:#04342C;color:#9FE1CB}
+  .c-teal-chip{background:#04342C;border-color:#0F6E56;color:#9FE1CB}
+  .c-amber-tag{background:#412402;color:#FAC775}
+  .c-amber-chip{background:#412402;border-color:#854F0B;color:#FAC775}
+  .c-coral-tag{background:#4A1B0C;color:#F0997B}
+  .c-green-tag{background:#173404;color:#C0DD97}
+  .c-green-chip{background:#173404;border-color:#3B6D11;color:#C0DD97}
+}
+</style>
+
+<div class="arch">
+
+  <div class="layer c-blue-layer">
+    <div class="lh"><span class="ltag c-blue-tag">Client</span></div>
+    <div class="chips">
+      <span class="chip c-blue-chip">HTTP / REST clients</span>
+      <span class="chip c-blue-chip">WebSocket — voice stream</span>
+    </div>
+  </div>
+
+  <div class="arr">
+    <svg width="10" height="14" viewBox="0 0 10 14"><path d="M5 0v10M1 7l4 5 4-5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+
+  <div class="layer c-purple-layer">
+    <div class="lh">
+      <span class="ltag c-purple-tag">API</span>
+      <span class="lpath">src/api/</span>
+    </div>
+    <div class="section">
+      <div class="sub-label">Routes</div>
+      <div class="chips">
+        <span class="chip c-purple-chip">/chat</span>
+        <span class="chip c-purple-chip">/tasks</span>
+        <span class="chip c-purple-chip">/voice</span>
+        <span class="chip c-purple-chip">/health</span>
+        <span class="chip c-purple-chip">/llm</span>
+      </div>
+    </div>
+    <div class="section">
+      <div class="sub-label">Middleware &amp; handlers</div>
+      <div class="chips">
+        <span class="chip c-purple-chip">JWT auth</span>
+        <span class="chip c-purple-chip">Audit logger</span>
+        <span class="chip c-purple-chip">SlowAPI rate limiter</span>
+        <span class="chip c-purple-chip">AmadeusError → 400</span>
+        <span class="chip c-purple-chip">Generic → 500</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="arr">
+    <svg width="10" height="14" viewBox="0 0 10 14"><path d="M5 0v10M1 7l4 5 4-5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>Depends()</span>
+  </div>
+
+  <div class="layer c-teal-layer">
+    <div class="lh">
+      <span class="ltag c-teal-tag">Application</span>
+      <span class="lpath">src/app/</span>
+    </div>
+    <div class="chips">
+      <span class="chip c-teal-chip">AmadeusService</span>
+      <span class="chip c-teal-chip">ML Classifier</span>
+      <span class="chip c-teal-chip">ToolRegistry</span>
+      <span class="chip c-teal-chip">VoiceService — STT → LLM → TTS</span>
+    </div>
+  </div>
+
+  <div class="split-arr">
+    <div class="split-arr-item">
+      <svg width="10" height="14" viewBox="0 0 10 14"><path d="M5 0v10M1 7l4 5 4-5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" opacity=".45"/></svg>
+      Core interfaces
+    </div>
+    <div class="split-arr-item">
+      <svg width="10" height="14" viewBox="0 0 10 14"><path d="M5 0v10M1 7l4 5 4-5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" opacity=".45"/></svg>
+      Infrastructure services
+    </div>
+  </div>
+
+  <div class="split">
+
+    <div class="layer c-amber-layer" style="display:flex;flex-direction:column">
+      <div class="lh">
+        <span class="ltag c-amber-tag">Core</span>
+        <span class="lpath">src/core/</span>
+      </div>
+      <div class="chips" style="flex-direction:column;gap:6px;flex:1">
+        <span class="chip c-amber-chip">Domain models</span>
+        <span class="chip c-amber-chip">Interfaces / ABCs</span>
+        <span class="chip c-amber-chip">Config (Settings)</span>
+        <span class="chip c-amber-chip">Exceptions</span>
+      </div>
+    </div>
+
+    <div class="layer c-coral-layer">
+      <div class="lh">
+        <span class="ltag c-coral-tag">Infrastructure</span>
+        <span class="lpath">src/infra/</span>
+      </div>
+      <div class="igrid">
+        <div class="ibox">
+          <div class="ibox-title">LLM router</div>
+          <div class="ibox-sub">Groq · Gemini adapters</div>
+        </div>
+        <div class="ibox">
+          <div class="ibox-title">Cache — Redis</div>
+          <div class="ibox-sub">llm · tts · tool · search</div>
+        </div>
+        <div class="ibox">
+          <div class="ibox-title">Persistence</div>
+          <div class="ibox-sub">SQLAlchemy · Alembic</div>
+        </div>
+        <div class="ibox">
+          <div class="ibox-title">Tools</div>
+          <div class="ibox-sub">info · productivity · system · monitor</div>
+        </div>
+        <div class="ibox">
+          <div class="ibox-title">Speech</div>
+          <div class="ibox-sub">Whisper STT · Edge TTS</div>
+        </div>
+        <div class="ibox">
+          <div class="ibox-title">Search router</div>
+          <div class="ibox-sub">DDG → Brave → Tavily</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="arr">
+    <svg width="10" height="14" viewBox="0 0 10 14"><path d="M5 0v10M1 7l4 5 4-5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+
+  <div class="layer c-green-layer">
+    <div class="lh"><span class="ltag c-green-tag">Data</span></div>
+    <div class="dg">
+      <div class="dbox"><div class="dbox-name">PostgreSQL</div><div class="dbox-role">prod</div></div>
+      <div class="dbox"><div class="dbox-name">SQLite</div><div class="dbox-role">dev</div></div>
+      <div class="dbox"><div class="dbox-name">Redis</div><div class="dbox-role">cache</div></div>
+      <div class="dbox"><div class="dbox-name">Qdrant</div><div class="dbox-role">vector DB</div></div>
+    </div>
+  </div>
+
+</div>
+
 
 ```
 
