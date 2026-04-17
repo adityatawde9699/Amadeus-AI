@@ -172,6 +172,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await _telegram.stop_polling()
 
     observation_loop.stop()
+
+    # Clean up container resources (AmadeusService orchestrator, Redis, etc.)
+    from src.container import shutdown_services
+
+    await shutdown_services()
+
     await close_db()
     logger.info("Shutdown complete")
 

@@ -25,7 +25,8 @@ from typing import Any
 
 import httpx
 
-from src.core.exceptions import LLMRateLimitError
+from src.core.exceptions import LLMConnectionError, LLMRateLimitError, LLMResponseError
+from src.core.interfaces.llm import LLMAdapter
 
 
 logger = logging.getLogger(__name__)
@@ -75,7 +76,7 @@ class ProgressEvent:
 # =============================================================================
 
 
-class OllamaAdapter:
+class OllamaAdapter(LLMAdapter):
     """
     Adapter for talking to a locally running Ollama server.
 
@@ -187,7 +188,7 @@ class OllamaAdapter:
             LLMRateLimitError: If Ollama is not available
         """
         if not await self.is_server_running():
-            raise LLMRateLimitError("Ollama")
+            raise LLMConnectionError("Ollama", "Ollama server is not running")
 
         payload: dict[str, Any] = {
             "model": self.model,
@@ -216,10 +217,15 @@ class OllamaAdapter:
             return response_text
         except httpx.HTTPStatusError as e:
             logger.exception("Ollama HTTP error: %s", e.response.text)
-            raise LLMRateLimitError("Ollama") from e
+            if e.response.status_code == 429:
+                raise LLMRateLimitError("Ollama") from e
+            raise LLMResponseError(f"Ollama HTTP {e.response.status_code}: {e.response.text}") from e
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            logger.exception("Ollama connection failed: %s", type(e).__name__)
+            raise LLMConnectionError("Ollama", str(e)) from e
         except Exception as e:
             logger.exception("Ollama generation failed: %s", type(e).__name__)
-            raise LLMRateLimitError("Ollama") from e
+            raise LLMResponseError(f"Ollama generation failed: {e}") from e
 
     async def stream_response(
         self,
@@ -428,6 +434,21 @@ class OllamaAdapter:
             return result
         except Exception:
             return {}
+
+    # =========================================================================
+    # LLM ADAPTER INTERFACE METHODS
+    # =========================================================================
+
+    def get_provider_name(self) -> str:
+        return "Ollama"
+
+    def get_capabilities(self) -> dict[str, Any]:
+        return {
+            "streaming": True,
+            "function_calling": False,
+            "vision": False,
+            "local": True,
+        }
 
     # =========================================================================
     # RESOURCE MANAGEMENT

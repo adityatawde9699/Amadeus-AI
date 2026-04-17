@@ -64,7 +64,7 @@ async def chat(
     """
     try:
         # Guard against too many simultaneous in-flight requests
-        if _chat_semaphore.locked() and _chat_semaphore._value == 0:
+        if _chat_semaphore.locked():
             raise HTTPException(
                 status_code=503, detail="Server busy — too many concurrent requests. Please retry."
             )

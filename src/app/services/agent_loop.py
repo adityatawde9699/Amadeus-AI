@@ -567,6 +567,7 @@ class AgentOrchestrator:
         llm_generate: Callable[[str], Awaitable[str]] | None = None,
         memory_service: object | None = None,
         max_queue_size: int = 50,
+        auto_start: bool = True,
     ):
         self.tool_registry = tool_registry
         self.tool_executor = tool_executor
@@ -596,8 +597,13 @@ class AgentOrchestrator:
         self.classifier = None
         self._load_classifier()
 
-        # Start the background worker loop
-        self._worker_task = asyncio.create_task(self._process_queue())
+        # Start the background worker loop only when requested.
+        # The DI container singleton should start the worker (auto_start=True),
+        # but throwaway instances in webhooks/proactive_service should not
+        # (auto_start=False) to avoid orphaned asyncio.Tasks.
+        self._worker_task: asyncio.Task | None = None  # type: ignore[type-arg]
+        if auto_start:
+            self._worker_task = asyncio.create_task(self._process_queue())
 
     def _load_classifier(self) -> None:
         """Load TF-IDF vectorizer and SVM classifier tailored for intent routing."""
@@ -686,7 +692,16 @@ class AgentOrchestrator:
         """
         Public endpoint: Submits a task to the orchestrator queue and awaits the result.
         Returns a QueueFullError if the system is drowning in requests.
+
+        If no background worker is running (auto_start=False), executes
+        the agent inline to avoid hanging on an unserviced queue.
         """
+        # If no worker task is running, execute directly (non-queued)
+        if self._worker_task is None:
+            intent = self._predict_intent(task)
+            target_agent = self.agents.get(intent, self.agents["general"])
+            return await target_agent.run(task, context, permission_profile=permission_profile)
+
         loop = asyncio.get_running_loop()
         future = loop.create_future()
 
@@ -704,5 +719,5 @@ class AgentOrchestrator:
         return result
 
     async def shutdown(self) -> None:
-        if hasattr(self, "_worker_task"):
+        if self._worker_task is not None:
             self._worker_task.cancel()
