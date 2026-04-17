@@ -123,8 +123,8 @@ def _build_llm_router() -> LLMRouter:
             from src.infra.llm.groq_adapter import GroqAdapter
 
             groq_adapter = GroqAdapter(api_key=settings.GROQ_API_KEY)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to configure GroqAdapter: %s", type(e).__name__)
 
     gemini_adapter = None
     if settings.GEMINI_API_KEY:
@@ -132,8 +132,8 @@ def _build_llm_router() -> LLMRouter:
             from src.infra.llm.gemini_adapter import GeminiAdapter
 
             gemini_adapter = GeminiAdapter(api_key=settings.GEMINI_API_KEY)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to configure GeminiAdapter: %s", type(e).__name__)
 
     openai_adapter = None
     if getattr(settings, "OPENAI_API_KEY", None):
@@ -141,14 +141,43 @@ def _build_llm_router() -> LLMRouter:
             from src.infra.llm.openai_adapter import OpenAIAdapter
 
             openai_adapter = OpenAIAdapter(api_key=settings.OPENAI_API_KEY)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to configure OpenAIAdapter: %s", type(e).__name__)
+
+    ollama_adapter = None
+    try:
+        from src.infra.llm.ollama_adapter import OllamaAdapter
+        
+        ollama_adapter = OllamaAdapter(
+            base_url=settings.OLLAMA_URL,
+            model=settings.OLLAMA_MODEL,
+            timeout=settings.OLLAMA_TIMEOUT_SECONDS,
+            context_length=settings.OLLAMA_NUM_CTX,
+        )
+    except Exception as e:
+        logger.exception("Failed to configure OllamaAdapter: %s", e)
+
+    llama_cpp_adapter = None
+    if getattr(settings, "SLM_MODEL_PATH", None):
+        try:
+            from src.infra.llm.llama_cpp_adapter import LlamaCppAdapter
+            
+            llama_cpp_adapter = LlamaCppAdapter(
+                model_path=settings.SLM_MODEL_PATH,
+                threads=settings.SLM_THREADS,
+                context_length=settings.SLM_CTX_SIZE,
+            )
+        except Exception as e:
+            logger.exception("Failed to configure LlamaCppAdapter: %s", e)
 
     return LLMRouter(
+        ollama=ollama_adapter,
+        llama_cpp=llama_cpp_adapter,
         groq=groq_adapter,
         gemini=gemini_adapter,
         openai=openai_adapter,
         redis_url=getattr(settings, "REDIS_URL", None),
+        local_only_mode=settings.LOCAL_ONLY_MODE,
     )
 
 
@@ -244,9 +273,6 @@ class Container(containers.DeclarativeContainer):
 # GLOBAL BRIDGES (Backward Compatibility)
 # =============================================================================
 
-global_container = Container()
-
-
 def get_amadeus_service() -> AmadeusService:
     return global_container.amadeus_service()
 
@@ -281,13 +307,6 @@ def inject_confirmation_callback(confirmation_callback: ConfirmationCallback) ->
     logger.info("ConfirmationCallback injected into ToolExecutor")
 
 
-async def get_db_session() -> AsyncGenerator:
-    """FastAPI dependency for DB sessions."""
-    from src.infra.persistence.database import get_session
-
-    async with get_session() as session:
-        yield session
-
 
 async def shutdown_services() -> None:
     """Clean up container resources on shutdown."""
@@ -298,3 +317,6 @@ async def shutdown_services() -> None:
 
     global_container.shutdown_resources()
     logger.info("Dependencies shut down complete")
+
+
+global_container = Container()

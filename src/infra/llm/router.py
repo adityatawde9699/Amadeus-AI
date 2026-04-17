@@ -23,6 +23,7 @@ from src.core.exceptions import LLMRateLimitError
 if TYPE_CHECKING:
     from src.infra.llm.gemini_adapter import GeminiAdapter
     from src.infra.llm.groq_adapter import GroqAdapter
+    from src.infra.llm.llama_cpp_adapter import LlamaCppAdapter
     from src.infra.llm.ollama_adapter import OllamaAdapter
 
 
@@ -101,11 +102,19 @@ class LLMRouter:
     """
     Routes LLM requests across providers to optimize cost and availability.
 
-    Priority order: Groq → Gemini → OpenAI (high complexity only)
+    Priority order (local-first):
+      1. LlamaCpp  — local GGUF model via llama-cpp-python (offline, primary)
+      2. Ollama    — local server inference (offline, secondary)
+      3. Groq      — free cloud tier (14,400 req/day)
+      4. Gemini    — free cloud tier (1,500 req/day)
+      5. OpenAI    — paid, only for high-complexity requests
+
     Daily counters reset automatically at UTC midnight.
+    When LOCAL_ONLY_MODE=True, steps 3-5 are skipped entirely.
     """
 
     DAILY_LIMITS: ClassVar[dict[str, int]] = {
+        "llama_cpp": 999_999,  # Local SLM — unlimited
         "ollama": 999_999,  # Local — effectively unlimited
         "groq": 14400,  # Free tier — Llama 3.3 70B
         "gemini": 1500,  # Free tier — Gemini 2.5 Flash
@@ -114,6 +123,7 @@ class LLMRouter:
 
     # Cost per request in USD (for cost tracking)
     COST_PER_REQUEST: ClassVar[dict[str, float]] = {
+        "llama_cpp": 0.0,
         "ollama": 0.0,  # Free — runs locally on your machine
         "groq": 0.0,  # Free
         "gemini": 0.0,  # Free tier
@@ -123,6 +133,7 @@ class LLMRouter:
     def __init__(
         self,
         ollama: "OllamaAdapter | None" = None,
+        llama_cpp: "LlamaCppAdapter | None" = None,
         groq: "GroqAdapter | None" = None,
         gemini: "GeminiAdapter | None" = None,
         openai: object | None = None,
@@ -130,7 +141,10 @@ class LLMRouter:
         local_only_mode: bool = False,
     ) -> None:
         self._providers: dict[str, object] = {}
-        # Ollama is always first — local, unlimited, zero-cost
+        # LlamaCpp (SLM) is always first — locally prioritized
+        if llama_cpp:
+            self._providers["llama_cpp"] = llama_cpp
+        # Ollama is secondary local option
         if ollama:
             self._providers["ollama"] = ollama
         if not local_only_mode:
@@ -143,7 +157,7 @@ class LLMRouter:
 
         self._local_only_mode = local_only_mode
         if local_only_mode:
-            logger.info("LLMRouter: LOCAL_ONLY_MODE active — cloud providers disabled, Ollama only")
+            logger.info("LLMRouter: LOCAL_ONLY_MODE active — cloud providers disabled, using local models only")
 
         # In-memory counters (always present; Redis supplements these)
         self._usage: dict[str, int] = defaultdict(int)
@@ -193,8 +207,8 @@ class LLMRouter:
         """
         self._reset_if_new_day()
 
-        # Build provider priority: Ollama (local) first, then cloud
-        providers_order = ["ollama", "groq", "gemini"]
+        # Build provider priority: LlamaCpp first, then Ollama (both local), then cloud
+        providers_order = ["llama_cpp", "ollama", "groq", "gemini"]
         if complexity == "high" and not self._local_only_mode:
             providers_order.append("openai")
 
@@ -261,7 +275,7 @@ class LLMRouter:
                 )
                 continue
 
-        raise LLMRateLimitError("All LLM providers at daily limit or unavailable")
+        raise LLMRateLimitError("all_providers", retry_after=None)
 
     def get_usage_report(self) -> dict:
         """Return current usage stats and cost estimates."""

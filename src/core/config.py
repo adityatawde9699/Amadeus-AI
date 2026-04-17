@@ -73,19 +73,23 @@ class Settings(BaseSettings):
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
 
     # =========================================================================
-    # LOCAL LLM (OLLAMA) — Primary provider for offline/desktop mode
-    # Optimized defaults for 4 GB RAM machines
+    # LOCAL LLM (OLLAMA & SLM) — Primary providers for offline/desktop mode
+    # Optimized defaults for low RAM machines
     # =========================================================================
     OLLAMA_URL: str = "http://localhost:11434"
     # phi3:mini  → 3.8B, ~2.3 GB RAM  ← DEFAULT (best for 4 GB machines)
     # llama3.2:3b → 3B,  ~2.0 GB RAM
     # gemma3:2b  → 2B,  ~1.5 GB RAM  (smallest viable)
     OLLAMA_MODEL: str = "phi3:mini"
-    # When True: ONLY use Ollama, disable all cloud providers
-    # When False: Ollama → Groq → Gemini → OpenAI fallback chain
+    # When True: ONLY use local offline providers, disable all cloud providers
     LOCAL_ONLY_MODE: bool = False
     OLLAMA_TIMEOUT_SECONDS: float = 120.0  # CPU inference can be slow
     OLLAMA_NUM_CTX: int = 4096  # Context window (tokens)
+
+    # SLM / llama_cpp Settings (Primary if SLM_MODEL_PATH is set)
+    SLM_MODEL_PATH: str | None = None  # Absolute path to .gguf file
+    SLM_THREADS: int = 2
+    SLM_CTX_SIZE: int = 2048
 
     # Search APIs
     BRAVE_SEARCH_API_KEY: str | None = None

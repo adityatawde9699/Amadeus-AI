@@ -149,6 +149,18 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
+async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
+    """
+    FastAPI dependency for DB sessions.
+    
+    Usage:
+        def my_route(session: AsyncSession = Depends(get_db_session)):
+            ...
+    """
+    async with get_session() as session:
+        yield session
+
+
 async def init_db() -> None:
     """
     Initialize the database by creating all tables.
