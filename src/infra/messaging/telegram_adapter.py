@@ -101,6 +101,44 @@ class TelegramAdapter:
             self._bot = None
 
     # -----------------------------------------------------------------------
+    # Manual payload parsing (for webhook / test usage)
+    # -----------------------------------------------------------------------
+
+    def parse_update(self, payload: dict) -> TelegramMessage | None:
+        """
+        Parse a raw Telegram Update dict into a TelegramMessage.
+
+        This provides a library-independent parsing path for webhook
+        payloads and unit tests.  The long-polling path uses
+        python-telegram-bot's own Update objects instead.
+
+        Args:
+            payload: Raw JSON dict from a Telegram webhook POST.
+
+        Returns:
+            TelegramMessage if the update contains a text message,
+            None otherwise.
+        """
+        message = payload.get("message")
+        if not message:
+            return None
+
+        text = message.get("text")
+        if not text:
+            return None
+
+        chat = message.get("chat", {})
+        from_user = message.get("from", {})
+
+        return TelegramMessage(
+            chat_id=chat.get("id", 0),
+            text=text,
+            message_id=message.get("message_id", 0),
+            from_user_id=from_user.get("id", 0),
+            from_username=from_user.get("username"),
+        )
+
+    # -----------------------------------------------------------------------
     # Inbound — Polling loop handlers
     # -----------------------------------------------------------------------
 
@@ -122,7 +160,7 @@ class TelegramAdapter:
             from src.app.services.amadeus_service import AmadeusService
 
             # Instantiate AmadeusService isolated to this user session (chat_id)
-            service = AmadeusService(session_id=str(chat_id))
+            service = AmadeusService(session_id=str(chat_id), auto_start_orchestrator=False)
             await service.initialize()
 
             # Handle command

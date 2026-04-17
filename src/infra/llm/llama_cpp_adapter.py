@@ -13,6 +13,7 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
 from src.core.exceptions import ConfigurationError, LLMConnectionError, LLMResponseError
+from src.core.interfaces.llm import LLMAdapter
 
 
 if TYPE_CHECKING:
@@ -22,7 +23,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class LlamaCppAdapter:
+class LlamaCppAdapter(LLMAdapter):
     """
     Adapter for running local GGUF models directly via llama-cpp-python.
 
@@ -262,3 +263,18 @@ class LlamaCppAdapter:
                 yield token
         finally:
             task.cancel()
+
+    # =========================================================================
+    # LLM ADAPTER INTERFACE METHODS
+    # =========================================================================
+
+    def get_provider_name(self) -> str:
+        return "LlamaCpp"
+
+    def get_capabilities(self) -> dict[str, Any]:
+        return {
+            "streaming": True,
+            "function_calling": False,
+            "vision": False,
+            "local": True,
+        }

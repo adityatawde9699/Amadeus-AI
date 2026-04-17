@@ -13,10 +13,35 @@ class AmadeusUser(HttpUser):
     wait_time = between(1, 5)
 
     def on_start(self):
-        """Called when a user starts. We can set up auth tokens here."""
+        """Called when a user starts. Acquire a JWT token via the auth endpoint."""
         self.headers = {"Content-Type": "application/json"}
-        # In a real scenario, we would acquire a JWT token here
-        # self.headers["Authorization"] = f"Bearer {token}"
+
+        # Register a test user (ignored if already exists) and log in to get a JWT
+        test_email = "loadtest@amadeus.local"
+        test_password = "LoadTest!SecurePass123"
+
+        # Attempt registration (may 400 if user exists — that's fine)
+        self.client.post(
+            "/api/v1/auth/register",
+            json={"email": test_email, "password": test_password},
+            name="/auth/register (setup)",
+        )
+
+        # Log in to obtain a Bearer token
+        resp = self.client.post(
+            "/api/v1/auth/jwt/login",
+            data={"username": test_email, "password": test_password},
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            name="/auth/jwt/login (setup)",
+        )
+
+        if resp.status_code == 200:
+            token = resp.json().get("access_token", "")
+            self.headers["Authorization"] = f"Bearer {token}"
+        else:
+            # If auth setup fails, tests will run without a token
+            # (and correctly report 401/403 errors in the results)
+            pass
 
     @task(3)
     def check_health(self):

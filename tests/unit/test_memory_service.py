@@ -1,13 +1,13 @@
 """
 Unit tests for QdrantMemoryService (src/infra/memory_service.py).
 
-All ChromaDB and Gemini calls are mocked so tests run without
-any API keys or local ChromaDB installation.
+All Qdrant and Gemini calls are mocked so tests run without
+any API keys or local Qdrant installation.
 """
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -35,7 +35,7 @@ def _mock_settings(chroma_enabled: bool = True) -> MagicMock:
 # ===========================================================================
 
 
-class TestChromeMemoryServiceInit:
+class TestQdrantMemoryServiceInit:
     """Verify service boots up correctly."""
 
     def test_disabled_when_chroma_not_enabled(self) -> None:
@@ -50,14 +50,12 @@ class TestChromeMemoryServiceInit:
         assert svc._enabled is False
 
     def test_graceful_degradation_on_import_error(self) -> None:
-        """Service disables itself when chromadb is not installed."""
+        """Service disables itself when qdrant_client is not installed."""
         settings = _mock_settings()
-        with patch("builtins.__import__", side_effect=ImportError("no module named chromadb")):
-            # Patching _setup to simulate an ImportError scenario
+        with patch("builtins.__import__", side_effect=ImportError("no module named qdrant_client")):
             svc = QdrantMemoryService.__new__(QdrantMemoryService)
             svc._settings = settings
             svc._client = None
-            svc._collection = None
             svc._embed_model = None
             svc._enabled = False
             svc._initialized = False
@@ -70,35 +68,40 @@ class TestChromeMemoryServiceInit:
 # ===========================================================================
 
 
-class TestChromeMemoryServiceStore:
+class TestQdrantMemoryServiceStore:
     """Test the store() async method."""
 
     @pytest.mark.asyncio
     async def test_store_calls_embed_and_upsert(self) -> None:
-        """store() should embed text and upsert into ChromaDB collection."""
+        """store() should embed text and upsert into Qdrant collection."""
         settings = _mock_settings()
 
-        # Build a pre-initialized service without touching real ChromaDB
+        # Build a pre-initialized service without touching real Qdrant
         svc = QdrantMemoryService.__new__(QdrantMemoryService)
         svc._settings = settings
         svc._enabled = True
         svc._initialized = True
-
-        mock_collection = MagicMock()
-        svc._collection = mock_collection
         svc._embed_model = "models/embedding-001"
+
+        # Mock the Qdrant async client
+        mock_client = AsyncMock()
+        svc._client = mock_client
 
         fake_embedding = [0.1] * 768
 
-        with patch.object(svc, "_embed", return_value=fake_embedding):
+        with patch.object(svc, "_embed_async", return_value=fake_embedding):
             result = await svc.store("session-abc", "user", "I love astronomy")
 
         assert result is True
-        mock_collection.upsert.assert_called_once()
-        call_kwargs = mock_collection.upsert.call_args
-        assert call_kwargs.kwargs["documents"] == ["I love astronomy"]
-        assert call_kwargs.kwargs["metadatas"][0]["role"] == "user"
-        assert call_kwargs.kwargs["metadatas"][0]["session_id"] == "session-abc"
+        mock_client.upsert.assert_called_once()
+        call_kwargs = mock_client.upsert.call_args
+        # Qdrant upsert uses collection_name and points
+        assert call_kwargs.kwargs["collection_name"] == "test_memory"
+        points = call_kwargs.kwargs["points"]
+        assert len(points) == 1
+        assert points[0].payload["text"] == "I love astronomy"
+        assert points[0].payload["role"] == "user"
+        assert points[0].payload["session_id"] == "session-abc"
 
     @pytest.mark.asyncio
     async def test_store_returns_false_when_disabled(self) -> None:
@@ -118,14 +121,14 @@ class TestChromeMemoryServiceStore:
         svc._settings = settings
         svc._enabled = True
         svc._initialized = True
-        svc._collection = MagicMock()
+        svc._client = AsyncMock()
         svc._embed_model = "models/embedding-001"
 
-        with patch.object(svc, "_embed", return_value=None):
+        with patch.object(svc, "_embed_async", return_value=None):
             result = await svc.store("session-abc", "user", "test")
 
         assert result is False
-        svc._collection.upsert.assert_not_called()
+        svc._client.upsert.assert_not_called()
 
 
 # ===========================================================================
@@ -133,7 +136,7 @@ class TestChromeMemoryServiceStore:
 # ===========================================================================
 
 
-class TestChromeMemoryServiceRetrieve:
+class TestQdrantMemoryServiceRetrieve:
     """Test the retrieve() async method."""
 
     @pytest.mark.asyncio
@@ -146,33 +149,38 @@ class TestChromeMemoryServiceRetrieve:
         svc._initialized = True
         svc._embed_model = "models/embedding-001"
 
-        mock_collection = MagicMock()
-        mock_collection.count.return_value = 5
-        mock_collection.query.return_value = {
-            "documents": [["I love astronomy", "Let's talk about stars"]],
-            "metadatas": [
-                [
-                    {"session_id": "sess-1", "role": "user", "timestamp": "2026-01-01T00:00:00"},
-                    {
-                        "session_id": "sess-2",
-                        "role": "assistant",
-                        "timestamp": "2026-01-02T00:00:00",
-                    },
-                ]
-            ],
-            "distances": [[0.05, 0.25]],
+        # Mock Qdrant search results (ScoredPoint objects)
+        hit1 = MagicMock()
+        hit1.payload = {
+            "session_id": "sess-1",
+            "role": "user",
+            "text": "I love astronomy",
+            "timestamp": "2026-01-01T00:00:00",
         }
-        svc._collection = mock_collection
+        hit1.score = 0.95
+
+        hit2 = MagicMock()
+        hit2.payload = {
+            "session_id": "sess-2",
+            "role": "assistant",
+            "text": "Let's talk about stars",
+            "timestamp": "2026-01-02T00:00:00",
+        }
+        hit2.score = 0.75
+
+        mock_client = AsyncMock()
+        mock_client.search.return_value = [hit1, hit2]
+        svc._client = mock_client
 
         fake_embedding = [0.1] * 768
-        with patch.object(svc, "_embed_query", return_value=fake_embedding):
+        with patch.object(svc, "_embed_async", return_value=fake_embedding):
             results = await svc.retrieve("What do I enjoy?", top_k=5)
 
         assert len(results) == 2
         assert isinstance(results[0], MemoryResult)
         assert results[0].text == "I love astronomy"
         assert results[0].role == "user"
-        assert results[0].distance == pytest.approx(0.05)
+        assert results[0].distance == pytest.approx(0.95)
 
     @pytest.mark.asyncio
     async def test_retrieve_returns_empty_when_disabled(self) -> None:
@@ -186,19 +194,19 @@ class TestChromeMemoryServiceRetrieve:
 
     @pytest.mark.asyncio
     async def test_retrieve_returns_empty_on_query_failure(self) -> None:
-        """retrieve() must return [] gracefully on ChromaDB error."""
+        """retrieve() must return [] gracefully on Qdrant error."""
         settings = _mock_settings()
         svc = QdrantMemoryService.__new__(QdrantMemoryService)
         svc._settings = settings
         svc._enabled = True
         svc._initialized = True
         svc._embed_model = "models/embedding-001"
-        mock_collection = MagicMock()
-        mock_collection.count.return_value = 3
-        mock_collection.query.side_effect = RuntimeError("DB failure")
-        svc._collection = mock_collection
 
-        with patch.object(svc, "_embed_query", return_value=[0.1] * 768):
+        mock_client = AsyncMock()
+        mock_client.search.side_effect = RuntimeError("DB failure")
+        svc._client = mock_client
+
+        with patch.object(svc, "_embed_async", return_value=[0.1] * 768):
             results = await svc.retrieve("some query")
 
         assert results == []

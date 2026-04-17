@@ -366,9 +366,9 @@ class TestMetricsImport:
 
     def test_metrics_not_imported_from_api_layer_in_amadeus_service(self):
         """amadeus_service.py should reference src.infra.metrics, not src.api.server."""
-        service_path = Path(
-            "c:/Users/ASUS/Downloads/vs code/.vscode/python/Amadeus-AI"
-            "/src/app/services/amadeus_service.py"
+        service_path = (
+            Path(__file__).parent.parent.parent
+            / "src" / "app" / "services" / "amadeus_service.py"
         )
         source = service_path.read_text(encoding="utf-8")
         assert "from src.api.server import amadeus" not in source, (

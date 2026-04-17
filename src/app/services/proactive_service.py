@@ -42,7 +42,7 @@ async def run_proactive_checks() -> None:
         try:
             # We use the user_id as the session_id to maintain conversation context for that user
             # just as the webhooks do.
-            service = AmadeusService(session_id=user_id)
+            service = AmadeusService(session_id=user_id, auto_start_orchestrator=False)
             await service.initialize()
 
             # The prompt to trigger analysis and action

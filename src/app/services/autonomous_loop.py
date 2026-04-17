@@ -54,7 +54,7 @@ class AutonomousObservationLoop:
         try:
             from src.app.services.amadeus_service import AmadeusService
 
-            svc = AmadeusService(session_id=session_id)
+            svc = AmadeusService(session_id=session_id, auto_start_orchestrator=False)
             await svc.initialize()
 
             prompt = (

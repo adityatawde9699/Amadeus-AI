@@ -35,7 +35,7 @@ async def _process_and_reply_telegram(chat_id: int, user_text: str) -> None:
     try:
         from src.app.services.amadeus_service import AmadeusService
 
-        service = AmadeusService(session_id=str(chat_id))
+        service = AmadeusService(session_id=str(chat_id), auto_start_orchestrator=False)
         await service.initialize()
 
         response = await service.handle_command(user_text, source="telegram")
@@ -51,7 +51,7 @@ async def _process_and_reply_whatsapp(phone: str, user_text: str, message_id: st
     try:
         from src.app.services.amadeus_service import AmadeusService
 
-        service = AmadeusService(session_id=phone)
+        service = AmadeusService(session_id=phone, auto_start_orchestrator=False)
         await service.initialize()
 
         response = await service.handle_command(user_text, source="whatsapp")

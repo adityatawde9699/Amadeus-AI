@@ -7,26 +7,20 @@ Wires up all services with their dependencies using dependency-injector.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from collections.abc import AsyncGenerator
+from concurrent.futures import ThreadPoolExecutor
 
+import redis.asyncio
 from dependency_injector import containers, providers
 
 from src.app.services.amadeus_service import AmadeusService
 from src.app.services.tool_registry import ToolRegistry
+from src.app.services.voice_service import VoiceService
 from src.core.config import get_settings
-
-
-if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
-    from concurrent.futures import ThreadPoolExecutor
-
-    import redis.asyncio
-
-    from src.app.services.voice_service import VoiceService
-    from src.infra.cache.cache_service import CacheService
-    from src.infra.llm.router import LLMRouter
-    from src.infra.search.search_router import SearchRouter
-    from src.infra.tools.confirmation import ConfirmationCallback
+from src.infra.cache.cache_service import CacheService
+from src.infra.llm.router import LLMRouter
+from src.infra.search.search_router import SearchRouter
+from src.infra.tools.confirmation import ConfirmationCallback
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +47,30 @@ def _build_cache_service(redis_client: redis.asyncio.Redis | None) -> CacheServi
     if not redis_client:
         logger.warning("Initializing CacheService in Local Zero-Dependency mode (in-memory dict).")
     return CacheService(redis=redis_client)
+
+
+def _build_conversation_repo_factory() -> object:
+    """Build a per-request conversation repository proxy.
+
+    Returns a lightweight proxy that opens a fresh DB session for every
+    repository method call, matching the _SessionProxy pattern used by
+    the task/pomodoro tools.  This avoids holding a long-lived session
+    inside the singleton AmadeusService.
+    """
+    from src.infra.persistence.database import get_session
+    from src.infra.persistence.repositories.conversation_repository import (
+        SQLConversationRepository,
+    )
+
+    class _ConversationRepoProxy:
+        def __getattr__(self, method_name: str) -> object:
+            async def _caller(*args: object, **kwargs: object) -> object:
+                async with get_session() as session:
+                    repo = SQLConversationRepository(session)
+                    return await getattr(repo, method_name)(*args, **kwargs)
+            return _caller
+
+    return _ConversationRepoProxy()
 
 
 def _build_tool_registry() -> ToolRegistry:
@@ -252,11 +270,14 @@ class Container(containers.DeclarativeContainer):
 
     tool_registry = providers.Singleton(_build_tool_registry)
 
+    conversation_repo = providers.Singleton(_build_conversation_repo_factory)
+
     amadeus_service = providers.Singleton(
         AmadeusService,
         settings=settings,
         tool_registry=tool_registry,
         cache_service=cache_service,
+        conversation_repo=conversation_repo,
     )
 
     llm_router = providers.Singleton(_build_llm_router)
@@ -311,6 +332,14 @@ def inject_confirmation_callback(confirmation_callback: ConfirmationCallback) ->
 async def shutdown_services() -> None:
     """Clean up container resources on shutdown."""
     logger.info("Shutting down resources...")
+
+    # Cleanly cancel the AgentOrchestrator background worker
+    try:
+        amadeus = global_container.amadeus_service()
+        await amadeus.shutdown()
+    except Exception:
+        logger.debug("AmadeusService shutdown skipped (not initialized)")
+
     redis_cli = global_container.redis_client()
     if redis_cli:
         await redis_cli.aclose()

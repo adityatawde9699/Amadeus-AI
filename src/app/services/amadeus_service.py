@@ -211,6 +211,7 @@ class AmadeusService:
         session_id: str | None = None,
         debug_mode: bool = False,
         cache_service: "CacheService | None" = None,
+        auto_start_orchestrator: bool = True,
     ):
         self.settings = settings or get_settings()
         self.debug_mode = debug_mode
@@ -227,7 +228,7 @@ class AmadeusService:
         self.tool_executor = ToolExecutor()
         self.tool_registry = tool_registry or ToolRegistry()
 
-        # Long-term semantic memory (ChromaDB + Gemini embeddings)
+        # Long-term semantic memory (Qdrant + Gemini embeddings)
         self.memory_service = QdrantMemoryService(settings=self.settings)
         if self.memory_service.is_enabled:
             logger.info(
@@ -271,6 +272,7 @@ class AmadeusService:
             tool_registry=self.tool_registry,
             tool_executor=self.tool_executor,
             llm_generate=llm_generate,
+            auto_start=auto_start_orchestrator,
         )
 
         logger.info(
@@ -278,7 +280,8 @@ class AmadeusService:
         )
 
     async def initialize(self) -> None:
-        """Async initialization - load conversation history from DB."""
+        """Async initialization - initialize memory service and load conversation history from DB."""
+        await self.memory_service.initialize()
         await self.conversation_manager.load_from_db()
 
     # =========================================================================
