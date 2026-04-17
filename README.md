@@ -32,8 +32,9 @@ Amadeus AI is a FastAPI-based backend service that orchestrates a conversational
 ## 3. Features
 
 ### Conversational AI
-- Multi-LLM routing: **Ollama (local offline)** → Groq (Llama 3.3 70B) → Gemini 2.5 Flash → **OpenAI GPT-4o-mini** (emergency fallback)
-- **100% Local Inference Option**: Support for `LOCAL_ONLY_MODE` via Ollama for complete offline privacy and zero-cost inference.
+- Multi-LLM routing: **LlamaCpp (local GGUF)** → **Ollama (local server)** → Groq (Llama 3.3 70B) → Gemini 2.5 Flash → **OpenAI GPT-4o-mini** (emergency fallback)
+- **100% Local Inference**: `SLM_MODEL_PATH` loads a GGUF model directly via `llama-cpp-python` — zero network calls, zero API cost, full conversation memory
+- **Local Server Option**: `LOCAL_ONLY_MODE` via Ollama for complete offline privacy and zero-cost inference.
 - **Redis-backed daily quota tracking** per provider — shared across all workers, auto-expires at midnight
 - **Semantic long-term memory** via Qdrant vector search — top-3 relevant memories injected into the agent prompt on every request
 - **Episodic memory (Knowledge Graph)** — LLM-driven entity extraction stores relationships (Subject-Predicate-Object) in PostgreSQL for precision context recall
@@ -118,7 +119,7 @@ Amadeus AI is a FastAPI-based backend service that orchestrates a conversational
 - GitHub Actions pipeline: lint (ruff — 100% clean), format check, strict type check (mypy), bandit (0 HIGH gate), pip-audit
 - Automated test run with real PostgreSQL + Redis service containers
 - **`train-model` CI job**: auto-retrains the ML classifier when `data/training_data.json` changes and commits updated model artifacts back to the repo
-- **Coverage threshold: 60%** enforced in CI (`--cov-fail-under=60`); **80%** enforced locally via `pyproject.toml`
+- **Coverage threshold: 80%** enforced in both CI (`--cov-fail-under=80`) and locally via `pyproject.toml`
 - Staging deploy to Railway on `develop` branch merge
 
 ---
@@ -400,8 +401,139 @@ curl -N -H "Authorization: Bearer $TOKEN" \
 
 ## 8. System Architecture
 
-<table>
-<tr><td>
+### Clean Architecture — Layer Overview
+
+```mermaid
+block-beta
+  columns 1
+
+  block:clients["🌐  CLIENT LAYER"]:1
+    columns 3
+    A["🖥️ HTTP / REST\nclients"] B["🎙️ WebSocket\nvoice stream"] C["📨 Telegram /\nWhatsApp / Email"]
+  end
+
+  space
+
+  block:api["⚡  API LAYER  —  src/api/"]:1
+    columns 3
+    D["🔐 JWT Auth\n& RBAC"] E["🛡️ Rate Limiter\nSlowAPI"] F["📋 Audit Logger\nRequest IDs"]
+    G["/chat  /tasks\n/voice  /llm"] H["/webhooks\n/messaging"] I["WS /ws/voice\nSSE stream"]
+  end
+
+  space
+
+  block:app["🧠  APPLICATION LAYER  —  src/app/"]:1
+    columns 3
+    J["🤖 AmadeusService\nOrchestrator"] K["🔧 ToolRegistry\nML Classifier"] L["🎤 VoiceService\nSTT → LLM → TTS"]
+  end
+
+  space
+
+  block:core["💎  CORE  —  src/core/"]:1
+    columns 4
+    M["📐 Domain\nModels"] N["🔌 LLMAdapter\nABC"] O["⚙️ Settings\nPydantic"] P["❌ Exceptions\nHierarchy"]
+  end
+
+  space
+
+  block:infra["🔩  INFRASTRUCTURE  —  src/infra/"]:1
+    columns 3
+    block:llmblock["🤖 LLM"]:1
+      columns 1
+      Q["LlamaCpp  (local)"] R["Ollama  (local)"] S["Groq / Gemini / OpenAI"]
+    end
+    block:datablock["💾 Data"]:1
+      columns 1
+      T["PostgreSQL / SQLite"] U["Redis Cache"] V["Qdrant Vectors"]
+    end
+    block:svcblock["🛠️ Services"]:1
+      columns 1
+      W["Whisper STT\nEdge TTS"] X["DDG→Brave→Tavily\nSearch Router"] Y["Tools: info /\nproductivity / system"]
+    end
+  end
+
+  clients --> api
+  api --> app
+  app --> core
+  app --> infra
+  core --> infra
+```
+
+### Request Lifecycle — Chat Endpoint
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client
+    participant FastAPI as ⚡ FastAPI
+    participant Auth as 🔐 JWT Auth
+    participant Amadeus as 🤖 AmadeusService
+    participant Classifier as 📊 ML Classifier
+    participant Agent as 🔄 Agent Loop
+    participant Router as 🔀 LLMRouter
+    participant LlamaCpp as 💻 LlamaCpp
+    participant Ollama as 🦙 Ollama
+    participant Groq as ☁️ Groq
+    participant Cache as ⚡ Redis Cache
+    participant DB as 🗄️ PostgreSQL
+
+    Client->>FastAPI: POST /api/v1/chat
+    FastAPI->>Auth: Verify JWT Bearer
+    Auth-->>FastAPI: ✅ User claims
+    FastAPI->>Amadeus: process_message()
+    Amadeus->>Cache: Cache lookup (1h TTL)
+    alt Cache HIT
+        Cache-->>Amadeus: Cached response
+    else Cache MISS
+        Amadeus->>Classifier: predict_intent(message)
+        Classifier-->>Amadeus: tool_name (< 10ms)
+        Amadeus->>Agent: run_agent_loop()
+        Agent->>Router: generate(prompt, context)
+        Router->>LlamaCpp: is_available()?
+        alt LlamaCpp available (LOCAL_ONLY or SLM_MODEL_PATH set)
+            LlamaCpp-->>Router: ✅ Response
+        else LlamaCpp not configured
+            Router->>Ollama: is_available()?
+            alt Ollama running
+                Ollama-->>Router: ✅ Response
+            else Quota / Unavailable
+                Router->>Groq: generate()
+                Groq-->>Router: ✅ Response
+            end
+        end
+        Router-->>Agent: (response, provider_used)
+        Agent-->>Amadeus: final_response
+        Amadeus->>Cache: Store response (1h TTL)
+        Amadeus->>DB: Persist conversation history
+    end
+    Amadeus-->>FastAPI: ChatResponse
+    FastAPI-->>Client: 200 JSON
+```
+
+### Voice Pipeline
+
+```mermaid
+flowchart LR
+    A(["🎙️ Audio\nBytes"]):::input
+    B(["📝 Transcribed\nText"]):::step
+    C(["🧠 LLM\nResponse"]):::step
+    D(["🔊 TTS\nAudio"]):::output
+
+    A -->|"faster-whisper\nCPU / CUDA"| B
+    B -->|"LLMRouter\nlocal-first"| C
+    C -->|"Edge TTS\nen-US-JennyNeural"| D
+
+    subgraph ws ["WebSocket  /api/v1/ws/voice"]
+        B
+        C
+    end
+
+    classDef input  fill:#E1F5EE,stroke:#1D9E75,color:#04342C,rx:8
+    classDef step   fill:#EEEDFE,stroke:#7F77DD,color:#26215C,rx:8
+    classDef output fill:#FAEEDA,stroke:#BA7517,color:#412402,rx:8
+```
+
+
 
 <div align="center">
 
@@ -618,42 +750,50 @@ Every request passes through the `LLMRouter` which checks Redis daily-quota coun
 
 ```mermaid
 flowchart TD
-    A([Incoming Request]) --> B{Ollama\nrunning locally?}
+    A(["📨 Incoming Request"]):::start
 
-    B -- Yes, quota unlimited --> C[🟢 Ollama\nLocal · Offline · Free]
-    B -- No / unavailable --> D{Groq quota\n< 14 400 / day?}
+    A --> LC{"💻 LlamaCpp\nSLM_MODEL_PATH set?"}
+    LC -- "Yes — offline\nGGUF model" --> LCR["💻 LlamaCpp\nLocal · Offline · Free · PRIMARY"]
+    LC -- "Not configured" --> B{"🦙 Ollama\nrunning locally?"}
 
-    D -- Yes --> E[🟡 Groq\nLlama 3.3 70B · Free tier]
-    D -- Exhausted --> F{Gemini quota\n< 1 500 / day?}
+    B -- "Yes — unlimited" --> C["🦙 Ollama\nLocal · Offline · Free"]
+    B -- "No / unavailable" --> D{"☁️ Groq\nquota < 14,400/day?"}
 
-    F -- Yes --> G[🟠 Gemini\n2.5 Flash · Free tier]
-    F -- Exhausted --> H{OpenAI key\nconfigured?}
+    D -- Yes --> E["🟡 Groq\nLlama 3.3 70B · Free tier"]
+    D -- Exhausted --> F{"✨ Gemini\nquota < 1,500/day?"}
 
-    H -- Yes --> I[🔴 OpenAI\nGPT-4o-mini · Paid]
-    H -- No --> J([503 LLMRateLimitError])
+    F -- Yes --> G["🟠 Gemini 2.5 Flash\nFree tier"]
+    F -- Exhausted --> H{"🔑 OpenAI key\nconfigured?"}
 
-    C --> K([Response])
-    E --> K
-    G --> K
-    I --> K
+    H -- Yes --> I["🔴 OpenAI GPT-4o-mini\nPaid — emergency fallback"]
+    H -- No --> J(["🚫 LLMRateLimitError\nHTTP 503"]):::error
 
-    style A fill:#E1F5EE,stroke:#1D9E75,color:#04342C
-    style C fill:#EAF3DE,stroke:#639922,color:#173404
-    style E fill:#FAEEDA,stroke:#BA7517,color:#412402
-    style G fill:#FAECE7,stroke:#D85A30,color:#4A1B0C
-    style I fill:#FCEBEB,stroke:#A32D2D,color:#501313
-    style J fill:#FCEBEB,stroke:#A32D2D,color:#501313
-    style K fill:#E1F5EE,stroke:#1D9E75,color:#04342C
+    LCR --> K(["✅ Response"]):::ok
+    C   --> K
+    E   --> K
+    G   --> K
+    I   --> K
+
+    classDef start fill:#E1F5EE,stroke:#1D9E75,color:#04342C,font-weight:bold
+    classDef ok    fill:#EAF3DE,stroke:#639922,color:#173404,font-weight:bold
+    classDef error fill:#FCEBEB,stroke:#A32D2D,color:#501313,font-weight:bold
+
+    style LCR fill:#dbedf9,stroke:#378ADD,color:#0C447C,font-weight:bold
+    style C   fill:#EAF3DE,stroke:#639922,color:#173404
+    style E   fill:#FAEEDA,stroke:#BA7517,color:#412402
+    style G   fill:#FAECE7,stroke:#D85A30,color:#4A1B0C
+    style I   fill:#FCEBEB,stroke:#c0392b,color:#501313
 ```
 
 **Quota tracking keys in Redis:**
 
 | Provider | Redis key | Daily limit | TTL |
 |----------|-----------|-------------|-----|
+| LlamaCpp | — (local GGUF, unlimited) | ∞ | — |
+| Ollama | — (local server, unlimited) | ∞ | — |
 | Groq | `llm_usage:groq:{date}` | 14,400 req | 86400 s |
 | Gemini | `llm_usage:gemini:{date}` | 1,500 req | 86400 s |
 | OpenAI | `llm_usage:openai:{date}` | 100 req | 86400 s |
-| Ollama | — (local, unlimited) | ∞ | — |
 
 Counters are incremented atomically with `INCR` and set to expire at midnight via `EXPIREAT`. All workers share the same counter, preventing cross-process over-quota.
 
@@ -775,8 +915,17 @@ asyncio.run(voice_session())
 Amadeus-AI/
 │
 ├── .github/
-│   └── workflows/
-│       └── main.yml              # CI/CD: lint → test → train-model → deploy (Railway staging)
+│   ├── workflows/
+│   │   └── main.yml                  # CI/CD: lint → test → train-model → deploy (Railway staging)
+│   ├── ISSUE_TEMPLATE/
+│   │   ├── bug_report.md             # Structured bug report form
+│   │   └── feature_request.md        # Feature request form
+│   ├── PULL_REQUEST_TEMPLATE.md      # PR checklist for contributors
+│   └── CODEOWNERS                    # Auto-assign reviewers by file path
+├── CONTRIBUTING.md                   # Developer setup, coding standards, PR workflow
+├── CHANGELOG.md                      # Release history (Keep a Changelog format)
+├── SECURITY.md                       # Vulnerability reporting policy
+├── CODE_OF_CONDUCT.md                # Contributor Covenant v2.1
 │
 ├── alembic/                      # Database migration scripts
 │   ├── env.py
@@ -826,16 +975,18 @@ Amadeus-AI/
 │   │   ├── domain/
 │   │   │   └── models.py         #    Pydantic domain models (ChatRequest, Task, etc.)
 │   │   └── interfaces/
+│   │       ├── llm.py            #    LLMAdapter ABC — all adapters must implement this
 │   │       └── repositories.py   #    Abstract repository interfaces (ABCs)
 │   │
 │   └── infra/                    # ── INFRASTRUCTURE LAYER ────────────────────────────────
 │       ├── llm/
-│       │   ├── router.py         #    Multi-LLM routing + Redis quota tracking (INCR/EXPIRE)
-│       │   ├── ollama_adapter.py #    Ollama — local offline inference
-│       │   ├── groq_adapter.py   #    Groq — Llama 3.3 70B cloud (free tier primary)
-│       │   ├── gemini_adapter.py #    Gemini 2.5 Flash — supports native stream=True
-│       │   ├── openai_adapter.py #    GPT-4o-mini — emergency paid fallback
-│       │   └── memory_manager.py #    Qdrant semantic memory + Knowledge Graph (SPO)
+│       │   ├── router.py             #    Multi-LLM routing + Redis quota tracking (INCR/EXPIRE)
+│       │   ├── llama_cpp_adapter.py  #    LlamaCpp — local GGUF offline inference (PRIMARY)
+│       │   ├── ollama_adapter.py     #    Ollama — local server inference (SECONDARY)
+│       │   ├── groq_adapter.py       #    Groq — Llama 3.3 70B cloud (free tier)
+│       │   ├── gemini_adapter.py     #    Gemini 2.5 Flash — supports native stream=True
+│       │   ├── openai_adapter.py     #    GPT-4o-mini — emergency paid fallback
+│       │   └── memory_manager.py     #    Qdrant semantic memory + Knowledge Graph (SPO)
 │       ├── messaging/
 │       │   ├── telegram_adapter.py  # Telegram Bot API — send + parse inbound
 │       │   ├── whatsapp_adapter.py  # Meta WhatsApp Cloud API — challenge + messages
@@ -915,7 +1066,7 @@ pytest tests/ -m "not slow"  -v          # skip slow tests
 | Environment | Threshold | Enforced by |
 |-------------|-----------|-------------|
 | Local | 80% | `pyproject.toml` `fail_under = 80` |
-| CI (GitHub Actions) | 60% | `--cov-fail-under=60` |
+| CI (GitHub Actions) | 80% | `--cov-fail-under=80` |
 
 ### Integration Tests
 

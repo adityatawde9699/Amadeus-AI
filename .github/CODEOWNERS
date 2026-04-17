@@ -1,0 +1,30 @@
+# CODEOWNERS
+# Automatically request reviews from the right people based on file paths.
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything
+* @adityatawde9699
+
+# LLM adapters and routing — core logic, review carefully
+src/infra/llm/                  @adityatawde9699
+src/core/interfaces/llm.py      @adityatawde9699
+
+# Security-sensitive: auth, middleware, config
+src/api/auth/                   @adityatawde9699
+src/api/middleware/             @adityatawde9699
+src/core/config.py              @adityatawde9699
+.env.example                    @adityatawde9699
+
+# CI/CD and deployment
+.github/workflows/              @adityatawde9699
+Dockerfile                      @adityatawde9699
+docker-compose.yml              @adityatawde9699
+railway.toml                    @adityatawde9699
+
+# Database migrations — never auto-merge
+alembic/                        @adityatawde9699
+
+# Community health files
+CONTRIBUTING.md                 @adityatawde9699
+SECURITY.md                     @adityatawde9699
+CODE_OF_CONDUCT.md              @adityatawde9699

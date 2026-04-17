@@ -187,7 +187,7 @@ class OllamaAdapter:
             LLMRateLimitError: If Ollama is not available
         """
         if not await self.is_server_running():
-            raise LLMRateLimitError("Ollama server not running. Start with: ollama serve")
+            raise LLMRateLimitError("Ollama")
 
         payload: dict[str, Any] = {
             "model": self.model,
@@ -216,10 +216,10 @@ class OllamaAdapter:
             return response_text
         except httpx.HTTPStatusError as e:
             logger.exception("Ollama HTTP error: %s", e.response.text)
-            raise LLMRateLimitError(f"Ollama error: {e.response.status_code}") from e
+            raise LLMRateLimitError("Ollama") from e
         except Exception as e:
             logger.exception("Ollama generation failed: %s", type(e).__name__)
-            raise LLMRateLimitError(f"Ollama unavailable: {e}") from e
+            raise LLMRateLimitError("Ollama") from e
 
     async def stream_response(
         self,
