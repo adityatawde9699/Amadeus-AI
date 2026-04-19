@@ -20,8 +20,8 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import logging
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -106,28 +106,49 @@ class QdrantMemoryService:
 
             if _global_qdrant_client is None:
                 _global_qdrant_client = AsyncQdrantClient(path=self._settings.CHROMA_PERSIST_DIR)
-            
+
             self._client = _global_qdrant_client
 
-            # Setup embedding model first to get expected dimension
+            # Setup embedding model first — must happen before collection creation
+            # so we know the correct vector dimension (384 local vs 768 Gemini)
             self._setup_embedding_model()
 
             if not self._enabled:
                 return
 
             collection_name = self._settings.CHROMA_COLLECTION_NAME
+            embed_dim = getattr(self, "_embed_dim", 384)
 
-            # Check if collection exists
-            if not await self._client.collection_exists(collection_name=collection_name):
-                # We need to know the dimension. Gemini embeddings are typically 768.
+            # Check if collection exists with correct dimensions
+            if await self._client.collection_exists(collection_name=collection_name):
+                # Verify dimension matches — recreate if mismatched (e.g. switched embedder)
+                try:
+                    info = await self._client.get_collection(collection_name)
+                    existing_dim = info.config.params.vectors.size  # type: ignore[union-attr]
+                    if existing_dim != embed_dim:
+                        logger.warning(
+                            "Qdrant collection dimension mismatch (%d vs %d). "
+                            "Dropping and recreating collection.",
+                            existing_dim,
+                            embed_dim,
+                        )
+                        await self._client.delete_collection(collection_name)
+                        await self._client.create_collection(
+                            collection_name=collection_name,
+                            vectors_config=VectorParams(size=embed_dim, distance=Distance.COSINE),
+                        )
+                except Exception:
+                    pass  # Collection info check failed — leave it as-is
+            else:
                 await self._client.create_collection(
                     collection_name=collection_name,
-                    vectors_config=VectorParams(size=768, distance=Distance.COSINE),
+                    vectors_config=VectorParams(size=embed_dim, distance=Distance.COSINE),
                 )
 
             logger.info(
-                "Qdrant memory initialized — collection=%s, persist_dir=%s",
+                "Qdrant memory initialized — collection=%s, dim=%d, persist_dir=%s",
                 collection_name,
+                embed_dim,
                 self._settings.CHROMA_PERSIST_DIR,
             )
             self._initialized = True
@@ -136,11 +157,36 @@ class QdrantMemoryService:
             self._enabled = False
 
     def _setup_embedding_model(self) -> None:
-        """Configure Gemini embedding model, or fall back to disabled."""
+        """
+        Configure embedding model with local-first priority:
+          1. sentence-transformers (local, offline, free, no quota)
+          2. Gemini embedding API (cloud fallback, requires API key + quota)
+        """
+        # --- Try local sentence-transformers first ---
+        try:
+            from sentence_transformers import SentenceTransformer
+
+            # all-MiniLM-L6-v2: 384-dim, ~80MB, fast on CPU, no GPU required
+            self._local_embed_model = SentenceTransformer("all-MiniLM-L6-v2")
+            self._embed_dim = 384
+            self._use_local_embed = True
+            logger.info(
+                "Local sentence-transformers embedding model loaded (all-MiniLM-L6-v2, dim=384)"
+            )
+            return
+        except ImportError:
+            logger.warning(
+                "sentence-transformers not installed — will try Gemini embeddings. "
+                "Install with: pip install sentence-transformers"
+            )
+        except Exception as exc:
+            logger.warning("Local embedding model failed to load: %s — trying Gemini", exc)
+
+        # --- Fall back to Gemini ---
+        self._use_local_embed = False
         if not self._settings.GEMINI_API_KEY:
             logger.warning(
-                "GEMINI_API_KEY not set — semantic memory embedding disabled. "
-                "Messages will not be stored in Qdrant."
+                "No local embed model and GEMINI_API_KEY not set — semantic memory disabled."
             )
             self._enabled = False
             return
@@ -150,7 +196,8 @@ class QdrantMemoryService:
 
             self._genai_client = genai.Client(api_key=self._settings.GEMINI_API_KEY)
             self._embed_model = self._settings.MEMORY_EMBED_MODEL
-            logger.info("Gemini embedding model ready: %s", self._embed_model)
+            self._embed_dim = 768  # Gemini embedding dimension
+            logger.info("Gemini embedding model ready (fallback): %s", self._embed_model)
         except Exception as exc:
             logger.exception("Gemini embedding setup failed — memory disabled: %s", exc)
             self._enabled = False
@@ -162,8 +209,26 @@ class QdrantMemoryService:
     async def _embed_async(
         self, text: str, task_type: str = "retrieval_document"
     ) -> list[float] | None:
-        """Embed text asynchronously using an executor."""
-        if not self._enabled or not self._embed_model:
+        """Embed text using local model (preferred) or Gemini (fallback)."""
+        if not self._enabled:
+            return None
+
+        # Local embedding path — runs in executor to stay non-blocking
+        if getattr(self, "_use_local_embed", False):
+            try:
+                loop = asyncio.get_running_loop()
+
+                def _local_embed() -> list[float]:
+                    vec = self._local_embed_model.encode(text, show_progress_bar=False)
+                    return vec.tolist()
+
+                return await loop.run_in_executor(None, _local_embed)
+            except Exception as exc:
+                logger.warning("Local embedding failed: %s", exc)
+                return None
+
+        # Gemini embedding fallback
+        if not getattr(self, "_embed_model", None):
             return None
 
         def _sync_embed() -> list[float]:
@@ -184,8 +249,9 @@ class QdrantMemoryService:
             loop = asyncio.get_running_loop()
             return await loop.run_in_executor(None, _sync_embed)
         except Exception as exc:
-            logger.warning("Embedding failed for text snippet: %s", exc)
+            logger.warning("Gemini embedding failed: %s", exc)
             return None
+
 
     # -------------------------------------------------------------------------
     # Public API
@@ -202,9 +268,10 @@ class QdrantMemoryService:
         if embedding is None:
             return False
 
-        # Build a stable, unique document ID
+        # Build a stable, unique document ID — Qdrant requires a valid UUID
         timestamp_str = datetime.now(UTC).isoformat()
-        id_str = hashlib.sha256(f"{session_id}:{role}:{text}:{timestamp_str}".encode()).hexdigest()
+        raw_key = f"{session_id}:{role}:{text}:{timestamp_str}"
+        id_str = str(uuid.uuid5(uuid.NAMESPACE_OID, raw_key))
 
         try:
             from qdrant_client.models import PointStruct

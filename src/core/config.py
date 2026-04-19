@@ -191,7 +191,7 @@ class Settings(BaseSettings):
     # ASSISTANT IDENTITY
     # =========================================================================
     ASSISTANT_NAME: str = "Amadeus"
-    ASSISTANT_VERSION: str = "2.0.0"
+    ASSISTANT_VERSION: str = "3.0.0"
     ASSISTANT_PERSONALITY: str = "helpful, concise, and friendly"
     DEFAULT_LOCATION: str = "India"
     TIMEZONE: str = "Asia/Kolkata"

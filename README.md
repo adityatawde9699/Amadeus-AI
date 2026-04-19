@@ -1,6 +1,6 @@
 <div align="center">
 
-# Amadeus AI
+# Amadeus AI v3.0.0
 
 **A production-grade, multi-modal AI assistant backend built on Clean Architecture — text, voice, and tool execution unified under one API.**
 

@@ -1,4 +1,4 @@
-"""
+r"""
 Retrain the TF-IDF + SVM tool classifier using the current sklearn version.
 Run from the project root with the .venv active:
   .venv\Scripts\python scripts\retrain_classifier.py
