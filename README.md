@@ -1117,6 +1117,29 @@ docker-compose logs -f api-prod
 docker-compose exec api-prod python -m alembic upgrade head
 ```
 
+### Deploy as a Standalone Windows Daemon
+
+The entire backend (including database migrations, local ML models, and API framework) can be compiled into a zero-dependency headless Windows process.
+
+**1. Compilation**  
+*(Requires an active python virtual environment)*
+```bash
+python scripts\build_windows.py
+```
+
+**2. Manual Execution**  
+To run the background process and automatically validate your `.env` configuration:
+```bash
+Launch_Amadeus.bat
+```
+*(Logs are written to `data\logs\amadeus.log`. Stop it via Task Manager)*
+
+**3. Install as a Native Windows Service (Recommended)**  
+Launch PowerShell as Administrator to bind the executable to Windows boot:
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install_windows_service.ps1
+```
+
 The Dockerfile is a **3-stage multi-stage build:**
 
 | Stage | Purpose |

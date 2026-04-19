@@ -610,8 +610,8 @@ class AgentOrchestrator:
         import joblib
 
         try:
-            vectorizer_path = "Model/router_vectorizer.joblib"
-            classifier_path = "Model/router_classifier.joblib"
+            vectorizer_path = str(self.settings.BASE_DIR / "Model" / "router_vectorizer.joblib")
+            classifier_path = str(self.settings.BASE_DIR / "Model" / "router_classifier.joblib")
 
             if Path(vectorizer_path).exists() and Path(classifier_path).exists():
                 self.vectorizer = joblib.load(vectorizer_path)
