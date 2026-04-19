@@ -163,17 +163,19 @@ def _build_llm_router() -> LLMRouter:
             logger.warning("Failed to configure OpenAIAdapter: %s", type(e).__name__)
 
     ollama_adapter = None
-    try:
-        from src.infra.llm.ollama_adapter import OllamaAdapter
-        
-        ollama_adapter = OllamaAdapter(
-            base_url=settings.OLLAMA_URL,
-            model=settings.OLLAMA_MODEL,
-            timeout=settings.OLLAMA_TIMEOUT_SECONDS,
-            context_length=settings.OLLAMA_NUM_CTX,
-        )
-    except Exception as e:
-        logger.exception("Failed to configure OllamaAdapter: %s", e)
+    # Only wire Ollama if explicitly enabled (avoids connection errors when not running)
+    if getattr(settings, "OLLAMA_ENABLED", False):
+        try:
+            from src.infra.llm.ollama_adapter import OllamaAdapter
+
+            ollama_adapter = OllamaAdapter(
+                base_url=settings.OLLAMA_URL,
+                model=settings.OLLAMA_MODEL,
+                timeout=settings.OLLAMA_TIMEOUT_SECONDS,
+                context_length=settings.OLLAMA_NUM_CTX,
+            )
+        except Exception as e:
+            logger.warning("Failed to configure OllamaAdapter: %s", type(e).__name__)
 
     llama_cpp_adapter = None
     if getattr(settings, "SLM_MODEL_PATH", None):

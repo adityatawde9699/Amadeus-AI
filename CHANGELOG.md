@@ -9,6 +9,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [3.0.0] — 2026-04-19
+
 ### Added
 - `LLMAdapter` abstract base class (`src/core/interfaces/llm.py`) — all provider adapters must now conform to this interface, enabling static type-checking via mypy
 - `LlamaCppAdapter` now injects conversation history from `ConversationContext` into the messages list (multi-turn memory now works with local GGUF models)
@@ -18,6 +20,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `CODEOWNERS` file for automatic reviewer assignment
 
 ### Fixed
+- **Critical**: `memory_service.py` Qdrant upsert failure by converting points from invalid `SHA256` to deterministic `UUIDv5` values, fixing broken long-term vector persistence
+- **Critical**: `sklearn` version mismatch (`InconsistentVersionWarning`); retrained SVM classifier models in the local `Model/` directory against `1.8.0` library.
 - **Critical**: `LlamaCppAdapter` was raising `LLMRateLimitError` for non-rate-limit conditions (import error, model load failure, path not found), causing silent fallback to cloud providers. Now uses `ConfigurationError`, `LLMConnectionError`, and `LLMResponseError` appropriately
 - **Critical**: `LLMRateLimitError` was called with full sentences as the `service` argument throughout `ollama_adapter.py` and `router.py`. Now called with the short provider identifier as intended
 - `LLMRouter` class docstring now correctly reflects the actual routing priority (`LlamaCpp → Ollama → Groq → Gemini → OpenAI`) instead of the obsolete `Groq → Gemini → OpenAI`
