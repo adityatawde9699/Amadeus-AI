@@ -92,7 +92,6 @@ class Settings(BaseSettings):
     SLM_CTX_SIZE: int = 2048
 
     # Search APIs
-    BRAVE_SEARCH_API_KEY: str | None = None
     TAVILY_API_KEY: str | None = None
 
     # Speech / Voice Keys

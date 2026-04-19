@@ -59,7 +59,7 @@ Amadeus AI is a FastAPI-based backend service that orchestrates a conversational
 - Current weather (OpenWeatherMap API)
 - Top news headlines (NewsAPI)
 - Wikipedia lookup with fallback search
-- Web search via tiered SearchRouter (DuckDuckGo → Brave → Tavily)
+- Web search via tiered SearchRouter (DuckDuckGo → Tavily)
 - Date/time queries, unit conversions (temperature, length), math calculator
 - Timer, greeting
 
@@ -102,7 +102,7 @@ Amadeus AI is a FastAPI-based backend service that orchestrates a conversational
 - **LLM daily usage quotas**: `llm_usage:{provider}:{date}` — 86400s TTL, shared across workers
 - TTS audio: 24-hour TTL — common phrases reuse synthesized audio bytes
 - Tool results (stateless only): 5-minute TTL (weather, system stats)
-- Web search results: 30-minute TTL (DDG, Brave, Tavily)
+- Web search results: 30-minute TTL (DDG, Tavily)
 - Graceful fallback if Redis is unavailable
 
 ### Observability (Prometheus — `/api/v1/metrics`)
@@ -183,7 +183,7 @@ cp .env.example .env
 | `REDIS_URL` | Redis for caching + quota tracking (default: `redis://localhost:6379/0`) |
 | `WEATHER_API_KEY` | OpenWeatherMap API key |
 | `NEWS_API_KEY` | NewsAPI key |
-| `BRAVE_SEARCH_API_KEY` | Brave Search (2,000 free/month) |
+
 | `TAVILY_API_KEY` | Tavily deep search |
 | `EDGE_TTS_VOICE` | Edge TTS voice name (default: `en-US-JennyNeural`) |
 | `SENTRY_DSN` | Sentry error tracking DSN |
@@ -448,7 +448,7 @@ block-beta
     end
     block:svcblock["🛠️ Services"]:1
       columns 1
-      W["Whisper STT\nEdge TTS"] X["DDG→Brave→Tavily\nSearch Router"] Y["Tools: info /\nproductivity / system"]
+      W["Whisper STT\nEdge TTS"] X["DDG→Tavily\nSearch Router"] Y["Tools: info /\nproductivity / system"]
     end
   end
 
@@ -688,7 +688,7 @@ flowchart LR
     </td>
     <td width="33%" style="padding-top:4px">
       <table width="100%" cellspacing="0" cellpadding="6" border="0" style="background:#f8d5c4;border:1px solid #F5C4B3;border-radius:6px">
-        <tr><td><strong style="font-size:12px;color:#4A1B0C">Search router</strong><br><span style="font-size:11px;color:#993C1D">DDG → Brave → Tavily</span></td></tr>
+        <tr><td><strong style="font-size:12px;color:#4A1B0C">Search router</strong><br><span style="font-size:11px;color:#993C1D">DDG → Tavily</span></td></tr>
       </table>
     </td>
   </tr></table>
@@ -1002,7 +1002,7 @@ Amadeus-AI/
 │       │   ├── edge_tts_adapter.py #  Microsoft Edge TTS (free, unlimited)
 │       │   └── tts_router.py     #    TTS provider selector
 │       ├── search/
-│       │   └── search_router.py  #    Tiered web search: DuckDuckGo → Brave → Tavily
+│       │   └── search_router.py  #    Tiered web search: DuckDuckGo → Tavily
 │       └── tools/
 │           ├── base.py           #    Tool, ToolCategory, @tool decorator
 │           ├── info_tools.py     #    Weather · news · Wikipedia · calculator · search

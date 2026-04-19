@@ -546,7 +546,7 @@ def parse_duration(duration_str: str) -> int:
     },
 )
 async def web_search_async(query: str, depth: str = "quick") -> str:
-    """Search the web using the tiered SearchRouter (DDG → Brave → Tavily)."""
+    """Search the web using the tiered SearchRouter (DDG → Tavily)."""
     if not query or not query.strip():
         return "Error: No search query provided."
 
