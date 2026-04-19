@@ -65,6 +65,9 @@ class MemoryResult:
 # =============================================================================
 
 
+# Global cache for the Qdrant client to avoid FileLock collisions
+_global_qdrant_client = None
+
 class QdrantMemoryService:
     """
     Long-term semantic memory powered by Qdrant + Gemini embeddings.
@@ -93,6 +96,7 @@ class QdrantMemoryService:
 
     async def _setup(self) -> None:
         """Initialize Qdrant async client and Gemini embedding model."""
+        global _global_qdrant_client
         try:
             # Using the same persist path but handled by Qdrant
             from qdrant_client import AsyncQdrantClient
@@ -100,7 +104,10 @@ class QdrantMemoryService:
 
             Path(str(self._settings.CHROMA_PERSIST_DIR)).mkdir(parents=True, exist_ok=True)
 
-            self._client = AsyncQdrantClient(path=self._settings.CHROMA_PERSIST_DIR)
+            if _global_qdrant_client is None:
+                _global_qdrant_client = AsyncQdrantClient(path=self._settings.CHROMA_PERSIST_DIR)
+            
+            self._client = _global_qdrant_client
 
             # Setup embedding model first to get expected dimension
             self._setup_embedding_model()

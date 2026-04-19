@@ -119,11 +119,7 @@ async def get_daily_usage() -> dict[str, object]:
         "llm": getattr(llm_router, "get_usage_report", dict)()
         if hasattr(llm_router, "get_usage_report")
         else {},
-        "search": {
-            "brave_daily_count": "See logs",  # Add monitoring
-            "brave_daily_limit": 60,
-            "status": "healthy" if True else "approaching_limit",
-        },
+        "search": {},
         "voice": {
             "stt": "whisper_local_unlimited",
             "tts": "edge_tts_unlimited",

@@ -212,10 +212,20 @@ class AmadeusService:
         debug_mode: bool = False,
         cache_service: "CacheService | None" = None,
         auto_start_orchestrator: bool = True,
+        llm_router: Any = None,
     ):
         self.settings = settings or get_settings()
         self.debug_mode = debug_mode
         self.cache_service = cache_service
+
+        if llm_router:
+            self.llm_router = llm_router
+        else:
+            try:
+                from src.container import get_llm_router
+                self.llm_router = get_llm_router()
+            except Exception:
+                self.llm_router = None
 
         self.session_id = session_id or str(uuid.uuid4())
 
@@ -559,38 +569,173 @@ Guidelines:
         permission_profile: PermissionProfile = PermissionProfile.SYSTEM_FULL,
     ) -> tuple[str, str | None]:
         """
-        Internal command processing with ML-powered tool selection.
+        Internal command processing — LOCAL-FIRST architecture.
 
         Flow:
-        1. Predict relevant tools using ML classifier
-        2. If conversational, respond without tools
-        3. Otherwise, call Gemini with relevant tools only
-        4. Execute any function calls
-        5. Return final response
+        1. SVM classifier predicts which tool (or "conversational") — 100% local
+        2. If conversational → Groq/LlamaCpp via LLMRouter (no Gemini used)
+        3. If tool needed:
+           a. Try to execute the tool directly using keyword-extracted args (local)
+           b. Use LlamaCpp/Groq to compose a natural language response (local)
+        4. Only fall back to Gemini if no local model available AND Gemini is configured
 
         Returns:
             Tuple of (response_text, tool_used_name or None)
         """
-        # Check if Gemini is available
-        if not getattr(self, "client", None):
-            # Without Gemini, try to execute tools directly based on keywords
-            return await self._process_without_gemini(
-                user_input, permission_profile=permission_profile
-            )
-
-        # Step 1: Predict relevant tools
+        # Step 1: Predict relevant tools via local SVM classifier
         relevant_tools = self._predict_relevant_tools(user_input)
 
-        # Step 2: Check for conversational intent
+        # Step 2: Conversational — route to LLMRouter (Groq/LlamaCpp), never Gemini
         if relevant_tools == ["conversational"]:
             response = await self._generate_conversational_response(user_input)
             return (response, None)
 
-        # Step 3: Build prompt with context
+        # Step 3: Tool execution — try local-first approach
+        tool_name = relevant_tools[0]  # Best prediction from SVM
+        tool = self.tool_registry.get(tool_name)
+
+        if tool:
+            # Extract args from user input using simple keyword parsing
+            args = self._extract_args_for_tool(tool_name, user_input)
+            result = await self.tool_executor.execute(
+                tool, args, permission_profile=permission_profile
+            )
+
+            if result.success:
+                # Use LLMRouter (Llama/Groq) to compose a natural response
+                response_text = await self._compose_tool_response_locally(
+                    user_input, tool_name, str(result.result)
+                )
+                return (response_text, tool_name)
+            else:
+                # Tool failed — tell user clearly
+                return (
+                    f"I tried to use {tool_name} but encountered an issue: {result.error_message}",
+                    tool_name,
+                )
+
+        # Step 4: Tool not in registry — fall back to Gemini if available
+        if getattr(self, "client", None):
+            return await self._process_with_gemini(user_input, relevant_tools, permission_profile)
+
+        return (
+            "I couldn't find the right tool for that. Try rephrasing your request.",
+            None,
+        )
+
+    def _extract_args_for_tool(self, tool_name: str, user_input: str) -> dict:
+        """
+        Extract tool arguments from user input using simple keyword/pattern matching.
+        This avoids any LLM call for argument extraction — 100% local & instant.
+        """
+        text = user_input.strip()
+        lower = text.lower()
+
+        # Generic patterns for common tools
+        if tool_name == "open_program":
+            # "open VLC", "launch Chrome", "start Discord"
+            for kw in ["open ", "launch ", "start ", "run "]:
+                if kw in lower:
+                    app = text[lower.index(kw) + len(kw):].strip()
+                    return {"app_name": app}
+            return {"app_name": text}
+
+        if tool_name == "terminate_program":
+            for kw in ["close ", "kill ", "stop ", "terminate ", "end "]:
+                if kw in lower:
+                    app = text[lower.index(kw) + len(kw):].strip()
+                    return {"process_name": app}
+            return {"process_name": text}
+
+        if tool_name == "search_file":
+            for kw in ["find ", "locate ", "where is ", "search for "]:
+                if kw in lower:
+                    return {"file_name": text[lower.index(kw) + len(kw):].strip()}
+            return {"file_name": text}
+
+        if tool_name in ("web_search", "wikipedia_search"):
+            for kw in ["search for ", "search ", "look up ", "google ", "find info about ", "what is ", "who is ", "tell me about "]:
+                if kw in lower:
+                    return {"query": text[lower.index(kw) + len(kw):].strip()}
+            return {"query": text}
+
+        if tool_name == "get_weather":
+            return {"location": "current location"}
+
+        if tool_name == "get_news":
+            return {"topic": text}
+
+        if tool_name == "calculate":
+            for kw in ["calculate ", "compute ", "what is ", "evaluate "]:
+                if kw in lower:
+                    return {"expression": text[lower.index(kw) + len(kw):].strip()}
+            return {"expression": text}
+
+        if tool_name == "create_note":
+            for kw in ["note ", "note: ", "save note "]:
+                if kw in lower:
+                    return {"content": text[lower.index(kw) + len(kw):].strip()}
+            return {"content": text}
+
+        if tool_name == "add_reminder":
+            return {"reminder_text": text, "time_str": ""}
+
+        if tool_name == "set_timer":
+            import re
+            minutes = re.search(r"(\d+)\s*minute", lower)
+            seconds = re.search(r"(\d+)\s*second", lower)
+            if minutes:
+                return {"duration_seconds": int(minutes.group(1)) * 60}
+            if seconds:
+                return {"duration_seconds": int(seconds.group(1))}
+            return {"duration_seconds": 300}
+
+        if tool_name == "convert_temperature":
+            return {"expression": text}
+
+        if tool_name == "convert_length":
+            return {"expression": text}
+
+        # Default: pass full user input as a generic query param
+        return {"query": text}
+
+    async def _compose_tool_response_locally(
+        self, user_input: str, tool_name: str, tool_result: str
+    ) -> str:
+        """
+        Use LLMRouter (Llama-cpp first, then Groq) to compose a friendly response
+        incorporating the tool result. No Gemini call needed.
+        """
+        prompt = (
+            f"The user asked: '{user_input}'\n"
+            f"You ran the tool '{tool_name}' and got this result:\n{tool_result}\n\n"
+            f"Compose a brief, natural, conversational response to the user based on this result. "
+            f"Be concise — 1-2 sentences max."
+        )
+        try:
+            if hasattr(self, "llm_router") and self.llm_router:
+                text, provider = await self.llm_router.generate(prompt=prompt, complexity="normal")
+                logger.info("Tool response composed by router (provider=%s)", provider)
+                return text
+        except Exception as e:
+            logger.warning("LLMRouter failed for tool response composition: %s", e)
+
+        # Ultimate fallback: return the raw tool result directly
+        return tool_result
+
+    async def _process_with_gemini(
+        self,
+        user_input: str,
+        relevant_tools: list[str],
+        permission_profile: PermissionProfile = PermissionProfile.SYSTEM_FULL,
+    ) -> tuple[str, str | None]:
+        """
+        Gemini-backed processing — used ONLY as a last resort when the tool
+        is not in the registry or local processing fails.
+        """
         current_time = datetime.now().strftime("%I:%M %p on %A, %B %d")
         context_summary = self.conversation_manager.get_context_summary()
 
-        # Retrieve semantically relevant long-term memories
         long_term_memories = await self.memory_service.retrieve(user_input, top_k=5)
         memory_context = self.memory_service.format_for_prompt(long_term_memories)
 
@@ -602,61 +747,44 @@ Guidelines:
         if memory_context:
             system_prompt = f"{system_prompt}\n\n{memory_context}"
 
-        # Step 4: Get Gemini declarations for relevant tools only
         tools_config = self.tool_registry.build_gemini_tools(relevant_tools)
 
-        # Check LLM cache BEFORE calling Gemini
         if self.cache_service:
             cached_llm = await self.cache_service.get_llm(user_input, "gemini")
             if cached_llm:
                 logger.info("LLM cache hit (%d chars)", len(user_input))
-                try:
-                    from src.infra.metrics import amadeus_cache_hit_rate
-
-                    stats = self.cache_service.get_stats()
-                    amadeus_cache_hit_rate.set(stats["hit_rate_pct"])
-                except Exception:
-                    pass
                 return (cached_llm, None)
 
-        # Step 5: Call Gemini
         try:
             config = types.GenerateContentConfig(
                 tools=tools_config if tools_config else None,
             )
-            assert self.client is not None  # set in _load_api_keys
+            assert self.client is not None
             gemini_response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=system_prompt + "\n\n" + user_input,
                 config=config,
             )
 
-            # Step 6: Check for function calls
             if gemini_response.function_calls:
                 fc = gemini_response.function_calls[0]
                 tool_name = fc.name or "unknown"
-                # Execute the function call
                 result = await self._execute_function_call(
                     fc, permission_profile=permission_profile
                 )
-
-                # Generate a response incorporating the result
                 final_response = await self._generate_response_with_result(
                     user_input, tool_name, result
                 )
                 return (final_response, tool_name)
 
-            # Step 7: Parse direct response
             direct_response = (
                 str(gemini_response.text)
                 if hasattr(gemini_response, "text") and gemini_response.text
                 else str(gemini_response)
             )
 
-            # Increment Prometheus LLM call counter (conversational, no tool)
             try:
                 from src.infra.metrics import amadeus_llm_calls_total
-
                 amadeus_llm_calls_total.labels(provider="gemini").inc()
             except Exception:
                 pass
@@ -666,12 +794,9 @@ Guidelines:
             return (direct_response, None)
 
         except Exception as e:
-            logger.exception("Gemini API error type: %s", type(e).__name__)
             logger.exception("Gemini API error: %s", repr(e))
-            import traceback
-
-            logger.exception("Traceback: %s", traceback.format_exc())
             return (f"I had trouble processing that: {e}", None)
+
 
     async def _process_without_gemini(
         self,
@@ -791,6 +916,12 @@ User: {user_input}
 Respond naturally and conversationally. Be concise."""
 
         try:
+            # 💡 Use LLMRouter if available to save Gemini quota (will use Groq/Llama3 if possible)
+            if hasattr(self, "llm_router") and self.llm_router:
+                response_text, provider = await self.llm_router.generate(prompt=prompt, complexity="normal")
+                logger.info(f"Conversational response handled by router (Provider: {provider})")
+                return response_text
+
             assert self.client is not None, "Gemini client not initialized"
             response = self.client.models.generate_content(
                 model=self.model_name,

@@ -85,6 +85,7 @@ if settings.SENTRY_DSN:
         dsn=settings.SENTRY_DSN,
         environment=settings.ENV,
         traces_sample_rate=1.0,
+        send_default_pii=True,
     )
 
 
@@ -313,6 +314,11 @@ async def root() -> dict[str, str]:
         "version": settings.ASSISTANT_VERSION,
         "docs": "/docs" if settings.DEBUG else "Disabled in production",
     }
+
+
+@app.get("/sentry-debug", tags=["Health"])
+async def trigger_error():
+    division_by_zero = 1 / 0
 
 
 # =============================================================================

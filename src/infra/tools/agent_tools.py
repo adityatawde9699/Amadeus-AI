@@ -62,4 +62,4 @@ def get_agent_tools() -> list[Any]:
             logger.exception(f"Failed to schedule future task: {e}")
             return f"Failed to schedule task: {e}"
 
-    return [schedule_future_task]
+    return [schedule_future_task._tool_metadata]

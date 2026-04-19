@@ -204,7 +204,6 @@ def _build_search_router() -> SearchRouter:
 
     settings = get_settings()
     return SearchRouter(
-        brave_api_key=getattr(settings, "BRAVE_SEARCH_API_KEY", None),
         tavily_api_key=getattr(settings, "TAVILY_API_KEY", None),
     )
 

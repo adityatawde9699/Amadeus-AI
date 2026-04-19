@@ -176,6 +176,15 @@ async def init_db() -> None:
     # Import ORM models to register them with Base
     from src.infra.persistence import orm_models  # noqa: F401
 
+    settings = get_settings()
+    if settings.database_is_sqlite:
+        from pathlib import Path
+        db_url = settings.DATABASE_URL
+        if ":///" in db_url:
+            path_str = db_url.split(":///")[-1]
+            if path_str and path_str != ":memory:":
+                Path(path_str).parent.mkdir(parents=True, exist_ok=True)
+
     engine = get_engine()
 
     logger.info("Initializing database tables...")
