@@ -15,9 +15,7 @@ $ErrorActionPreference = "Stop"
 # Define Service Details
 $ServiceName = "AmadeusAI_Daemon"
 $ProjectRoot = (Get-Item -Path ".\").FullName
-$VenvPath = Join-Path $ProjectRoot ".venv"
-$PythonExe = Join-Path $VenvPath "Scripts\python.exe"
-$UvicornExe = Join-Path $VenvPath "Scripts\uvicorn.exe"
+$DistExe = Join-Path $ProjectRoot "dist\amadeus\amadeus.exe"
 
 # 1. Check for Admin Rights
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -27,12 +25,12 @@ if (-Not $isAdmin) {
     Exit
 }
 
-Write-Host "=== J.A.R.V.I.S. Protocol Initiation (Amadeus Windows Daemon) ===" -ForegroundColor Cyan
+Write-Host "=== Amadeus Windows Daemon Service Installation ===" -ForegroundColor Cyan
 
-# 2. Check if Python Venv exists
-if (-Not (Test-Path $PythonExe)) {
-    Write-Host "Error: Virtual environment not found at $VenvPath." -ForegroundColor Red
-    Write-Host "Please run 'uv sync' or 'pip install -e .' first." -ForegroundColor Red
+# 2. Check if Compiled Exe exists
+if (-Not (Test-Path $DistExe)) {
+    Write-Host "Error: Compiled executable not found at $DistExe." -ForegroundColor Red
+    Write-Host "Please run 'python scripts\build_windows.py' first to build the executable." -ForegroundColor Red
     Exit
 }
 
@@ -61,16 +59,15 @@ if ($serviceExists) {
 }
 
 # 5. Register the Service via NSSM
-Write-Host "Registering Amadeus-AI as a background service..." -ForegroundColor Green
-& $NssmExe install $ServiceName $UvicornExe
-& $NssmExe set $ServiceName AppParameters "src.api.server:app --host 127.0.0.1 --port 8000 --workers 1"
+Write-Host "Registering compiled Amadeus-AI as a background service..." -ForegroundColor Green
+& $NssmExe install $ServiceName $DistExe
 & $NssmExe set $ServiceName AppDirectory $ProjectRoot
-& $NssmExe set $ServiceName Description "Amadeus-AI (J.A.R.V.I.S) Background Daemon"
-& $NssmExe set $ServiceName AppStdout (Join-Path $ProjectRoot "logs\amadeus_daemon.log")
-& $NssmExe set $ServiceName AppStderr (Join-Path $ProjectRoot "logs\amadeus_daemon_error.log")
+& $NssmExe set $ServiceName Description "Amadeus-AI Windows Daemon Backend"
+& $NssmExe set $ServiceName AppStdout (Join-Path $ProjectRoot "data\logs\amadeus_service_stdout.log")
+& $NssmExe set $ServiceName AppStderr (Join-Path $ProjectRoot "data\logs\amadeus_service_error.log")
 
 # 6. Ensure Logs directory exists
-New-Item -ItemType Directory -Force -Path (Join-Path $ProjectRoot "logs") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $ProjectRoot "data\logs") | Out-Null
 
 # 7. Start the Service
 Write-Host "Starting the J.A.R.V.I.S. Engine..." -ForegroundColor Cyan
@@ -79,6 +76,6 @@ Start-Service -Name $ServiceName
 Write-Host "==========================================================" -ForegroundColor Green
 Write-Host "✅ The Amadeus-AI Daemon is now running in the background!" -ForegroundColor Green
 Write-Host "   API is available at http://127.0.0.1:8000" -ForegroundColor White
-Write-Host "   Logs are stored in $ProjectRoot\logs\" -ForegroundColor White
+Write-Host "   Logs are stored in $ProjectRoot\data\logs\" -ForegroundColor White
 Write-Host "   To view or stop it, open 'Services.msc' and look for '$ServiceName'" -ForegroundColor White
 Write-Host "==========================================================" -ForegroundColor Green

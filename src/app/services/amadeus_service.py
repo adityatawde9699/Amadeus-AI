@@ -317,8 +317,8 @@ class AmadeusService:
         instead of sending all tools to Gemini with every request.
         """
         try:
-            vectorizer_path = "Model/tfidf_vectorizer.joblib"
-            classifier_path = "Model/svm_classifier.joblib"
+            vectorizer_path = str(self.settings.BASE_DIR / "Model" / "tfidf_vectorizer.joblib")
+            classifier_path = str(self.settings.BASE_DIR / "Model" / "svm_classifier.joblib")
 
             if Path(vectorizer_path).exists() and Path(classifier_path).exists():
                 self.vectorizer = joblib.load(vectorizer_path)

@@ -30,6 +30,9 @@ MANIFEST
 *.manifest
 *.spec
 
+# Windows Service Native Tools
+scripts/nssm/
+
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt

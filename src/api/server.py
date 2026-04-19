@@ -39,8 +39,27 @@ from src.infra.persistence.database import close_db, init_db
 scheduler = AsyncIOScheduler()
 
 
+import logging
+import logging.handlers
+
+# Create logs directory
+log_dir = settings.BASE_DIR / "data" / "logs"
+log_dir.mkdir(parents=True, exist_ok=True)
+
+# Standard logging configuration (which structlog will use)
+file_handler = logging.handlers.RotatingFileHandler(
+    log_dir / "amadeus.log", maxBytes=10 * 1024 * 1024, backupCount=5
+)
+console_handler = logging.StreamHandler()
+
+logging.basicConfig(
+    level=getattr(logging, settings.LOG_LEVEL.upper()),
+    handlers=[console_handler, file_handler],
+)
+
 structlog.configure(
     processors=[
+        structlog.stdlib.filter_by_level,
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,
         structlog.processors.TimeStamper(fmt="iso"),
@@ -53,7 +72,6 @@ structlog.configure(
 )
 
 logger = structlog.get_logger(__name__)
-settings = get_settings()
 
 
 def get_rate_limit_key(request: Request) -> str:
@@ -112,6 +130,27 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             raise RuntimeError("Configuration errors in production")
     for warning in validation.get("warnings", []):
         logger.warning(f"Config warning: {warning}")
+
+    # Run database migrations automatically
+    try:
+        from alembic.config import Config
+        from alembic import command
+        
+        logger.info("Running database migrations...")
+        alembic_cfg_path = settings.BASE_DIR / "alembic.ini"
+        alembic_script_location = settings.BASE_DIR / "alembic"
+        
+        if alembic_cfg_path.exists() and alembic_script_location.exists():
+            alembic_cfg = Config(str(alembic_cfg_path))
+            alembic_cfg.set_main_option("script_location", str(alembic_script_location))
+            command.upgrade(alembic_cfg, "head")
+            logger.info("Database migrations complete")
+        else:
+            logger.warning(f"Alembic config or scripts missing at {settings.BASE_DIR}. Skipping migrations.")
+    except Exception as e:
+        logger.error(f"Failed to run migrations: {e}")
+        if settings.is_production:
+            raise
 
     # Initialize database
     await init_db()

@@ -12,13 +12,25 @@ Usage:
     print(settings.APP_NAME)
 """
 
+import os
 import secrets
+import sys
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def get_project_root() -> Path:
+    """Resolve project root based on whether it is running as a package or executable."""
+    if getattr(sys, "frozen", False):
+        # Running as compiled PyInstaller executable
+        return Path(os.path.dirname(sys.executable))
+    else:
+        # Running as standard Python script
+        return Path(__file__).resolve().parent.parent.parent
 
 
 class Settings(BaseSettings):
@@ -47,7 +59,7 @@ class Settings(BaseSettings):
     # =========================================================================
     # PATHS
     # =========================================================================
-    BASE_DIR: Path = Field(default_factory=lambda: Path(__file__).parent.parent.parent)
+    BASE_DIR: Path = Field(default_factory=get_project_root)
     DATA_DIR: Path | None = Field(default=None)  # Will be set in validator
 
     @field_validator("DATA_DIR", mode="before")
