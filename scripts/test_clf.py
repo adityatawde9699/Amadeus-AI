@@ -1,5 +1,5 @@
 import joblib
-import sys
+
 
 try:
     vectorizer = joblib.load("Model/tfidf_vectorizer.joblib")

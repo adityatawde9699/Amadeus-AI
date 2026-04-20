@@ -223,6 +223,7 @@ class AmadeusService:
         else:
             try:
                 from src.container import get_llm_router
+
                 self.llm_router = get_llm_router()
             except Exception:
                 self.llm_router = None
@@ -356,6 +357,15 @@ class AmadeusService:
             for tool in build_filesystem_tools():
                 self.tool_registry.register(tool)
 
+            # Developer / sandbox tools (Docker-based code execution)
+            try:
+                from src.infra.tools.developer_tools import get_developer_tools
+
+                for tool in get_developer_tools():
+                    self.tool_registry.register(tool)
+            except Exception as e:
+                logger.warning("Failed to register developer_tools: %s", e)
+
             logger.info(f"Registered {len(self.tool_registry)} tools from modules")
         except Exception as e:
             logger.exception(f"Error registering tools: {e}")
@@ -375,7 +385,16 @@ Guidelines:
 - When using tools, explain what you're doing briefly
 - If a task fails, suggest alternatives
 - Adapt tone based on task urgency
-- Use the schedule_future_task tool to remind yourself to follow up proactively"""
+- Use the schedule_future_task tool to remind yourself to follow up proactively
+- When asked to perform data analysis, math, or logic processing, do not attempt to calculate it yourself. Write a Python script, execute it using the execute_python_script tool, observe the output, and report the final result."""
+
+    def _get_system_prompt(self) -> str:
+        """Return the current identity prompt (pre-formatted for the current moment)."""
+        return self.identity_prompt.format(
+            current_time=datetime.now().strftime("%I:%M %p on %A, %B %d"),
+            session_id=self.session_id,
+            context_summary=self.conversation_manager.get_context_summary(),
+        )
 
     # =========================================================================
     # TOOL SELECTION (ML CLASSIFIER)
@@ -569,23 +588,45 @@ Guidelines:
         permission_profile: PermissionProfile = PermissionProfile.SYSTEM_FULL,
     ) -> tuple[str, str | None]:
         """
-        Internal command processing — LOCAL-FIRST architecture.
+        Internal command processing — Complexity-first, then tool routing.
 
         Flow:
-        1. SVM classifier predicts which tool (or "conversational") — 100% local
-        2. If conversational → Groq/LlamaCpp via LLMRouter (no Gemini used)
+        0. ComplexityScorer scores the RAW user input BEFORE the SVM runs.
+           If score ≥ 'high' (code, creative, math, abstract) → bypass SVM
+           entirely and send straight to cloud LLM (Groq/Gemini).
+        1. SVM classifier predicts which tool (or 'conversational') — 100% local
+        2. If conversational → LLMRouter with auto-complexity
         3. If tool needed:
-           a. Try to execute the tool directly using keyword-extracted args (local)
-           b. Use LlamaCpp/Groq to compose a natural language response (local)
-        4. Only fall back to Gemini if no local model available AND Gemini is configured
+           a. Execute tool locally
+           b. Compose response via LLMRouter with auto-complexity
+        4. Only fall back to Gemini direct if llm_router unavailable
 
         Returns:
             Tuple of (response_text, tool_used_name or None)
         """
-        # Step 1: Predict relevant tools via local SVM classifier
+        # ── Step 0: Pre-SVM complexity gate ──────────────────────────────────
+        # Score the raw user input (short, no system prompt attached yet).
+        # High-complexity tasks (code gen, creative, math, policy) must NEVER
+        # go through the SVM tool path — the SVM has no 'write_code' category
+        # and will misroute them to tools like open_website or wikipedia_search.
+        from src.infra.llm.router import ComplexityScorer as _CS
+
+        _raw_level, _raw_score = _CS().score(user_input)
+        if _raw_level == "high" and hasattr(self, "llm_router") and self.llm_router:
+            logger.info(
+                "Pre-SVM gate: query scored %d (%r) — bypassing SVM, routing to cloud LLM.",
+                _raw_score,
+                _raw_level,
+            )
+            response = await self._generate_conversational_response(
+                user_input, forced_complexity="high"
+            )
+            return (response, None)
+
+        # ── Step 1: SVM predicts the best tool ────────────────────────────────
         relevant_tools = self._predict_relevant_tools(user_input)
 
-        # Step 2: Conversational — route to LLMRouter (Groq/LlamaCpp), never Gemini
+        # Step 2: Conversational — route to LLMRouter (Groq/LlamaCpp/Gemini)
         if relevant_tools == ["conversational"]:
             response = await self._generate_conversational_response(user_input)
             return (response, None)
@@ -596,23 +637,24 @@ Guidelines:
 
         if tool:
             # Extract args from user input using simple keyword parsing
-            args = self._extract_args_for_tool(tool_name, user_input)
+            args = await self._extract_args_for_tool(tool_name, user_input)
             result = await self.tool_executor.execute(
                 tool, args, permission_profile=permission_profile
             )
 
             if result.success:
-                # Use LLMRouter (Llama/Groq) to compose a natural response
+                # Use LLMRouter (Llama/Groq) to compose a natural response.
+                # Complexity is pinned to "normal" — this is always a 1-2 sentence
+                # composition and we never want to escalate it to cloud unnecessarily.
                 response_text = await self._compose_tool_response_locally(
                     user_input, tool_name, str(result.result)
                 )
                 return (response_text, tool_name)
-            else:
-                # Tool failed — tell user clearly
-                return (
-                    f"I tried to use {tool_name} but encountered an issue: {result.error_message}",
-                    tool_name,
-                )
+            # Tool failed — tell user clearly
+            return (
+                f"I tried to use {tool_name} but encountered an issue: {result.error_message}",
+                tool_name,
+            )
 
         # Step 4: Tool not in registry — fall back to Gemini if available
         if getattr(self, "client", None):
@@ -623,10 +665,11 @@ Guidelines:
             None,
         )
 
-    def _extract_args_for_tool(self, tool_name: str, user_input: str) -> dict:
+    async def _extract_args_for_tool(self, tool_name: str, user_input: str) -> dict:
         """
-        Extract tool arguments from user input using simple keyword/pattern matching.
-        This avoids any LLM call for argument extraction — 100% local & instant.
+        Extract tool arguments from user input using keyword/pattern matching.
+        For simple tools this is 100% local & instant. For structured tools
+        (Excel, Word) an LLM call is used to parse natural language into JSON.
         """
         text = user_input.strip()
         lower = text.lower()
@@ -636,28 +679,51 @@ Guidelines:
             # "open VLC", "launch Chrome", "start Discord"
             for kw in ["open ", "launch ", "start ", "run "]:
                 if kw in lower:
-                    app = text[lower.index(kw) + len(kw):].strip()
+                    app = text[lower.index(kw) + len(kw) :].strip()
                     return {"app_name": app}
             return {"app_name": text}
 
         if tool_name == "terminate_program":
             for kw in ["close ", "kill ", "stop ", "terminate ", "end "]:
                 if kw in lower:
-                    app = text[lower.index(kw) + len(kw):].strip()
+                    app = text[lower.index(kw) + len(kw) :].strip()
                     return {"process_name": app}
             return {"process_name": text}
 
         if tool_name == "search_file":
             for kw in ["find ", "locate ", "where is ", "search for "]:
                 if kw in lower:
-                    return {"file_name": text[lower.index(kw) + len(kw):].strip()}
+                    return {"file_name": text[lower.index(kw) + len(kw) :].strip()}
             return {"file_name": text}
 
         if tool_name in ("web_search", "wikipedia_search"):
-            for kw in ["search for ", "search ", "look up ", "google ", "find info about ", "what is ", "who is ", "tell me about "]:
-                if kw in lower:
-                    return {"query": text[lower.index(kw) + len(kw):].strip()}
-            return {"query": text}
+            import re as _re
+
+            q = text
+            # ── Pass 1: strip leading conversational prefixes ──────────────────
+            # Order matters: longer/more-specific patterns first.
+            _prefix_patterns = [
+                r"^(?:amadeus[,]?\s+)?(?:please\s+)?(?:can you\s+)?(?:could you\s+)?"
+                r"(?:search for|search|look up|google|find info(?:rmation)? (?:about|on)|tell me about|explain|who is|what is|give me info(?:rmation)? (?:about|on)|find|get info(?:rmation)? (?:about|on)|research)\s+",
+            ]
+            for pat in _prefix_patterns:
+                cleaned = _re.sub(pat, "", q, flags=_re.IGNORECASE).strip()
+                if cleaned and cleaned.lower() != q.lower():
+                    q = cleaned
+                    break
+            # Also strip a bare leading 'Amadeus' followed by optional comma/space
+            q = _re.sub(r"^amadeus[,]?\s+", "", q, flags=_re.IGNORECASE).strip()
+            # ── Pass 2: strip trailing noise phrases ──────────────────────────
+            _suffix_patterns = [
+                r"\s+(?:on|from|in|via|using)\s+wikipedia$",
+                r"\s+(?:on|from|in|via|using)\s+google$",
+                r"\s+(?:on|from)\s+the\s+(?:web|internet|net)$",
+                r"\s+for\s+me$",
+                r"\s+please$",
+            ]
+            for pat in _suffix_patterns:
+                q = _re.sub(pat, "", q, flags=_re.IGNORECASE).strip()
+            return {"query": q if q else text}
 
         if tool_name == "get_weather":
             return {"location": "current location"}
@@ -668,13 +734,13 @@ Guidelines:
         if tool_name == "calculate":
             for kw in ["calculate ", "compute ", "what is ", "evaluate "]:
                 if kw in lower:
-                    return {"expression": text[lower.index(kw) + len(kw):].strip()}
+                    return {"expression": text[lower.index(kw) + len(kw) :].strip()}
             return {"expression": text}
 
         if tool_name == "create_note":
             for kw in ["note ", "note: ", "save note "]:
                 if kw in lower:
-                    return {"content": text[lower.index(kw) + len(kw):].strip()}
+                    return {"content": text[lower.index(kw) + len(kw) :].strip()}
             return {"content": text}
 
         if tool_name == "add_reminder":
@@ -682,6 +748,7 @@ Guidelines:
 
         if tool_name == "set_timer":
             import re
+
             minutes = re.search(r"(\d+)\s*minute", lower)
             seconds = re.search(r"(\d+)\s*second", lower)
             if minutes:
@@ -696,25 +763,120 @@ Guidelines:
         if tool_name == "convert_length":
             return {"expression": text}
 
+        # ── Office tools: require structured args (columns, data) ─────────
+        # These need an LLM to parse the natural-language request into
+        # structured JSON. We call llm_router inline with a tight prompt.
+        if tool_name == "create_excel_spreadsheet":
+            return await self._extract_excel_args(text)
+
+        if tool_name == "create_word_document":
+            return await self._extract_word_args(text)
+
         # Default: pass full user input as a generic query param
         return {"query": text}
+
+    async def _extract_excel_args(self, user_input: str) -> dict:
+        """Use LLM to parse a natural-language Excel request into structured args."""
+        extraction_prompt = (
+            "You are a JSON extraction assistant. The user wants to create an Excel spreadsheet.\n"
+            "From the request below, extract:\n"
+            '  - "file_name": a suitable .xlsx filename (snake_case, no spaces)\n'
+            '  - "columns": a list of column header strings\n'
+            '  - "data": a list of lists, where each inner list is one row of data matching the columns\n\n'
+            "Return ONLY valid JSON. No explanation, no markdown fences, just the JSON object.\n\n"
+            f'User request: "{user_input}"'
+        )
+        try:
+            if hasattr(self, "llm_router") and self.llm_router:
+                raw_text, provider = await self.llm_router.generate(
+                    prompt=extraction_prompt, complexity="normal"
+                )
+                logger.info("Excel args extracted by %s", provider)
+                import json
+
+                # Strip markdown code fences if present
+                clean = raw_text.strip()
+                if clean.startswith("```"):
+                    clean = clean.split("\n", 1)[1] if "\n" in clean else clean[3:]
+                if clean.endswith("```"):
+                    clean = clean[:-3]
+                clean = clean.strip()
+                parsed = json.loads(clean)
+                return {
+                    "file_name": parsed.get("file_name", "spreadsheet.xlsx"),
+                    "columns": parsed.get("columns", []),
+                    "data": parsed.get("data", []),
+                }
+        except Exception as e:
+            logger.warning("LLM Excel arg extraction failed: %s — using defaults", e)
+
+        # Fallback: create an empty spreadsheet with a sensible name
+        return {
+            "file_name": "spreadsheet.xlsx",
+            "columns": ["Column1", "Column2", "Column3"],
+            "data": [],
+        }
+
+    async def _extract_word_args(self, user_input: str) -> dict:
+        """Use LLM to parse a natural-language Word document request into structured args."""
+        extraction_prompt = (
+            "You are a JSON extraction assistant. The user wants to create a Word document.\n"
+            "From the request below, extract:\n"
+            '  - "file_name": a suitable .docx filename (snake_case, no spaces)\n'
+            '  - "title": the document title\n'
+            '  - "content": the full body text for the document\n\n'
+            "Return ONLY valid JSON. No explanation, no markdown fences, just the JSON object.\n\n"
+            f'User request: "{user_input}"'
+        )
+        try:
+            if hasattr(self, "llm_router") and self.llm_router:
+                raw_text, provider = await self.llm_router.generate(
+                    prompt=extraction_prompt, complexity="normal"
+                )
+                logger.info("Word args extracted by %s", provider)
+                import json
+
+                clean = raw_text.strip()
+                if clean.startswith("```"):
+                    clean = clean.split("\n", 1)[1] if "\n" in clean else clean[3:]
+                if clean.endswith("```"):
+                    clean = clean[:-3]
+                clean = clean.strip()
+                parsed = json.loads(clean)
+                return {
+                    "file_name": parsed.get("file_name", "document.docx"),
+                    "title": parsed.get("title", "Untitled Document"),
+                    "content": parsed.get("content", ""),
+                }
+        except Exception as e:
+            logger.warning("LLM Word arg extraction failed: %s — using defaults", e)
+
+        return {
+            "file_name": "document.docx",
+            "title": "Untitled Document",
+            "content": user_input,
+        }
 
     async def _compose_tool_response_locally(
         self, user_input: str, tool_name: str, tool_result: str
     ) -> str:
         """
-        Use LLMRouter (Llama-cpp first, then Groq) to compose a friendly response
-        incorporating the tool result. No Gemini call needed.
+        Use LLMRouter to compose a friendly response incorporating the tool result.
+        complexity='auto' so the scorer can escalate to cloud when the original
+        user request was itself complex (e.g. 'explain this code').
         """
         prompt = (
             f"The user asked: '{user_input}'\n"
             f"You ran the tool '{tool_name}' and got this result:\n{tool_result}\n\n"
             f"Compose a brief, natural, conversational response to the user based on this result. "
-            f"Be concise — 1-2 sentences max."
+            f"Be concise — 1-2 sentences max. "
+            f"If the result says 'not found' or contains an error, apologise briefly and suggest "
+            f"the user try rephrasing with just the topic name (e.g. 'Alexander the Great' "
+            f"instead of a full sentence). Do NOT repeat the raw error message verbatim."
         )
         try:
             if hasattr(self, "llm_router") and self.llm_router:
-                text, provider = await self.llm_router.generate(prompt=prompt, complexity="normal")
+                text, provider = await self.llm_router.generate(prompt=prompt, complexity="auto")
                 logger.info("Tool response composed by router (provider=%s)", provider)
                 return text
         except Exception as e:
@@ -785,6 +947,7 @@ Guidelines:
 
             try:
                 from src.infra.metrics import amadeus_llm_calls_total
+
                 amadeus_llm_calls_total.labels(provider="gemini").inc()
             except Exception:
                 pass
@@ -796,7 +959,6 @@ Guidelines:
         except Exception as e:
             logger.exception("Gemini API error: %s", repr(e))
             return (f"I had trouble processing that: {e}", None)
-
 
     async def _process_without_gemini(
         self,
@@ -890,8 +1052,17 @@ Guidelines:
             return result_str
         return result.error_message or "Tool execution failed"
 
-    async def _generate_conversational_response(self, user_input: str) -> str:
-        """Generate a response without any tools."""
+    async def _generate_conversational_response(
+        self, user_input: str, forced_complexity: str | None = None
+    ) -> str:
+        """Generate a response without any tools.
+
+        Args:
+            user_input: The raw user message.
+            forced_complexity: If set, overrides auto-scoring and pins the
+                complexity passed to LLMRouter (e.g. 'high' for code/creative
+                tasks detected by the pre-SVM gate).
+        """
         current_time = datetime.now().strftime("%I:%M %p on %A, %B %d")
         context = self.conversation_manager.get_formatted_history(3)
 
@@ -915,11 +1086,19 @@ User: {user_input}
 
 Respond naturally and conversationally. Be concise."""
 
+        # Determine complexity: caller-forced level takes precedence over auto-scoring.
+        complexity = forced_complexity if forced_complexity else "auto"
+
         try:
-            # 💡 Use LLMRouter if available to save Gemini quota (will use Groq/Llama3 if possible)
             if hasattr(self, "llm_router") and self.llm_router:
-                response_text, provider = await self.llm_router.generate(prompt=prompt, complexity="normal")
-                logger.info(f"Conversational response handled by router (Provider: {provider})")
+                response_text, provider = await self.llm_router.generate(
+                    prompt=prompt, complexity=complexity
+                )
+                logger.info(
+                    "Conversational response: provider=%s complexity=%s",
+                    provider,
+                    complexity,
+                )
                 return response_text
 
             assert self.client is not None, "Gemini client not initialized"

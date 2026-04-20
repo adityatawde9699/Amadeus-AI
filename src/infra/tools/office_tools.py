@@ -17,12 +17,35 @@ logger = logging.getLogger(__name__)
 
 # Try to import win32com, but handle gracefully if not on Windows or not installed
 try:
+    import pythoncom
     import win32com.client
 
     HAS_PYWIN32 = True
 except ImportError:
     HAS_PYWIN32 = False
+    pythoncom = None  # type: ignore[assignment]
     logger.warning("pywin32 not installed. Office tools will be unavailable.")
+
+
+from contextlib import contextmanager
+
+
+@contextmanager
+def _com_thread():
+    """Ensure COM is initialised on the current thread.
+
+    When office tools run inside ``run_in_executor`` (asyncio thread pool),
+    the worker thread has no COM apartment. This context manager initialises
+    COM on entry and uninitialises on exit so that ``win32com.client.Dispatch``
+    works from any thread.
+    """
+    if pythoncom is not None:
+        pythoncom.CoInitialize()
+    try:
+        yield
+    finally:
+        if pythoncom is not None:
+            pythoncom.CoUninitialize()
 
 
 def _check_windows_office() -> tuple[bool, str | None]:
@@ -61,36 +84,37 @@ def create_excel_spreadsheet(
         return err or "Office integration error"
 
     try:
-        excel = win32com.client.Dispatch("Excel.Application")
-        excel.Visible = False
-        wb = excel.Workbooks.Add()
-        ws = wb.ActiveSheet
+        with _com_thread():
+            excel = win32com.client.Dispatch("Excel.Application")
+            excel.Visible = False
+            wb = excel.Workbooks.Add()
+            ws = wb.ActiveSheet
 
-        # Add headers
-        for i, col in enumerate(columns):
-            ws.Cells(1, i + 1).Value = col
+            # Add headers
+            for i, col in enumerate(columns):
+                ws.Cells(1, i + 1).Value = col
 
-        # Add data
-        for r_idx, row in enumerate(data):
-            for c_idx, value in enumerate(row):
-                ws.Cells(r_idx + 2, c_idx + 1).Value = value
+            # Add data
+            for r_idx, row in enumerate(data):
+                for c_idx, value in enumerate(row):
+                    ws.Cells(r_idx + 2, c_idx + 1).Value = value
 
-        # Save file in agent workspace
-        from src.core.config import get_settings
+            # Save file in agent workspace
+            from src.core.config import get_settings
 
-        settings = get_settings()
-        workspace = settings.AGENT_WORKSPACE
-        workspace.mkdir(parents=True, exist_ok=True)
+            settings = get_settings()
+            workspace = settings.AGENT_WORKSPACE
+            workspace.mkdir(parents=True, exist_ok=True)
 
-        save_path = workspace / file_name
-        if not save_path.suffix:
-            save_path = save_path.with_suffix(".xlsx")
+            save_path = workspace / file_name
+            if not save_path.suffix:
+                save_path = save_path.with_suffix(".xlsx")
 
-        wb.SaveAs(str(save_path))
-        wb.Close()
-        excel.Quit()
+            wb.SaveAs(str(save_path))
+            wb.Close()
+            excel.Quit()
 
-        return f"Successfully created Excel spreadsheet at {save_path}"
+            return f"Successfully created Excel spreadsheet at {save_path}"
     except Exception as e:
         logger.exception(f"Failed to create Excel spreadsheet: {e}")
         return f"Error: Failed to create Excel spreadsheet: {e}"
@@ -125,37 +149,38 @@ def create_word_document(file_name: str, title: str, content: str, **kwargs: Any
         return err or "Office integration error"
 
     try:
-        word = win32com.client.Dispatch("Word.Application")
-        word.Visible = False
-        doc = word.Documents.Add()
+        with _com_thread():
+            word = win32com.client.Dispatch("Word.Application")
+            word.Visible = False
+            doc = word.Documents.Add()
 
-        # Add Title
-        title_range = doc.Range(0, 0)
-        title_range.Text = title + "\n\n"
-        title_range.Font.Bold = True
-        title_range.Font.Size = 16
+            # Add Title
+            title_range = doc.Range(0, 0)
+            title_range.Text = title + "\n\n"
+            title_range.Font.Bold = True
+            title_range.Font.Size = 16
 
-        # Add Content
-        content_range = doc.Range(doc.Content.End - 1, doc.Content.End - 1)
-        content_range.Text = content
-        content_range.Font.Bold = False
-        content_range.Font.Size = 11
+            # Add Content
+            content_range = doc.Range(doc.Content.End - 1, doc.Content.End - 1)
+            content_range.Text = content
+            content_range.Font.Bold = False
+            content_range.Font.Size = 11
 
-        from src.core.config import get_settings
+            from src.core.config import get_settings
 
-        settings = get_settings()
-        workspace = settings.AGENT_WORKSPACE
-        workspace.mkdir(parents=True, exist_ok=True)
+            settings = get_settings()
+            workspace = settings.AGENT_WORKSPACE
+            workspace.mkdir(parents=True, exist_ok=True)
 
-        save_path = workspace / file_name
-        if not save_path.suffix:
-            save_path = save_path.with_suffix(".docx")
+            save_path = workspace / file_name
+            if not save_path.suffix:
+                save_path = save_path.with_suffix(".docx")
 
-        doc.SaveAs(str(save_path))
-        doc.Close()
-        word.Quit()
+            doc.SaveAs(str(save_path))
+            doc.Close()
+            word.Quit()
 
-        return f"Successfully created Word document at {save_path}"
+            return f"Successfully created Word document at {save_path}"
     except Exception as e:
         logger.exception(f"Failed to create Word document: {e}")
         return f"Error: Failed to create Word document: {e}"
@@ -187,13 +212,14 @@ def send_outlook_email(to: str, subject: str, body: str, **kwargs: Any) -> str:
         return err or "Office integration error"
 
     try:
-        outlook = win32com.client.Dispatch("Outlook.Application")
-        mail = outlook.CreateItem(0)  # 0 = olMailItem
-        mail.To = to
-        mail.Subject = subject
-        mail.Body = body
-        mail.Send()
-        return f"Successfully sent email to {to} via Outlook."
+        with _com_thread():
+            outlook = win32com.client.Dispatch("Outlook.Application")
+            mail = outlook.CreateItem(0)  # 0 = olMailItem
+            mail.To = to
+            mail.Subject = subject
+            mail.Body = body
+            mail.Send()
+            return f"Successfully sent email to {to} via Outlook."
     except Exception as e:
         logger.exception(f"Failed to send Outlook email: {e}")
         return f"Error: Failed to send Outlook email: {e}"
@@ -223,33 +249,34 @@ def read_outlook_emails(count: int = 5, **kwargs: Any) -> str:
         return err or "Office integration error"
 
     try:
-        outlook = win32com.client.Dispatch("Outlook.Application")
-        namespace = outlook.GetNamespace("MAPI")
-        inbox = namespace.GetDefaultFolder(6)  # 6 = olFolderInbox
+        with _com_thread():
+            outlook = win32com.client.Dispatch("Outlook.Application")
+            namespace = outlook.GetNamespace("MAPI")
+            inbox = namespace.GetDefaultFolder(6)  # 6 = olFolderInbox
 
-        # Get items, sort by received time descending
-        items = inbox.Items
-        items.Sort("[ReceivedTime]", True)
+            # Get items, sort by received time descending
+            items = inbox.Items
+            items.Sort("[ReceivedTime]", True)
 
-        emails = []
-        for i, item in enumerate(items):
-            if i >= count:
-                break
+            emails = []
+            for i, item in enumerate(items):
+                if i >= count:
+                    break
 
-            # Use getattr to safely access properties since items can be different types (e.g. meeting requests)
-            sender = getattr(item, "SenderName", "Unknown Sender")
-            subject = getattr(item, "Subject", "No Subject")
-            received = getattr(item, "ReceivedTime", "Unknown Time")
-            body = getattr(item, "Body", "")[:200]  # First 200 chars
+                # Use getattr to safely access properties since items can be different types (e.g. meeting requests)
+                sender = getattr(item, "SenderName", "Unknown Sender")
+                subject = getattr(item, "Subject", "No Subject")
+                received = getattr(item, "ReceivedTime", "Unknown Time")
+                body = getattr(item, "Body", "")[:200]  # First 200 chars
 
-            emails.append(
-                f"From: {sender}\\nDate: {received}\\nSubject: {subject}\\nSnippet: {body}...\\n"
-            )
+                emails.append(
+                    f"From: {sender}\nDate: {received}\nSubject: {subject}\nSnippet: {body}...\n"
+                )
 
-        if not emails:
-            return "No recent emails found."
+            if not emails:
+                return "No recent emails found."
 
-        return f"Found {len(emails)} recent emails:\\n\\n" + "\\n---\\n".join(emails)
+            return f"Found {len(emails)} recent emails:\n\n" + "\n---\n".join(emails)
     except Exception as e:
         logger.exception(f"Failed to read Outlook emails: {e}")
         return f"Error: Failed to read Outlook emails: {e}"
@@ -305,35 +332,36 @@ def read_excel_spreadsheet(
         if not path_obj.exists():
             return f"Error: File not found at {path_obj}"
 
-        excel = win32com.client.Dispatch("Excel.Application")
-        excel.Visible = False
-        wb = excel.Workbooks.Open(str(path_obj.resolve()))
+        with _com_thread():
+            excel = win32com.client.Dispatch("Excel.Application")
+            excel.Visible = False
+            wb = excel.Workbooks.Open(str(path_obj.resolve()))
 
-        try:
-            ws = wb.Worksheets(sheet_name) if sheet_name else wb.ActiveSheet
+            try:
+                ws = wb.Worksheets(sheet_name) if sheet_name else wb.ActiveSheet
 
-            used_range = ws.UsedRange
-            # Get values (returns tuple of tuples)
-            values = used_range.Value
+                used_range = ws.UsedRange
+                # Get values (returns tuple of tuples)
+                values = used_range.Value
 
-            if not values:
-                return f"No data found in sheet '{ws.Name}'."
+                if not values:
+                    return f"No data found in sheet '{ws.Name}'."
 
-            # Convert to string and limit rows
-            rows = []
-            for i, row in enumerate(values):
-                if i >= max_rows:
-                    rows.append(f"... (truncated after {max_rows} rows)")
-                    break
-                # Handle None values and filter out completely empty rows
-                str_row = [str(cell) if cell is not None else "" for cell in row]
-                if any(str_row):  # Only add if row has some data
-                    rows.append(" | ".join(str_row))
+                # Convert to string and limit rows
+                rows = []
+                for i, row in enumerate(values):
+                    if i >= max_rows:
+                        rows.append(f"... (truncated after {max_rows} rows)")
+                        break
+                    # Handle None values and filter out completely empty rows
+                    str_row = [str(cell) if cell is not None else "" for cell in row]
+                    if any(str_row):  # Only add if row has some data
+                        rows.append(" | ".join(str_row))
 
-            return f"Data from {path_obj.name} (Sheet: {ws.Name}):\\n\\n" + "\\n".join(rows)
-        finally:
-            wb.Close(SaveChanges=False)
-            excel.Quit()
+                return f"Data from {path_obj.name} (Sheet: {ws.Name}):\n\n" + "\n".join(rows)
+            finally:
+                wb.Close(SaveChanges=False)
+                excel.Quit()
 
     except Exception as e:
         logger.exception(f"Failed to read Excel spreadsheet: {e}")

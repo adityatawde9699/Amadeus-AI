@@ -28,9 +28,8 @@ def get_project_root() -> Path:
     if getattr(sys, "frozen", False):
         # Running as compiled PyInstaller executable
         return Path(os.path.dirname(sys.executable))
-    else:
-        # Running as standard Python script
-        return Path(__file__).resolve().parent.parent.parent
+    # Running as standard Python script
+    return Path(__file__).resolve().parent.parent.parent
 
 
 class Settings(BaseSettings):

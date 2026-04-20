@@ -44,11 +44,11 @@ def get_agent_tools() -> list[Any]:
         async def _execute_proactive_task(task_prompt: str, s_id: str) -> None:
             logger.info(f"Executing scheduled proactive task: {task_prompt} for session {s_id}")
             try:
-                from src.app.services.amadeus_service import AmadeusService
+                # Use the container singleton — NOT a bare AmadeusService() —
+                # so it gets llm_router, tool_registry, and cache_service injected.
+                from src.container import get_amadeus_service
 
-                # Initialize the service for the given session
-                svc = AmadeusService(session_id=s_id)
-                await svc.initialize()
+                svc = get_amadeus_service()
                 await svc.handle_background_event(task_prompt)
             except Exception as e:
                 logger.exception(f"Failed to execute proactive task: {e}")

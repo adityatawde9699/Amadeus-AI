@@ -5,7 +5,6 @@ Run with:
     locust -f locustfile.py --host=http://localhost:8000
 """
 
-
 from locust import HttpUser, between, task
 
 
@@ -18,7 +17,7 @@ class AmadeusUser(HttpUser):
 
         # Register a test user (ignored if already exists) and log in to get a JWT
         test_email = "loadtest@amadeus.local"
-        test_password = "LoadTest!SecurePass123"
+        test_password = "LoadTest!SecurePass123"  # noqa: S105
 
         # Attempt registration (may 400 if user exists — that's fine)
         self.client.post(

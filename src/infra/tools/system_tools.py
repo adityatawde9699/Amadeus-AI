@@ -348,7 +348,6 @@ def create_folder(folder_name: str | None = None, name: str | None = None, **kwa
 # =============================================================================
 
 
-
 def get_system_tools() -> list[Tool]:
     """Get all system tools for manual registration."""
     tools = []

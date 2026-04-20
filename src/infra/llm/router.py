@@ -1,18 +1,25 @@
 """
 LLM Request Router for Amadeus AI.
 
-Routing priority (local-first):
-- Ollama: unlimited local inference (phi3:mini default) — PRIMARY (free, offline)
-- Groq:   free tier (14,400 req/day)                  — SECONDARY
-- Gemini: free tier (1,500 req/day)                   — TERTIARY
-- OpenAI: paid ($0.005/req)                           — EMERGENCY
+Routing priority (local-first, complexity-aware):
+- LlamaCpp: local GGUF model (offline, primary for simple/normal tasks)
+- Ollama:   local server inference (offline, secondary local)
+- Groq:     free cloud tier (14,400 req/day) — used for normal/high complexity
+- Gemini:   free cloud tier (1,500 req/day)  — fallback cloud
+- OpenAI:   paid ($0.005/req)               — emergency only
 
-When LOCAL_ONLY_MODE=true, only Ollama is used. No cloud calls.
+Complexity levels (auto-scored by ComplexityScorer):
+  simple  (0-1) → llama_cpp/ollama only
+  normal  (2-4) → llama_cpp/ollama first, cloud fallback
+  high    (5+)  → skip local models, start at groq/gemini
+
+When LOCAL_ONLY_MODE=true, only local models are used. No cloud calls.
 Usage tracking resets daily at midnight (UTC).
 """
 
 import asyncio
 import logging
+import re
 from collections import defaultdict
 from datetime import date
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -28,6 +35,141 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# COMPLEXITY SCORER
+# =============================================================================
+
+
+class ComplexityScorer:
+    """
+    Pure heuristic scorer that estimates how complex a prompt is so the
+    LLMRouter can decide whether to use the local model or escalate to cloud.
+
+    Scoring rubric (additive):
+      +3  Very long prompt  (>300 whitespace-split tokens)
+      +3  Multi-step indicator ("and then", "step by step", "after that", ...)
+      +2  Code / programming keywords
+      +2  Creative writing request
+      +2  Math / formal reasoning / proof request
+      +2  Long summarisation task and/or very long input (>500 chars)
+      +1  Abstract / philosophical question
+      +1  Multiple questions in one input (≥2 question marks)
+
+    Thresholds:
+      0-1  → "simple"  — local model is perfectly capable
+      2-3  → "normal"  — local first, cloud fallback on failure
+      4+   → "high"    — skip local, go straight to Groq/Gemini
+    """
+
+    # ── keyword sets ──────────────────────────────────────────────────────────
+    _MULTI_STEP = re.compile(
+        r"\band then\b|\bafter that\b|\bstep by step\b|\bfirst.*then\b"
+        r"|\bsequentially\b|\bone by one\b|\bfinally\b.*\bfirst\b",
+        re.IGNORECASE,
+    )
+    # Code: (action verb) ... (code noun) OR bare language name OR literals
+    # re.DOTALL so multi-line prompts still match.
+    _CODE = re.compile(
+        r"\b(write|create|generate|implement|build|debug|fix|refactor|optimize)\b"
+        r".*?\b(code|script|function|class|program|algorithm|snippet|api|endpoint|module)\b"
+        r"|\b(python|javascript|typescript|java|c\+\+|rust|sql|bash|powershell)\b"
+        r"|\bdebug\s+this\b"
+        r"|```|\bdef \b|\bclass \b|\bimport \b|#include",
+        re.IGNORECASE | re.DOTALL,
+    )
+    _CREATIVE = re.compile(
+        r"\b(write|compose|create|generate|draft)\b.*?"
+        r"\b(story|poem|essay|blog|article|letter|song|lyric|script|novel)\b",
+        re.IGNORECASE | re.DOTALL,
+    )
+    # Math: proof keywords OR comparison OR numerical reasoning
+    _MATH = re.compile(
+        r"\b(prove\s+that|proof\s+that|prove|proof|derive|calculate|compute"
+        r"|solve|integrate|differentiate|is\s+irrational|is\s+rational"
+        r"|eigenvalue|matrix|probability|statistics|theorem|lemma|corollary"
+        r"|formal\s+proof)\b"
+        r"|\bcompare\b.*?\bvs\.?\b",
+        re.IGNORECASE | re.DOTALL,
+    )
+    _SUMMARISE = re.compile(
+        r"\b(summarize|summarise|tldr|key points|main points|overview|abstract"
+        r"|brief.*?from|condense|distil)\b",
+        re.IGNORECASE,
+    )
+    # Abstract: philosophical / ethics / policy / implications
+    _ABSTRACT = re.compile(
+        r"\b(why does|meaning of|explain.*?concept|philosophy|ethics|moral"
+        r"|implications of|implication of|impact of.*?on|effect of.*?on"
+        r"|theory of|nature of|geopolitical|policy implications"
+        r"|food security|climate change.*?(impact|effect|implications))\b",
+        re.IGNORECASE | re.DOTALL,
+    )
+
+    def score(self, prompt: str) -> tuple[str, int]:
+        """
+        Score a prompt and return (level, raw_score).
+
+        Args:
+            prompt: The full prompt string sent to the LLM.
+
+        Returns:
+            Tuple of (level, score) where level is 'simple', 'normal', or 'high'.
+        """
+        s = 0
+        tokens = prompt.split()
+
+        # +3: Very long prompt — likely has rich context that needs a big model
+        if len(tokens) > 300:
+            s += 3
+        # +3: Multi-step instruction — requires sequential reasoning
+        if self._MULTI_STEP.search(prompt):
+            s += 3
+        # +4: Code / programming task — small models hallucinate APIs & syntax
+        if self._CODE.search(prompt):
+            s += 4
+        # +4: Creative writing — small models lack stylistic depth
+        if self._CREATIVE.search(prompt):
+            s += 4
+        # +4: Math / formal reasoning — small models make arithmetic/logic errors
+        if self._MATH.search(prompt):
+            s += 4
+        # +2: Summarisation or long input — needs solid comprehension
+        if self._SUMMARISE.search(prompt) or len(prompt) > 500:
+            s += 4
+        # +4: Abstract / ethical / policy topic — nuance requires a large model
+        if self._ABSTRACT.search(prompt):
+            s += 4
+        # +1: Multiple questions — mild indicator of complexity
+        if prompt.count("?") >= 2:
+            s += 1
+
+        if s <= 1:
+            level = "simple"
+        elif s <= 3:  # normal: 2-3
+            level = "normal"
+        else:  # high: 4+  (any code/creative/math hit lands here)
+            level = "high"
+
+        logger.debug(
+            "ComplexityScorer: score=%d level=%r prompt_tokens=%d",
+            s,
+            level,
+            len(tokens),
+        )
+        return level, s
+
+    @staticmethod
+    def merge(auto_level: str, caller_level: str) -> str:
+        """
+        Return the higher of auto_level and caller_level.
+        Order: simple < normal < high.
+        """
+        _rank = {"simple": 0, "normal": 1, "high": 2}
+        if _rank.get(auto_level, 0) >= _rank.get(caller_level, 1):
+            return auto_level
+        return caller_level
 
 
 # =============================================================================
@@ -157,7 +299,9 @@ class LLMRouter:
 
         self._local_only_mode = local_only_mode
         if local_only_mode:
-            logger.info("LLMRouter: LOCAL_ONLY_MODE active — cloud providers disabled, using local models only")
+            logger.info(
+                "LLMRouter: LOCAL_ONLY_MODE active — cloud providers disabled, using local models only"
+            )
 
         # In-memory counters (always present; Redis supplements these)
         self._usage: dict[str, int] = defaultdict(int)
@@ -181,11 +325,21 @@ class LLMRouter:
             self._usage.clear()
             self._usage_date = today
 
+    # Shared scorer instance (stateless, safe to reuse)
+    _scorer: ClassVar[ComplexityScorer] = ComplexityScorer()
+
+    # Approximate chars-per-token for context-ceiling guard
+    _CHARS_PER_TOKEN: ClassVar[float] = 4.0
+
+    # llama_cpp context ceiling — skip local if prompt is this close to the limit
+    _LLAMA_CTX_LIMIT: ClassVar[int] = 2048
+    _LLAMA_CTX_SAFETY_RATIO: ClassVar[float] = 0.85  # skip when > 85% of ctx used
+
     async def generate(
         self,
         prompt: str,
         context: object = None,
-        complexity: str = "normal",
+        complexity: str = "auto",
         temperature: float = 0.7,
         max_tokens: int | None = None,
     ) -> tuple[str, str]:
@@ -193,24 +347,60 @@ class LLMRouter:
         Generate a response using the best available provider.
 
         Args:
-            prompt: The user prompt
-            context: ConversationContext (optional)
-            complexity: "normal" or "high" — high enables OpenAI as last resort
-            temperature: Generation temperature
-            max_tokens: Max output tokens
+            prompt:     The user prompt.
+            context:    ConversationContext (optional).
+            complexity: Routing hint — one of:
+                        ``"auto"``   Score the prompt and choose the best tier.
+                        ``"simple"`` Force local-only (llama_cpp / ollama).
+                        ``"normal"`` Local first, cloud fallback (default).
+                        ``"high"``   Skip local models, use cloud directly.
+            temperature: Sampling temperature (0 = deterministic, 1 = creative).
+            max_tokens:  Max output tokens.
 
         Returns:
             Tuple of (response_text, provider_name_used)
 
         Raises:
-            LLMRateLimitError: All providers at daily limit
+            LLMRateLimitError: All providers at or beyond their daily limit.
         """
         self._reset_if_new_day()
 
-        # Build provider priority: LlamaCpp first, then Ollama (both local), then cloud
-        providers_order = ["llama_cpp", "ollama", "groq", "gemini"]
-        if complexity == "high" and not self._local_only_mode:
-            providers_order.append("openai")
+        # ── Complexity resolution ────────────────────────────────────────────
+        if complexity == "auto":
+            auto_level, auto_score = self._scorer.score(prompt)
+            effective_complexity = auto_level
+            logger.info(
+                "LLMRouter auto-complexity: score=%d level=%r",
+                auto_score,
+                effective_complexity,
+            )
+        else:
+            # Caller supplied explicit level — still run scorer so we can
+            # *upgrade* (never downgrade) based on what we detect in the prompt.
+            auto_level, auto_score = self._scorer.score(prompt)
+            effective_complexity = ComplexityScorer.merge(auto_level, complexity)
+            if effective_complexity != complexity:
+                logger.info(
+                    "LLMRouter upgraded complexity %r → %r (auto_score=%d)",
+                    complexity,
+                    effective_complexity,
+                    auto_score,
+                )
+
+        # ── Build provider priority list ─────────────────────────────────────
+        if effective_complexity == "high" and not self._local_only_mode:
+            # High complexity: skip local models entirely — they'll likely fail
+            providers_order = ["groq", "gemini", "openai"]
+            logger.info("LLMRouter: high complexity → cloud-only queue: %s", providers_order)
+        else:
+            # simple / normal: local first, cloud as fallback
+            providers_order = ["llama_cpp", "ollama", "groq", "gemini"]
+            if not self._local_only_mode and effective_complexity != "simple":
+                providers_order.append("openai")
+
+        # Respect LOCAL_ONLY_MODE
+        if self._local_only_mode:
+            providers_order = [p for p in providers_order if p in ("llama_cpp", "ollama")]
 
         for provider_name in providers_order:
             if provider_name not in self._providers:
@@ -232,6 +422,19 @@ class LLMRouter:
                     limit,
                 )
                 continue
+
+            # ── llama_cpp context-ceiling guard ───────────────────────────────
+            if provider_name == "llama_cpp":
+                estimated_tokens = len(prompt) / self._CHARS_PER_TOKEN
+                ceiling = self._LLAMA_CTX_LIMIT * self._LLAMA_CTX_SAFETY_RATIO
+                if estimated_tokens > ceiling:
+                    logger.warning(
+                        "LLMRouter: prompt (~%d tokens) near llama_cpp ctx limit (%d). "
+                        "Skipping local model to avoid truncation.",
+                        int(estimated_tokens),
+                        self._LLAMA_CTX_LIMIT,
+                    )
+                    continue
 
             try:
                 provider = self._providers[provider_name]

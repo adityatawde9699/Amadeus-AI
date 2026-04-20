@@ -1,7 +1,8 @@
-import PyInstaller.__main__
-from pathlib import Path
-import os
 import shutil
+from pathlib import Path
+
+import PyInstaller.__main__
+
 
 # Root directory of the project
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -20,11 +21,10 @@ for dir_name in ["build", "dist"]:
 args = [
     str(ROOT_DIR / "src" / "api" / "server.py"),
     "--name=amadeus",
-    "--onedir",      # Create a folder containing the exe and dependencies
-    "--noconsole",   # Run as a background process (no command prompt)
-    "--clean",       # Clean PyInstaller cache
-    "--noconfirm",   # Overwrite output directory without asking
-    
+    "--onedir",  # Create a folder containing the exe and dependencies
+    "--noconsole",  # Run as a background process (no command prompt)
+    "--clean",  # Clean PyInstaller cache
+    "--noconfirm",  # Overwrite output directory without asking
     # Metadata includes for common FastAPI/Pydantic/DI libraries
     "--copy-metadata=fastapi",
     "--copy-metadata=pydantic",
@@ -32,7 +32,6 @@ args = [
     "--copy-metadata=dependency-injector",
     "--copy-metadata=alembic",
     "--copy-metadata=sqlalchemy",
-    
     # Add data directories
     f"--add-data={ROOT_DIR / 'alembic'};alembic",
     f"--add-data={ROOT_DIR / 'Model'};Model",
