@@ -40,10 +40,12 @@ Tools marked with <font color="#FF3131">🛡️ **HITL**</font> require **Human-
 | :--- | :---: | :--- | :--- |
 | `open_program` | ✅ | Launches desktop applications. | "Open Visual Studio Code" |
 | `terminate_program` | <font color="#FF3131">🛡️</font> | Kills running processes. | "Close the VLC player" |
-| `screenshot` | ✅ | Captures the active display. | "Take a screenshot" |
-| `set_volume` | ✅ | Adjusts speaker output. | "Set volume to 80%" |
-| `set_brightness` | ✅ | Adjusts monitor brightness. | "Brightness 50%" |
-| `get_active_windows`| ✅ | Lists all foreground apps. | "What's open right now?" |
+| `take_screenshot` | ✅ | Captures the active display. | "Take a screenshot" |
+| `set_volume` | ✅ | Adjusts or mutes speaker output. | "Set volume to 80%" |
+| `get_volume` | ✅ | Checks current audio levels. | "What's the volume at?" |
+| `set_brightness` | ✅ | Adjusts monitor brightness. | "Dim the screen" |
+| `list_open_apps` | ✅ | Lists all foreground apps. | "What's open right now?" |
+
 
 ---
 
@@ -85,8 +87,10 @@ Tools marked with <font color="#FF3131">🛡️ **HITL**</font> require **Human-
 | `web_search` | ✅ | Tiered search (Tavily/DDG). | "Who won the game?" |
 | `wikipedia` | ✅ | Deep reference lookups. | "Who is Alan Turing?" |
 | `get_weather` | ✅ | Real-time weather/forecast. | "Is it raining in Mumbai?" |
+| `get_news` | ✅ | Curated news by topic/country. | "Tech news from USA" |
 | `fetch_webpage` | ✅ | Direct URL text extraction. | "Summarize https://news.com" |
 | `calculate` | ✅ | Complex math & conversions. | "15% of 5000 divided by 2" |
+
 
 ---
 
@@ -103,19 +107,25 @@ Tools marked with <font color="#FF3131">🛡️ **HITL**</font> require **Human-
 ---
 
 ## 🧠 Triage Architecture
-How Amadeus decides which tool to use:
+How Amadeus instantly decides which tool to use, powered by the new hybrid routing system:
 
 ```mermaid
 graph TD
-    A[User Input] --> B{Semantic Triage}
-    B -- Chat --> C[Conversational LLM]
-    B -- Complexity --> D[Cloud Escalation]
-    B -- Tool Intent --> E[Tool Registry]
-    E --> F{HITL Gate?}
-    F -- Yes --> G[Request Permission]
-    G -- Approved --> H[Execute Tool]
-    F -- No --> H
-    H --> I[Summarize Result]
+    A[User Input] --> B{Stage 1: SVM Cache}
+    B -- Confidence > 0.15 --> C[Match Found]
+    B -- Confidence < 0.15 --> D{Stage 2: LLM Router}
+    
+    D -- Chat --> E[Conversational Response]
+    D -- Complexity / Multi-step --> F[Agent Queue / Cloud Esc.]
+    D -- Tool Intent --> C
+    
+    C --> G[Tool Registry]
+    G --> H{HITL Gate?}
+    H -- Yes --> I[Request Permission]
+    I -- Approved --> J[Execute Tool]
+    H -- No --> J
+    J --> K[Wait for Timeout / Success]
+    K --> L[Format Output & Synthesize]
 ```
 
 ---

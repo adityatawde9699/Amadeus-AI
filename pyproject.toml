@@ -51,7 +51,7 @@ dependencies = [
     "psutil>=5.9.0",
     "rapidfuzz>=3.6.0",
     # Image / OCR
-    "Pillow>=10.0.0",
+    "pillow>=10.0.0",
     "pytesseract>=0.3.10",
     # Generative AI
     "google-genai>=0.1.0",
@@ -81,6 +81,9 @@ dependencies = [
     "docker>=7.0.0",
     # Telegram Bot (v20+ async, webhook-native)
     "python-telegram-bot[webhooks]>=20.7",
+    "sentence-transformers>=5.4.1",
+    "pycaw>=20251023",
+    "wmi>=1.5.1",
 ]
 
 [project.optional-dependencies]
