@@ -7,8 +7,8 @@ from fastapi_users.authentication import AuthenticationBackend, BearerTransport,
 from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.infra.persistence.database import get_db_session
 from src.core.config import get_settings
+from src.infra.persistence.database import get_db_session
 from src.infra.persistence.orm_models import UserORM
 
 

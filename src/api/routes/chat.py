@@ -23,7 +23,6 @@ from dependency_injector.wiring import Provide, inject
 from src.app.services.agent_loop import QueueFullError
 from src.app.services.amadeus_service import AmadeusService
 from src.container import Container
-from src.infra.persistence.database import get_db_session
 from src.core.domain.models import (
     ChatRequest,
     ChatResponse,
@@ -32,6 +31,7 @@ from src.core.domain.models import (
     PermissionProfile,
     ToolListResponse,
 )
+from src.infra.persistence.database import get_db_session
 from src.infra.persistence.repositories.conversation_repository import SQLConversationRepository
 
 

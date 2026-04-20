@@ -7,7 +7,6 @@ Wires up all services with their dependencies using dependency-injector.
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncGenerator
 from concurrent.futures import ThreadPoolExecutor
 
 import redis.asyncio
@@ -21,6 +20,7 @@ from src.infra.cache.cache_service import CacheService
 from src.infra.llm.router import LLMRouter
 from src.infra.search.search_router import SearchRouter
 from src.infra.tools.confirmation import ConfirmationCallback
+
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +68,7 @@ def _build_conversation_repo_factory() -> object:
                 async with get_session() as session:
                     repo = SQLConversationRepository(session)
                     return await getattr(repo, method_name)(*args, **kwargs)
+
             return _caller
 
     return _ConversationRepoProxy()
@@ -123,7 +124,50 @@ def _build_tool_registry() -> ToolRegistry:
             registry.register(tool)
         for tool in build_filesystem_tools():
             registry.register(tool)
+
+        # Register developer/sandbox tools
+        try:
+            from src.infra.tools.developer_tools import get_developer_tools
+
+            for tool in get_developer_tools():
+                registry.register(tool)
+        except Exception as e:
+            logger.warning("Failed to register developer_tools: %s", e)
+
+        # Register web_research and email tools (return plain dicts, not Tool objects)
+        try:
+            from src.infra.tools.base import ToolCategory
+            from src.infra.tools.web_research_tools import build_web_research_tools
+
+            for td in build_web_research_tools():
+                registry.register_function(
+                    func=td["function"],
+                    name=td["name"],
+                    description=td["description"],
+                    category=ToolCategory.INFORMATION,
+                    parameters=td.get("parameters", {}),
+                )
+        except Exception as e:
+            logger.warning("Failed to register web_research_tools: %s", e)
+
+        try:
+            from src.infra.tools.base import ToolCategory
+            from src.infra.tools.email_tools import build_email_tools
+
+            for td in build_email_tools():
+                registry.register_function(
+                    func=td["function"],
+                    name=td["name"],
+                    description=td["description"],
+                    category=ToolCategory.COMMUNICATION,
+                    parameters=td.get("parameters", {}),
+                    requires_confirmation=td["name"] == "send_email",  # sending is destructive
+                )
+        except Exception as e:
+            logger.warning("Failed to register email_tools: %s", e)
+
         logger.info("Tool registry initialized with %d tools", len(registry))
+
     except Exception as e:
         logger.exception("Error initializing tool registry: %s", e)
     return registry
@@ -181,7 +225,7 @@ def _build_llm_router() -> LLMRouter:
     if getattr(settings, "SLM_MODEL_PATH", None):
         try:
             from src.infra.llm.llama_cpp_adapter import LlamaCppAdapter
-            
+
             llama_cpp_adapter = LlamaCppAdapter(
                 model_path=settings.SLM_MODEL_PATH,
                 threads=settings.SLM_THREADS,
@@ -273,16 +317,19 @@ class Container(containers.DeclarativeContainer):
 
     conversation_repo = providers.Singleton(_build_conversation_repo_factory)
 
+    # llm_router and search_router must be declared BEFORE amadeus_service
+    # so dependency-injector can resolve them as constructor arguments.
+    llm_router = providers.Singleton(_build_llm_router)
+    search_router = providers.Singleton(_build_search_router)
+
     amadeus_service = providers.Singleton(
         AmadeusService,
         settings=settings,
         tool_registry=tool_registry,
         cache_service=cache_service,
         conversation_repo=conversation_repo,
+        llm_router=llm_router,
     )
-
-    llm_router = providers.Singleton(_build_llm_router)
-    search_router = providers.Singleton(_build_search_router)
 
     voice_service = providers.Singleton(
         _build_voice_service,
@@ -294,6 +341,7 @@ class Container(containers.DeclarativeContainer):
 # =============================================================================
 # GLOBAL BRIDGES (Backward Compatibility)
 # =============================================================================
+
 
 def get_amadeus_service() -> AmadeusService:
     return global_container.amadeus_service()
@@ -327,7 +375,6 @@ def inject_confirmation_callback(confirmation_callback: ConfirmationCallback) ->
     service = get_amadeus_service()
     service.tool_executor.confirmation_callback = confirmation_callback
     logger.info("ConfirmationCallback injected into ToolExecutor")
-
 
 
 async def shutdown_services() -> None:

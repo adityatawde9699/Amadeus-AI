@@ -68,6 +68,7 @@ class MemoryResult:
 # Global cache for the Qdrant client to avoid FileLock collisions
 _global_qdrant_client = None
 
+
 class QdrantMemoryService:
     """
     Long-term semantic memory powered by Qdrant + Gemini embeddings.
@@ -251,7 +252,6 @@ class QdrantMemoryService:
         except Exception as exc:
             logger.warning("Gemini embedding failed: %s", exc)
             return None
-
 
     # -------------------------------------------------------------------------
     # Public API

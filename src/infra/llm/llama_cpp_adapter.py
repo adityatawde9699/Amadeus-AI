@@ -95,9 +95,7 @@ class LlamaCppAdapter(LLMAdapter):
                 ) from exc
             except Exception as e:
                 logger.exception("Failed to load LlamaCpp model: %s", type(e).__name__)
-                raise LLMConnectionError(
-                    "LlamaCpp", f"Model load failed: {e}"
-                ) from e
+                raise LLMConnectionError("LlamaCpp", f"Model load failed: {e}") from e
         return self._llm
 
     # =========================================================================
@@ -181,6 +179,7 @@ class LlamaCppAdapter(LLMAdapter):
         messages = self._build_messages(prompt, context)
 
         try:
+
             def _generate() -> str:
                 res = llm.create_chat_completion(
                     messages=messages,
@@ -246,9 +245,7 @@ class LlamaCppAdapter(LLMAdapter):
                         loop.call_soon_threadsafe(queue.put_nowait, token)
             except Exception as e:
                 logger.error("Llama stream error: %s", e)
-                loop.call_soon_threadsafe(
-                    queue.put_nowait, f"\n⚠️ Stream interrupted: {e}"
-                )
+                loop.call_soon_threadsafe(queue.put_nowait, f"\n⚠️ Stream interrupted: {e}")
             finally:
                 loop.call_soon_threadsafe(queue.put_nowait, None)  # EOF marker
 

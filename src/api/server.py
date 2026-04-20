@@ -42,6 +42,9 @@ scheduler = AsyncIOScheduler()
 import logging
 import logging.handlers
 
+
+settings = get_settings()
+
 # Create logs directory
 log_dir = settings.BASE_DIR / "data" / "logs"
 log_dir.mkdir(parents=True, exist_ok=True)
@@ -133,20 +136,24 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Run database migrations automatically
     try:
-        from alembic.config import Config
         from alembic import command
-        
+        from alembic.config import Config
+
         logger.info("Running database migrations...")
         alembic_cfg_path = settings.BASE_DIR / "alembic.ini"
         alembic_script_location = settings.BASE_DIR / "alembic"
-        
+
         if alembic_cfg_path.exists() and alembic_script_location.exists():
+            import asyncio
+
             alembic_cfg = Config(str(alembic_cfg_path))
             alembic_cfg.set_main_option("script_location", str(alembic_script_location))
-            command.upgrade(alembic_cfg, "head")
+            await asyncio.to_thread(command.upgrade, alembic_cfg, "head")
             logger.info("Database migrations complete")
         else:
-            logger.warning(f"Alembic config or scripts missing at {settings.BASE_DIR}. Skipping migrations.")
+            logger.warning(
+                f"Alembic config or scripts missing at {settings.BASE_DIR}. Skipping migrations."
+            )
     except Exception as e:
         logger.error(f"Failed to run migrations: {e}")
         if settings.is_production:
@@ -399,7 +406,6 @@ app.include_router(system_admin.router, prefix="/api/v1", tags=["Admin System"])
 
 # Webhooks use their own secret-token validation — no JWT
 app.include_router(webhooks.router, prefix="/api/v1", tags=["Webhooks"])
-
 
 
 # FastAPI-Users Auth

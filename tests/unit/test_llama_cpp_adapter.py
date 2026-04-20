@@ -10,7 +10,6 @@ Tests cover:
 - Correct exception types (ConfigurationError, LLMConnectionError, LLMResponseError)
 """
 
-import asyncio
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -44,9 +43,7 @@ def _make_fake_llama(response_text: str = "Hello from LlamaCpp!") -> MagicMock:
     """Build a mock llama_cpp.Llama instance that returns a canned response."""
     llm = MagicMock()
     llm.create_chat_completion.return_value = {
-        "choices": [
-            {"message": {"content": response_text}, "finish_reason": "stop"}
-        ]
+        "choices": [{"message": {"content": response_text}, "finish_reason": "stop"}]
     }
     return llm
 
@@ -125,7 +122,10 @@ async def test_generate_response_returns_text(adapter: LlamaCppAdapter) -> None:
     """generate_response() returns stripped text from the model."""
     fake_llm = _make_fake_llama("  Mocked response.  ")
 
-    with patch("src.infra.llm.llama_cpp_adapter.LlamaCppAdapter._get_llm", new=AsyncMock(return_value=fake_llm)):
+    with patch(
+        "src.infra.llm.llama_cpp_adapter.LlamaCppAdapter._get_llm",
+        new=AsyncMock(return_value=fake_llm),
+    ):
         result = await adapter.generate_response("Hello?")
 
     assert result == "Mocked response."
@@ -134,11 +134,16 @@ async def test_generate_response_returns_text(adapter: LlamaCppAdapter) -> None:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_generate_response_passes_temperature_and_max_tokens(adapter: LlamaCppAdapter) -> None:
+async def test_generate_response_passes_temperature_and_max_tokens(
+    adapter: LlamaCppAdapter,
+) -> None:
     """generate_response() forwards temperature and max_tokens to llama."""
     fake_llm = _make_fake_llama("ok")
 
-    with patch("src.infra.llm.llama_cpp_adapter.LlamaCppAdapter._get_llm", new=AsyncMock(return_value=fake_llm)):
+    with patch(
+        "src.infra.llm.llama_cpp_adapter.LlamaCppAdapter._get_llm",
+        new=AsyncMock(return_value=fake_llm),
+    ):
         await adapter.generate_response("Hi", temperature=0.3, max_tokens=128)
 
     call_kwargs = fake_llm.create_chat_completion.call_args.kwargs
@@ -159,7 +164,10 @@ async def test_generate_response_injects_context_history(adapter: LlamaCppAdapte
     context = MagicMock()
     context.messages = [prev]
 
-    with patch("src.infra.llm.llama_cpp_adapter.LlamaCppAdapter._get_llm", new=AsyncMock(return_value=fake_llm)):
+    with patch(
+        "src.infra.llm.llama_cpp_adapter.LlamaCppAdapter._get_llm",
+        new=AsyncMock(return_value=fake_llm),
+    ):
         await adapter.generate_response("Follow-up", context=context)
 
     sent_messages = fake_llm.create_chat_completion.call_args.kwargs["messages"]
@@ -190,7 +198,10 @@ async def test_generate_response_raises_llm_response_error_on_runtime_failure(
     fake_llm = MagicMock()
     fake_llm.create_chat_completion.side_effect = RuntimeError("CUDA OOM")
 
-    with patch("src.infra.llm.llama_cpp_adapter.LlamaCppAdapter._get_llm", new=AsyncMock(return_value=fake_llm)):
+    with patch(
+        "src.infra.llm.llama_cpp_adapter.LlamaCppAdapter._get_llm",
+        new=AsyncMock(return_value=fake_llm),
+    ):
         with pytest.raises(LLMResponseError, match="LlamaCpp generation failed"):
             await adapter.generate_response("Hello")
 
@@ -229,6 +240,7 @@ async def test_get_llm_raises_llm_connection_error_on_load_failure(
 @pytest.mark.asyncio
 async def test_stream_response_yields_tokens(adapter: LlamaCppAdapter) -> None:
     """stream_response() yields each token from the llama stream."""
+
     def _make_chunk(content: str) -> dict[str, Any]:
         return {"choices": [{"delta": {"content": content}, "finish_reason": None}]}
 
@@ -237,7 +249,10 @@ async def test_stream_response_yields_tokens(adapter: LlamaCppAdapter) -> None:
     fake_llm = MagicMock()
     fake_llm.create_chat_completion.return_value = iter(fake_stream)
 
-    with patch("src.infra.llm.llama_cpp_adapter.LlamaCppAdapter._get_llm", new=AsyncMock(return_value=fake_llm)):
+    with patch(
+        "src.infra.llm.llama_cpp_adapter.LlamaCppAdapter._get_llm",
+        new=AsyncMock(return_value=fake_llm),
+    ):
         tokens = []
         async for token in adapter.stream_response("Hi"):
             tokens.append(token)
@@ -277,9 +292,16 @@ async def test_get_llm_skips_flash_attn_when_not_supported(
 
     mock_llama_cls = MagicMock(side_effect=fake_llama_init)
     # Simulate a Llama.__init__ that only has the basic params (no flash_attn)
-    basic_params = ["self", "model_path", "n_threads", "n_ctx", "n_batch",
-                    "use_mmap", "use_mlock", "verbose"]
-    import inspect
+    basic_params = [
+        "self",
+        "model_path",
+        "n_threads",
+        "n_ctx",
+        "n_batch",
+        "use_mmap",
+        "use_mlock",
+        "verbose",
+    ]
     mock_llama_cls.__init__ = MagicMock()
     mock_llama_cls.__init__.__func__ = MagicMock()
 
@@ -290,8 +312,9 @@ async def test_get_llm_skips_flash_attn_when_not_supported(
 
     def patched_signature(obj: Any) -> Any:
         # Return a signature that only includes basic params
-        sig = _inspect.signature(lambda model_path, n_threads, n_ctx, n_batch,
-                                  use_mmap, use_mlock, verbose: None)
+        sig = _inspect.signature(
+            lambda model_path, n_threads, n_ctx, n_batch, use_mmap, use_mlock, verbose: None
+        )
         return sig
 
     with patch.dict("sys.modules", {"llama_cpp": mock_module}):

@@ -69,7 +69,7 @@ DATAS = [
 def run(cmd: list[str], cwd: Path = PROJECT_ROOT) -> None:
     """Run a subprocess command and raise on failure."""
     print(f"\n▸ {' '.join(cmd)}")
-    result = subprocess.run(cmd, cwd=str(cwd))
+    result = subprocess.run(cmd, cwd=str(cwd), check=False)
     if result.returncode != 0:
         sys.exit(f"Command failed with exit code {result.returncode}")
 

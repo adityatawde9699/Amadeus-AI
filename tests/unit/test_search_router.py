@@ -1,4 +1,3 @@
-from datetime import date, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -21,5 +20,3 @@ async def test_search_wikipedia_factual(search_router):
         result = await search_router.search("who is Albert Einstein")
         mock_wiki.assert_called_once_with("who is Albert Einstein")
         assert result.startswith("Wikipedia")
-
-

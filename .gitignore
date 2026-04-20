@@ -151,26 +151,7 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-# Added by ggshield
-.cache_ggshield
-
-# Added by ggshield
-.cache_ggshield
-
-# Added by ggshield
-.cache_ggshield
-
-# Added by ggshield
-.cache_ggshield
-
-# Added by ggshield
-.cache_ggshield
-
-# Added by ggshield
-.cache_ggshield
-
-# Added by ggshield
-.cache_ggshield
-
-# Added by ggshield
+# =============================================================================
+# GITGUARDIAN
+# =============================================================================
 .cache_ggshield

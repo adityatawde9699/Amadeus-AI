@@ -195,11 +195,12 @@ def build_pomodoro_tools(pomodoro_repo: IPomodoroRepository) -> list[Tool]:
         active = await pomodoro_repo.get_active()
         if not active:
             return "No active Pomodoro session to stop."
-        if active and active.id is not None:
-            updated = await pomodoro_repo.update_state(active.id, PomodoroState.COMPLETED)
+        if active.id is None:
+            return "Active Pomodoro has no ID — cannot stop it."
+        updated = await pomodoro_repo.update_state(active.id, PomodoroState.COMPLETED)
         if updated:
             return (
-                f"⏹️ Pomodoro session stopped (ID: {updated.id}, task: '{updated.task_description}')"
+                f"Pomodoro session stopped (ID: {updated.id}, task: '{updated.task_description}')"
             )
         return "Could not stop the Pomodoro session."
 

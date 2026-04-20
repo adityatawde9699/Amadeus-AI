@@ -1315,7 +1315,7 @@ DATASET_TEMPLATES: dict[str, list[str]] = {
         "Show me the Slack directory",
         "Channels available on Slack?",
         "Channel list for Slack",
-        "Workspace channels?" ,
+        "Workspace channels?",
         "Get available Slack channels",
         "Pull up Slack channel list",
     ],
@@ -1729,7 +1729,7 @@ def main() -> None:
     data_dir.mkdir(exist_ok=True)
 
     output_path = data_dir / "training_data.json"
-    with open(output_path, "w", encoding="utf-8") as f:
+    with output_path.open("w", encoding="utf-8") as f:
         json.dump(dataset, f, indent=2, ensure_ascii=False)
 
     print(f"\nSaved dataset to {output_path}")

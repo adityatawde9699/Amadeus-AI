@@ -1,0 +1,9 @@
+repos:
+  # GitGuardian secret scanning — blocks commits that contain secrets
+  # Requires: pip install ggshield  +  ggshield auth login
+  - repo: https://github.com/GitGuardian/ggshield
+    rev: v1.36.0
+    hooks:
+      - id: ggshield
+
+

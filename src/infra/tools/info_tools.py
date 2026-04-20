@@ -104,9 +104,12 @@ async def get_weather_async(location: str = "India") -> str:
     params = {"q": location, "appid": api_key, "units": "metric"}
 
     try:
-        async with aiohttp.ClientSession() as session, session.get(
-            base_url, params=params, timeout=aiohttp.ClientTimeout(total=10)
-        ) as response:
+        async with (
+            aiohttp.ClientSession() as session,
+            session.get(
+                base_url, params=params, timeout=aiohttp.ClientTimeout(total=10)
+            ) as response,
+        ):
             if response.status == 404:
                 return f"Sorry, I couldn't find weather data for '{location}'."
             if response.status != 200:
@@ -178,9 +181,12 @@ async def get_news_async(
     }
 
     try:
-        async with aiohttp.ClientSession() as session, session.get(
-            base_url, params=params, timeout=aiohttp.ClientTimeout(total=10)
-        ) as response:
+        async with (
+            aiohttp.ClientSession() as session,
+            session.get(
+                base_url, params=params, timeout=aiohttp.ClientTimeout(total=10)
+            ) as response,
+        ):
             if response.status != 200:
                 return f"News service error (status {response.status})."
 
@@ -255,24 +261,48 @@ def open_website(query: str | None = None, url: str | None = None, **kwargs: Any
 
 @tool(
     name="wikipedia_search",
-    description="Get Wikipedia summary. Trigger: 'who is ___', 'what is ___', 'explain ___'",
+    description=(
+        "Search Wikipedia and return a factual summary about a person, place, concept, or event. "
+        "IMPORTANT: The 'query' parameter must contain ONLY the entity or topic name — never the full "
+        "user sentence. Strip all conversational words such as 'Amadeus', 'search for', 'look up', "
+        "'tell me about', 'on Wikipedia', 'who is', 'what is'. "
+        "Examples: user says 'who is Albert Einstein' → query='Albert Einstein'; "
+        "'Amadeus search for Alexander the Great on Wikipedia' → query='Alexander the Great'; "
+        "'explain quantum computing' → query='quantum computing'. "
+        "Trigger phrases: 'who is ___', 'what is ___', 'explain ___', 'tell me about ___', "
+        "'search ___ on Wikipedia', 'Wikipedia: ___'."
+    ),
     category=ToolCategory.INFORMATION,
     parameters={
-        "query": {"type": "string", "description": "Search term"},
-        "sentences": {"type": "integer", "description": "Number of sentences"},
+        "query": {
+            "type": "string",
+            "description": "The entity or topic name only (no conversational words)",
+        },
+        "sentences": {
+            "type": "integer",
+            "description": "Number of summary sentences to return (default: 3)",
+        },
     },
 )
 async def wikipedia_search_async(query: str, sentences: int = 3) -> str:
-    """Searches Wikipedia and returns a summary."""
+    """
+    Searches Wikipedia and returns a factual summary.
+
+    The caller (LLM or arg-extractor) must pass ONLY the entity/topic name
+    as ``query`` — e.g. 'Alexander the Great', NOT the full user sentence.
+    """
     base_url = "https://en.wikipedia.org/api/rest_v1/page/summary"
     search_url = f"{base_url}/{urllib.parse.quote(query)}"
 
     headers = {"User-Agent": "AmadeusAI/2.0 (https://github.com/adityatawde9699/Amadeus-AI)"}
 
     try:
-        async with aiohttp.ClientSession() as session, session.get(
-            search_url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)
-        ) as response:
+        async with (
+            aiohttp.ClientSession() as session,
+            session.get(
+                search_url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)
+            ) as response,
+        ):
             if response.status == 404:
                 return await _wikipedia_search_fallback(query, session)
             if response.status != 200:
@@ -341,24 +371,46 @@ async def _wikipedia_search_fallback(query: str, session: aiohttp.ClientSession)
 
 @tool(
     name="calculate",
-    description="Evaluate math expressions. Supports: +, -, *, /, **, %, sqrt. Trigger: '5+5', 'solve ___'",
+    description="Evaluate math expressions. Supports: +, -, *, /, **, %, sqrt(). Trigger: '5+5', 'solve ___'",
     category=ToolCategory.INFORMATION,
     parameters={"expression": {"type": "string", "description": "Mathematical expression"}},
 )
 def calculate(expression: str) -> str:
-    """Safely evaluates a mathematical expression."""
-    allowed = set("0123456789+-*/.() ")
+    """Safely evaluates a mathematical expression using a restricted namespace."""
+    import math
 
+    # Normalise common alternate operators
     expr = expression.replace("x", "*").replace("÷", "/").replace("^", "**")
 
-    if not all(c in allowed or c == "*" for c in expr):
-        return "Invalid characters in expression."
+    # Allowed characters: digits, operators, parentheses, decimal point, whitespace
+    # Note: we now explicitly allow all chars that math expressions need including letters
+    # for function names (sqrt, pi, etc.) — they are validated via the safe namespace below.
+    safe_namespace = {
+        "__builtins__": {},
+        "sqrt": math.sqrt,
+        "pi": math.pi,
+        "e": math.e,
+        "abs": abs,
+        "round": round,
+        "pow": pow,
+        "log": math.log,
+        "log10": math.log10,
+        "sin": math.sin,
+        "cos": math.cos,
+        "tan": math.tan,
+        "ceil": math.ceil,
+        "floor": math.floor,
+    }
 
     try:
-        result = eval(expr, {"__builtins__": {}}, {})
+        result = eval(expr, safe_namespace, {})
         return f"{expression} = {result}"
     except ZeroDivisionError:
         return "Error: Division by zero."
+    except NameError as e:
+        return f"Unknown function or variable: {e}"
+    except SyntaxError:
+        return "Invalid expression syntax."
     except Exception as e:
         return f"Calculation error: {e}"
 

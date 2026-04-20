@@ -219,7 +219,9 @@ class OllamaAdapter(LLMAdapter):
             logger.exception("Ollama HTTP error: %s", e.response.text)
             if e.response.status_code == 429:
                 raise LLMRateLimitError("Ollama") from e
-            raise LLMResponseError(f"Ollama HTTP {e.response.status_code}: {e.response.text}") from e
+            raise LLMResponseError(
+                f"Ollama HTTP {e.response.status_code}: {e.response.text}"
+            ) from e
         except (httpx.ConnectError, httpx.TimeoutException) as e:
             logger.exception("Ollama connection failed: %s", type(e).__name__)
             raise LLMConnectionError("Ollama", str(e)) from e

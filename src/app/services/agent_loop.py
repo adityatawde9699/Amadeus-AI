@@ -398,6 +398,8 @@ Available Tools:
 {chr(10).join(tool_descriptions[:15])}
 - FINISH: Use when task is complete. Input: {{"answer": "your final response"}}
 
+IMPORTANT: When asked to perform data analysis, math, or logic processing, do not attempt to calculate it yourself. Write a Python script, execute it using the execute_python_script tool, observe the output, and report the final result.
+
 Previous Steps:
 {scratchpad if scratchpad else "(none yet)"}
 
@@ -502,7 +504,6 @@ Relationships:"""
                 parts.append(obs)
 
         return " ".join(parts)
-
 
 
 # =============================================================================

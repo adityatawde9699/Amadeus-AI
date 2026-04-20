@@ -39,7 +39,6 @@ class Base(DeclarativeBase):
     """Base class for all ORM models."""
 
 
-
 # Global engine and session factory (initialized lazily)
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
@@ -152,7 +151,7 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     """
     FastAPI dependency for DB sessions.
-    
+
     Usage:
         def my_route(session: AsyncSession = Depends(get_db_session)):
             ...
@@ -179,6 +178,7 @@ async def init_db() -> None:
     settings = get_settings()
     if settings.database_is_sqlite:
         from pathlib import Path
+
         db_url = settings.DATABASE_URL
         if ":///" in db_url:
             path_str = db_url.split(":///")[-1]
