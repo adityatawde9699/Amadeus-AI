@@ -51,6 +51,8 @@ TRAINING_DATA = [
     ("temperature outside", "get_weather"),
     ("weather forecast", "get_weather"),
     ("is it hot today", "get_weather"),
+    ("how is the weather today in london", "get_weather"),
+    ("what is the weather in paris", "get_weather"),
     # web_search / wikipedia_search
     ("search for latest ai news", "web_search"),
     ("look up python tutorials", "web_search"),
@@ -60,6 +62,10 @@ TRAINING_DATA = [
     ("what is quantum computing", "wikipedia_search"),
     ("tell me about world war two", "wikipedia_search"),
     ("explain machine learning", "wikipedia_search"),
+    ("search youtube", "web_search"),
+    ("search alexandria a city", "wikipedia_search"),
+    ("search for a pdf named how to be alone", "search_file"),
+    ("find a pdf named something", "search_file"),
     # get_news
     ("latest news", "get_news"),
     ("today's top headlines", "get_news"),
@@ -116,11 +122,50 @@ TRAINING_DATA = [
     ("greet me", "get_greeting"),
     ("good morning", "get_greeting"),
     ("hello amadeus", "get_greeting"),
-    # email / office
-    ("send an email to john", "send_outlook_email"),
-    ("read my emails", "read_outlook_emails"),
+    # email / communication
+    ("send an email to john", "send_email"),
+    ("read my emails", "read_unread_emails"),
+    ("check my inbox", "read_unread_emails"),
+    ("what unread emails do I have?", "read_unread_emails"),
+    ("summarize my latest unread emails", "read_unread_emails"),
+    ("show my message inbox", "read_unread_emails"),
+    ("check for new mails", "read_unread_emails"),
+    ("send a mail to someone", "send_email"),
+    ("compose a message and email it", "send_email"),
+    ("email adityatawde9699@gmail.com says hello", "send_email"),
+    ("send email with subject hi to test@example.com", "send_email"),
+    ("write an email to bob about the meeting", "send_email"),
+    ("draft and send an email to manager", "send_email"),
+    ("send email to adityatawde9699@gmail.com with subject hello and body how are you", "send_email"),
+    ("could you please send a quick email to my boss with the subject urgent updates?", "send_email"),
+    ("compose an email to test@example.com about the project status and tell them we are on track", "send_email"),
+    ("send email subject report body see attached", "send_email"),
+    ("compose email to alice for the task", "send_email"),
+    ("write an email to support regarding my account issues", "send_email"),
+    ("send a message to ast.movies9688@gmail.com", "send_email"),
+    # unread emails
+    ("check my inbox and read unread emails please", "read_unread_emails"),
+    ("do I have any new mail in my gmail inbox?", "read_unread_emails"),
+    ("summary of my recent unread messages", "read_unread_emails"),
+    ("read out the last 5 emails from my inbox", "read_unread_emails"),
+    ("check inbox", "read_unread_emails"),
+    ("inbox status", "read_unread_emails"),
+    # office tools
     ("create an excel spreadsheet", "create_excel_spreadsheet"),
     ("make a word document", "create_word_document"),
+    ("generate a spreadsheet with columns name and age", "create_excel_spreadsheet"),
+    ("save a word file with contents hello world", "create_word_document"),
+    # conversational training (to reduce false positives for tools)
+    ("thank you", "conversational"),
+    ("okay thanks", "conversational"),
+    ("how are you doing amadeus?", "conversational"),
+    ("good evening assistant", "conversational"),
+    ("who created you", "conversational"),
+    ("tell me about yourself", "conversational"),
+    ("can you chat with me", "conversational"),
+    ("what is the meaning of life?", "conversational"),
+    ("you are very helpful", "conversational"),
+    # office tools
     # timer
     ("set a timer for 5 minutes", "set_timer"),
     ("start a 10 minute timer", "set_timer"),
@@ -141,6 +186,7 @@ TRAINING_DATA = [
     ("nice to meet you", "conversational"),
     ("hi there", "conversational"),
     ("good evening", "conversational"),
+    ("what is my name", "conversational"),
 ]
 
 # ---------------------------------------------------------------------------
@@ -158,11 +204,19 @@ classifier.fit(X, labels)
 # ---------------------------------------------------------------------------
 # SAVE
 # ---------------------------------------------------------------------------
-Path("Model").mkdir(exist_ok=True)
-joblib.dump(vectorizer, "Model/tfidf_vectorizer.joblib")
-joblib.dump(classifier, "Model/svm_classifier.joblib")
-print(f"[OK] Classifier retrained with {len(texts)} samples and {len(set(labels))} classes.")
-print(f"     Classes: {sorted(set(labels))}")
+model_dir = Path("Model")
+model_dir.mkdir(exist_ok=True)
+# Save artifacts to BOTH naming schemes to ensure full system synchronization
+# Scheme 1: AmadeusService direct path
+joblib.dump(vectorizer, model_dir / "tfidf_vectorizer.joblib")
+joblib.dump(classifier, model_dir / "svm_classifier.joblib")
+
+# Scheme 2: AgentOrchestrator / router path
+joblib.dump(vectorizer, model_dir / "router_vectorizer.joblib")
+joblib.dump(classifier, model_dir / "router_classifier.joblib")
+
+print(f"[OK] Classifier retrained with {X.shape[0]} samples and {len(classifier.classes_)} classes.")
+print(f"     Classes: {sorted(list(classifier.classes_))}")
 
 # Quick sanity check
 test_phrases = [
@@ -170,8 +224,9 @@ test_phrases = [
     "how are you",
     "what time is it",
     "cpu usage",
-    "delete the file backup.zip",
     "search for python tutorials",
+    "read my unread emails",
+    "send email to boss",
 ]
 print("\n--- Sanity Check ---")
 for phrase in test_phrases:
