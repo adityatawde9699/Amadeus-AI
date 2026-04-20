@@ -1,12 +1,13 @@
 """
 Amadeus Service - Main AI Assistant Orchestrator.
 
-This service is migrated from amadeus.py and preserves the ML classifier
-approach for tool selection to save Gemini API quota.
+This service uses a local-first semantic routing architecture. It triages
+user intent via a local LLM (llama-cpp) to decide between local tool 
+execution, conversational chat, or cloud escalation.
 
 Architecture:
 - Public API: handle_command, get_response
-- Internal Logic: _process_command_internal, _select_tools
+- Internal Logic: _process_command_internal, _predict_intent_llm
 - Infrastructure: tool registry, conversation manager, voice services
 """
 
@@ -34,8 +35,8 @@ if TYPE_CHECKING:
         async def clear_session(self, session_id: str) -> None: ...
 
 
-import joblib
-import numpy as np
+# import joblib - removed legacy SVM
+# import numpy as np - removed legacy SVM
 from google import genai
 from google.genai import types
 
@@ -251,7 +252,6 @@ class AmadeusService:
 
         # Initialize components
         self._load_api_keys()
-        self._load_tool_classifier()
         self._register_all_tools()
 
         # Build identity prompt
@@ -309,29 +309,6 @@ class AmadeusService:
         self.client = genai.Client(api_key=self.settings.GEMINI_API_KEY)
         self.model_name = self.settings.GEMINI_MODEL
         logger.info(f"Gemini API configured with model: {self.model_name}")
-
-    def _load_tool_classifier(self) -> None:
-        """
-        Load TF-IDF vectorizer and SVM classifier for smart tool selection.
-
-        This is the key quota-saving feature: predict relevant tools locally
-        instead of sending all tools to Gemini with every request.
-        """
-        try:
-            vectorizer_path = str(self.settings.BASE_DIR / "Model" / "tfidf_vectorizer.joblib")
-            classifier_path = str(self.settings.BASE_DIR / "Model" / "svm_classifier.joblib")
-
-            if Path(vectorizer_path).exists() and Path(classifier_path).exists():
-                self.vectorizer = joblib.load(vectorizer_path)
-                self.classifier = joblib.load(classifier_path)
-                self.classifier_enabled = True
-                logger.info("Tool classifier models loaded. Smart tool selection ENABLED.")
-            else:
-                logger.warning("Tool classifier models not found. Using all-tools mode.")
-                self.classifier_enabled = False
-        except Exception as e:
-            logger.exception(f"Failed to load tool classifier: {e}")
-            self.classifier_enabled = False
 
     def _register_all_tools(self) -> None:
         """Register all tools from the tool modules."""
@@ -397,59 +374,65 @@ Guidelines:
         )
 
     # =========================================================================
-    # TOOL SELECTION (ML CLASSIFIER)
+    # TRIAGE & ROUTING
     # =========================================================================
 
-    def _predict_relevant_tools(self, query: str, top_k: int = 3) -> list[str]:
+    async def _predict_intent_llm(self, query: str) -> tuple[str, str | None]:
         """
-        Predict relevant tools using the loaded SVM model.
-
-        This is the quota-saving magic: instead of sending all 45+ tools
-        to Gemini, we predict which 3 tools are most likely relevant.
-
-        Args:
-            query: User's input text
-            top_k: Number of top tools to return
-
-        Returns:
-            List of tool names, or ["conversational"] if no tool needed
+        Triage user intent using local LLM (LlamaCpp).
+        Decides: tool (and which one), conversational, or cloud_escalation.
         """
-        if not self.classifier_enabled:
-            return self.tool_registry.list_names()
+        if not self.llm_router:
+            return "conversational", None
+
+        tools_menu = self.tool_registry.get_tools_menu()
+        
+        # Construct triage prompt
+        triage_prompt = f"""### Instructions
+You are the semantic router for Amadeus AI. Your job is to classify the user's request.
+
+### Available Tools
+{tools_menu}
+
+### Decision Rules
+1. If the request matches a tool description, output: ACTION: [tool_name]
+2. If it is a greeting, simple question, or general chat, output: ACTION: conversational
+3. If it is highly complex (advanced coding, math, philosophy, policy), output: ACTION: cloud_escalation
+
+### User Input
+{query}
+
+### Decision
+"""
 
         try:
-            # Vectorize user query
-            x_vec = self.vectorizer.transform([query])
-
-            # Get scores from SVM
-            scores = self.classifier.decision_function(x_vec)[0]
-            classes = self.classifier.classes_
-
-            # Sort by confidence
-            top_indices = np.argsort(scores)[::-1]
-            best_tool = classes[top_indices[0]]
-
-            # Check for conversational intent
-            if best_tool == "conversational":
-                logger.info("Classifier predicted 'conversational' - skipping tools")
-                return ["conversational"]
-
-            # Get top K tools
-            top_tools = classes[top_indices[:top_k]]
-
-            # Filter to tools that exist in registry
-            relevant = [t for t in top_tools if t in self.tool_registry]
-
-            if not relevant:
-                logger.warning(f"Predicted tools {top_tools} not in registry. Fallback to all.")
-                return self.tool_registry.list_names()
-
-            logger.info(f"Smart Tool Selection: {relevant} (best: {best_tool})")
-            return relevant
+            # We force 'simple' to ensure the local llama-cpp is the one deciding
+            # which keeps routing free, private, and local.
+            response, provider = await self.llm_router.generate(
+                prompt=triage_prompt,
+                complexity="simple",
+                temperature=0.0, # Deterministic for routing
+                max_tokens=20,
+            )
+            
+            clean_res = response.strip().upper()
+            if "ACTION: CLOUD_ESCALATION" in clean_res:
+                return "cloud_escalation", None
+            if "ACTION: CONVERSATIONAL" in clean_res:
+                return "conversational", None
+            
+            # Check for tool name
+            for t_name in self.tool_registry.list_names():
+                if t_name.upper() in clean_res:
+                    return "tool", t_name
+            
+            # Fallback
+            return "conversational", None
 
         except Exception as e:
-            logger.exception(f"Error predicting tools: {e}. Fallback to all.")
-            return self.tool_registry.list_names()
+            logger.error(f"Semantic triage failed: {e}")
+            return "conversational", None
+
 
     # =========================================================================
     # COMMAND PROCESSING
@@ -588,52 +571,40 @@ Guidelines:
         permission_profile: PermissionProfile = PermissionProfile.SYSTEM_FULL,
     ) -> tuple[str, str | None]:
         """
-        Internal command processing — Complexity-first, then tool routing.
+        Internal command processing — Semantic Triage Routing.
 
         Flow:
-        0. ComplexityScorer scores the RAW user input BEFORE the SVM runs.
-           If score ≥ 'high' (code, creative, math, abstract) → bypass SVM
-           entirely and send straight to cloud LLM (Groq/Gemini).
-        1. SVM classifier predicts which tool (or 'conversational') — 100% local
-        2. If conversational → LLMRouter with auto-complexity
-        3. If tool needed:
-           a. Execute tool locally
-           b. Compose response via LLMRouter with auto-complexity
-        4. Only fall back to Gemini direct if llm_router unavailable
+        0. Semantic Triage (LlamaCpp): Decides action type locally:
+           - 'tool': specific localized tool execution.
+           - 'conversational': handled as local chat unless complexity warrants cloud.
+           - 'cloud_escalation': immediately routes to cloud LLM (Groq/Gemini).
+        1. Tool Execution: If triage identifies a tool, it is executed locally.
+        2. Composition: Results are composed into a natural response using LLMRouter.
 
         Returns:
             Tuple of (response_text, tool_used_name or None)
         """
-        # ── Step 0: Pre-SVM complexity gate ──────────────────────────────────
-        # Score the raw user input (short, no system prompt attached yet).
-        # High-complexity tasks (code gen, creative, math, policy) must NEVER
-        # go through the SVM tool path — the SVM has no 'write_code' category
-        # and will misroute them to tools like open_website or wikipedia_search.
-        from src.infra.llm.router import ComplexityScorer as _CS
+        # ── Step 0: Semantic Triage (Local LLM) ───────────────────────────────
+        # Use the local model to decide: Tool, Chat, or Cloud Escalation.
+        # This replaces the heuristic ComplexityScorer and the statistical SVM.
+        intent_type, tool_name = await self._predict_intent_llm(user_input)
 
-        _raw_level, _raw_score = _CS().score(user_input)
-        if _raw_level == "high" and hasattr(self, "llm_router") and self.llm_router:
-            logger.info(
-                "Pre-SVM gate: query scored %d (%r) — bypassing SVM, routing to cloud LLM.",
-                _raw_score,
-                _raw_level,
-            )
+        if intent_type == "cloud_escalation":
+            logger.info("Local triage: High complexity detected — escalating to Cloud LLM.")
             response = await self._generate_conversational_response(
                 user_input, forced_complexity="high"
             )
             return (response, None)
 
-        # ── Step 1: SVM predicts the best tool ────────────────────────────────
-        relevant_tools = self._predict_relevant_tools(user_input)
-
-        # Step 2: Conversational — route to LLMRouter (Groq/LlamaCpp/Gemini)
-        if relevant_tools == ["conversational"]:
+        if intent_type == "conversational":
+            logger.info("Local triage: Handling as conversational chat.")
             response = await self._generate_conversational_response(user_input)
             return (response, None)
 
-        # Step 3: Tool execution — try local-first approach
-        tool_name = relevant_tools[0]  # Best prediction from SVM
-        tool = self.tool_registry.get(tool_name)
+        # ── Step 1: Tool execution (Local or Cloud-assisted args) ────────────
+        # 'intent_type' was 'tool', and 'tool_name' holds our target.
+        actual_tool_name = tool_name or ""
+        tool = self.tool_registry.get(actual_tool_name)
 
         if tool:
             # Extract args from user input using simple keyword parsing
@@ -658,7 +629,7 @@ Guidelines:
 
         # Step 4: Tool not in registry — fall back to Gemini if available
         if getattr(self, "client", None):
-            return await self._process_with_gemini(user_input, relevant_tools, permission_profile)
+            return await self._process_with_gemini(user_input, [actual_tool_name], permission_profile)
 
         return (
             "I couldn't find the right tool for that. Try rephrasing your request.",
@@ -667,16 +638,32 @@ Guidelines:
 
     async def _extract_args_for_tool(self, tool_name: str, user_input: str) -> dict:
         """
-        Extract tool arguments from user input using keyword/pattern matching.
-        For simple tools this is 100% local & instant. For structured tools
-        (Excel, Word) an LLM call is used to parse natural language into JSON.
+        Extract tool arguments from user input using robust LLM JSON parsing
+        with keyword/pattern matching as a fallback fast-path.
         """
         text = user_input.strip()
         lower = text.lower()
 
-        # Generic patterns for common tools
+        # ── Office tools: require structured args (columns, data) ─────────
+        if tool_name == "create_excel_spreadsheet":
+            return await self._extract_excel_args(text)
+        if tool_name == "create_word_document":
+            return await self._extract_word_args(text)
+
+        # ── Universal LLM Extraction for robust natural language parsing ──
+        tool = self.tool_registry.get(tool_name)
+        if tool and getattr(tool, "parameters", None) and hasattr(self, "llm_router") and self.llm_router:
+            # Use LLM for sentences with diverse adjectives/phrasing
+            if len(text.split()) > 2:
+                llm_extracted = await self._extract_args_with_llm(tool_name, text, tool.parameters)
+                if llm_extracted and isinstance(llm_extracted, dict):
+                    valid_keys = list(tool.parameters.keys())
+                    clean_extracted = {k: str(v).strip() for k, v in llm_extracted.items() if k in valid_keys and str(v).strip()}
+                    if clean_extracted:
+                        return clean_extracted
+
+        # ── Fast-path Fallbacks (Regexes) ──
         if tool_name == "open_program":
-            # "open VLC", "launch Chrome", "start Discord"
             for kw in ["open ", "launch ", "start ", "run "]:
                 if kw in lower:
                     app = text[lower.index(kw) + len(kw) :].strip()
@@ -691,9 +678,10 @@ Guidelines:
             return {"process_name": text}
 
         if tool_name == "search_file":
-            for kw in ["find ", "locate ", "where is ", "search for "]:
-                if kw in lower:
-                    return {"file_name": text[lower.index(kw) + len(kw) :].strip()}
+            lower_text = lower.replace("a pdf named ", "").replace("a file named ", "")
+            for kw in ["find ", "locate ", "where is ", "search for ", "search "]:
+                if kw in lower_text:
+                    return {"file_name": text.lower().replace("a pdf named ", "").replace("a file named ", "")[lower_text.index(kw) + len(kw) :].strip()}
             return {"file_name": text}
 
         if tool_name in ("web_search", "wikipedia_search"):
@@ -726,6 +714,14 @@ Guidelines:
             return {"query": q if q else text}
 
         if tool_name == "get_weather":
+            import re
+            match = re.search(r"weather(?:\s+forecast)?\s+(?:today\s+)?(?:in|at|for)\s+([a-zA-Z\s]+)", lower)
+            if match:
+                return {"location": match.group(1).strip()}
+            # Also handle simple "london weather" or "weather london"
+            text_cleaned = list(filter(lambda x: x not in ["how", "what", "is", "the", "weather", "today", "like", "in"], lower.split()))
+            if text_cleaned:
+                return {"location": " ".join(text_cleaned)}
             return {"location": "current location"}
 
         if tool_name == "get_news":
@@ -763,17 +759,38 @@ Guidelines:
         if tool_name == "convert_length":
             return {"expression": text}
 
-        # ── Office tools: require structured args (columns, data) ─────────
-        # These need an LLM to parse the natural-language request into
-        # structured JSON. We call llm_router inline with a tight prompt.
-        if tool_name == "create_excel_spreadsheet":
-            return await self._extract_excel_args(text)
-
-        if tool_name == "create_word_document":
-            return await self._extract_word_args(text)
-
         # Default: pass full user input as a generic query param
         return {"query": text}
+
+    async def _extract_args_with_llm(self, tool_name: str, user_input: str, schema: dict) -> dict | None:
+        """Use LLM to dynamically parse natural-language requests into parameters based on schema."""
+        extraction_prompt = (
+            f"You are a strict JSON extraction assistant. The user wants to execute the '{tool_name}' tool.\n"
+            f"Here is the parameter schema for this tool:\n{schema}\n\n"
+            "Extract the parameter values precisely from the user's request based on this schema.\n"
+            "Strip out all conversational noise, adjectives, and polite phrases.\n"
+            "Return ONLY a valid JSON object. No markdown fences, no explanations.\n"
+            "If a parameter cannot be logically extracted from the text, omit it or use an empty string.\n\n"
+            f'User request: "{user_input}"'
+        )
+        try:
+            raw_text, provider = await self.llm_router.generate(
+                prompt=extraction_prompt, complexity="low"
+            )
+            logger.debug(f"LLM args extracted by {provider} for {tool_name}")
+            import json
+
+            clean = raw_text.strip()
+            if clean.startswith("```"):
+                clean = clean.split("\n", 1)[1] if "\n" in clean else clean[3:]
+            if clean.endswith("```"):
+                clean = clean[:-3]
+            clean = clean.strip()
+            parsed = json.loads(clean)
+            return parsed
+        except Exception as e:
+            logger.warning("LLM generalized arg extraction failed for '%s': %s", tool_name, e)
+            return None
 
     async def _extract_excel_args(self, user_input: str) -> dict:
         """Use LLM to parse a natural-language Excel request into structured args."""

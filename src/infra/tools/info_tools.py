@@ -340,9 +340,10 @@ async def _wikipedia_search_fallback(query: str, session: aiohttp.ClientSession)
         "srlimit": 1,
     }
 
+    headers = {"User-Agent": "AmadeusAI/2.0 (https://github.com/adityatawde9699/Amadeus-AI)"}
     try:
         async with session.get(
-            search_api, params=params, timeout=aiohttp.ClientTimeout(total=10)
+            search_api, params=params, headers=headers, timeout=aiohttp.ClientTimeout(total=10)
         ) as response:
             data = await response.json()
             results = data.get("query", {}).get("search", [])

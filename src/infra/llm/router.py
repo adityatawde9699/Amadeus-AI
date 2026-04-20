@@ -38,140 +38,6 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# COMPLEXITY SCORER
-# =============================================================================
-
-
-class ComplexityScorer:
-    """
-    Pure heuristic scorer that estimates how complex a prompt is so the
-    LLMRouter can decide whether to use the local model or escalate to cloud.
-
-    Scoring rubric (additive):
-      +3  Very long prompt  (>300 whitespace-split tokens)
-      +3  Multi-step indicator ("and then", "step by step", "after that", ...)
-      +2  Code / programming keywords
-      +2  Creative writing request
-      +2  Math / formal reasoning / proof request
-      +2  Long summarisation task and/or very long input (>500 chars)
-      +1  Abstract / philosophical question
-      +1  Multiple questions in one input (≥2 question marks)
-
-    Thresholds:
-      0-1  → "simple"  — local model is perfectly capable
-      2-3  → "normal"  — local first, cloud fallback on failure
-      4+   → "high"    — skip local, go straight to Groq/Gemini
-    """
-
-    # ── keyword sets ──────────────────────────────────────────────────────────
-    _MULTI_STEP = re.compile(
-        r"\band then\b|\bafter that\b|\bstep by step\b|\bfirst.*then\b"
-        r"|\bsequentially\b|\bone by one\b|\bfinally\b.*\bfirst\b",
-        re.IGNORECASE,
-    )
-    # Code: (action verb) ... (code noun) OR bare language name OR literals
-    # re.DOTALL so multi-line prompts still match.
-    _CODE = re.compile(
-        r"\b(write|create|generate|implement|build|debug|fix|refactor|optimize)\b"
-        r".*?\b(code|script|function|class|program|algorithm|snippet|api|endpoint|module)\b"
-        r"|\b(python|javascript|typescript|java|c\+\+|rust|sql|bash|powershell)\b"
-        r"|\bdebug\s+this\b"
-        r"|```|\bdef \b|\bclass \b|\bimport \b|#include",
-        re.IGNORECASE | re.DOTALL,
-    )
-    _CREATIVE = re.compile(
-        r"\b(write|compose|create|generate|draft)\b.*?"
-        r"\b(story|poem|essay|blog|article|letter|song|lyric|script|novel)\b",
-        re.IGNORECASE | re.DOTALL,
-    )
-    # Math: proof keywords OR comparison OR numerical reasoning
-    _MATH = re.compile(
-        r"\b(prove\s+that|proof\s+that|prove|proof|derive|calculate|compute"
-        r"|solve|integrate|differentiate|is\s+irrational|is\s+rational"
-        r"|eigenvalue|matrix|probability|statistics|theorem|lemma|corollary"
-        r"|formal\s+proof)\b"
-        r"|\bcompare\b.*?\bvs\.?\b",
-        re.IGNORECASE | re.DOTALL,
-    )
-    _SUMMARISE = re.compile(
-        r"\b(summarize|summarise|tldr|key points|main points|overview|abstract"
-        r"|brief.*?from|condense|distil)\b",
-        re.IGNORECASE,
-    )
-    # Abstract: philosophical / ethics / policy / implications
-    _ABSTRACT = re.compile(
-        r"\b(why does|meaning of|explain.*?concept|philosophy|ethics|moral"
-        r"|implications of|implication of|impact of.*?on|effect of.*?on"
-        r"|theory of|nature of|geopolitical|policy implications"
-        r"|food security|climate change.*?(impact|effect|implications))\b",
-        re.IGNORECASE | re.DOTALL,
-    )
-
-    def score(self, prompt: str) -> tuple[str, int]:
-        """
-        Score a prompt and return (level, raw_score).
-
-        Args:
-            prompt: The full prompt string sent to the LLM.
-
-        Returns:
-            Tuple of (level, score) where level is 'simple', 'normal', or 'high'.
-        """
-        s = 0
-        tokens = prompt.split()
-
-        # +3: Very long prompt — likely has rich context that needs a big model
-        if len(tokens) > 300:
-            s += 3
-        # +3: Multi-step instruction — requires sequential reasoning
-        if self._MULTI_STEP.search(prompt):
-            s += 3
-        # +4: Code / programming task — small models hallucinate APIs & syntax
-        if self._CODE.search(prompt):
-            s += 4
-        # +4: Creative writing — small models lack stylistic depth
-        if self._CREATIVE.search(prompt):
-            s += 4
-        # +4: Math / formal reasoning — small models make arithmetic/logic errors
-        if self._MATH.search(prompt):
-            s += 4
-        # +2: Summarisation or long input — needs solid comprehension
-        if self._SUMMARISE.search(prompt) or len(prompt) > 500:
-            s += 4
-        # +4: Abstract / ethical / policy topic — nuance requires a large model
-        if self._ABSTRACT.search(prompt):
-            s += 4
-        # +1: Multiple questions — mild indicator of complexity
-        if prompt.count("?") >= 2:
-            s += 1
-
-        if s <= 1:
-            level = "simple"
-        elif s <= 3:  # normal: 2-3
-            level = "normal"
-        else:  # high: 4+  (any code/creative/math hit lands here)
-            level = "high"
-
-        logger.debug(
-            "ComplexityScorer: score=%d level=%r prompt_tokens=%d",
-            s,
-            level,
-            len(tokens),
-        )
-        return level, s
-
-    @staticmethod
-    def merge(auto_level: str, caller_level: str) -> str:
-        """
-        Return the higher of auto_level and caller_level.
-        Order: simple < normal < high.
-        """
-        _rank = {"simple": 0, "normal": 1, "high": 2}
-        if _rank.get(auto_level, 0) >= _rank.get(caller_level, 1):
-            return auto_level
-        return caller_level
-
-
 # =============================================================================
 # REDIS COUNTER BACKEND
 # =============================================================================
@@ -325,9 +191,6 @@ class LLMRouter:
             self._usage.clear()
             self._usage_date = today
 
-    # Shared scorer instance (stateless, safe to reuse)
-    _scorer: ClassVar[ComplexityScorer] = ComplexityScorer()
-
     # Approximate chars-per-token for context-ceiling guard
     _CHARS_PER_TOKEN: ClassVar[float] = 4.0
 
@@ -339,7 +202,7 @@ class LLMRouter:
         self,
         prompt: str,
         context: object = None,
-        complexity: str = "auto",
+        complexity: str = "normal",
         temperature: float = 0.7,
         max_tokens: int | None = None,
     ) -> tuple[str, str]:
@@ -366,26 +229,10 @@ class LLMRouter:
         self._reset_if_new_day()
 
         # ── Complexity resolution ────────────────────────────────────────────
-        if complexity == "auto":
-            auto_level, auto_score = self._scorer.score(prompt)
-            effective_complexity = auto_level
-            logger.info(
-                "LLMRouter auto-complexity: score=%d level=%r",
-                auto_score,
-                effective_complexity,
-            )
-        else:
-            # Caller supplied explicit level — still run scorer so we can
-            # *upgrade* (never downgrade) based on what we detect in the prompt.
-            auto_level, auto_score = self._scorer.score(prompt)
-            effective_complexity = ComplexityScorer.merge(auto_level, complexity)
-            if effective_complexity != complexity:
-                logger.info(
-                    "LLMRouter upgraded complexity %r → %r (auto_score=%d)",
-                    complexity,
-                    effective_complexity,
-                    auto_score,
-                )
+        # ── Complexity resolution ────────────────────────────────────────────
+        # Complexity is now explicitly managed by the caller based on triage.
+        effective_complexity = complexity
+        logger.info("LLMRouter: effective_complexity=%r", effective_complexity)
 
         # ── Build provider priority list ─────────────────────────────────────
         if effective_complexity == "high" and not self._local_only_mode:

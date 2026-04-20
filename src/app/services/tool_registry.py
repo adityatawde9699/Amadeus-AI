@@ -273,3 +273,20 @@ class ToolRegistry:
             "total": len(self._tools),
             "categories": categories,
         }
+
+    def get_tools_menu(self) -> str:
+        """
+        Generate a concise text summary of all tools for the LLM router.
+        Format: "- tool_name: description"
+        """
+        lines = []
+        # Sort tools by name for consistent prompts
+        sorted_tools = sorted(self._tools.values(), key=lambda t: t.name)
+        for tool in sorted_tools:
+            # Cleaning description to fit on one line
+            desc = tool.description.split("\n")[0].strip()
+            if not desc.endswith("."):
+                desc += "."
+            lines.append(f"- {tool.name}: {desc}")
+
+        return "\n".join(lines)

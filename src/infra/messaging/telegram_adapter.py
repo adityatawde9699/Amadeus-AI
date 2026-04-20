@@ -42,6 +42,57 @@ class TelegramMessage:
     from_username: str | None = None
 
 
+from src.infra.tools.confirmation import ConfirmationCallback
+import asyncio
+
+# ---------------------------------------------------------------------------
+# Confirmation Callback
+# ---------------------------------------------------------------------------
+
+class TelegramConfirmationCallback(ConfirmationCallback):
+    """Hits the user up on Telegram for confirmation using inline buttons."""
+
+    def __init__(self, adapter: "TelegramAdapter", chat_id: int):
+        self.adapter = adapter
+        self.chat_id = chat_id
+
+    async def request_approval(
+        self,
+        tool_name: str,
+        args: dict[str, Any],
+        request_id: str,
+        preview: str = "",
+    ) -> bool:
+        loop = asyncio.get_running_loop()
+        future = loop.create_future()
+        self.adapter._pending_confirmations[request_id] = future
+
+        text = (
+            f"⚠️ *Confirmation Required*\n\n"
+            f"Tool: `{tool_name}`\n"
+            f"Preview: {preview}\n"
+            f"Args: `{args}`"
+        )
+        buttons = [
+            [
+                {"text": "✅ Approve", "callback_data": f"confirm_yes:{request_id}"},
+                {"text": "❌ Deny", "callback_data": f"confirm_no:{request_id}"},
+            ]
+        ]
+        
+        success = await self.adapter.send_buttons(self.chat_id, text, buttons)
+        if not success:
+            self.adapter._pending_confirmations.pop(request_id, None)
+            return False
+
+        try:
+            return await asyncio.wait_for(future, timeout=60)
+        except asyncio.TimeoutError:
+            return False
+        finally:
+            self.adapter._pending_confirmations.pop(request_id, None)
+
+
 # ---------------------------------------------------------------------------
 # Adapter
 # ---------------------------------------------------------------------------
@@ -66,6 +117,7 @@ class TelegramAdapter:
         self._token = bot_token or settings.TELEGRAM_BOT_TOKEN
         self._application: Any = None
         self._bot: Any = None
+        self._pending_confirmations: dict[str, asyncio.Future[bool]] = {}
 
         if not self._token:
             logger.warning("TELEGRAM_BOT_TOKEN is not configured — Telegram adapter disabled")
@@ -79,6 +131,7 @@ class TelegramAdapter:
             from telegram.ext import (
                 ApplicationBuilder,
                 MessageHandler,
+                CallbackQueryHandler,
                 filters,
             )
 
@@ -90,6 +143,10 @@ class TelegramAdapter:
             # Register the main message handler
             self._application.add_handler(
                 MessageHandler(filters.TEXT & (~filters.COMMAND), self._handle_message)
+            )
+            # Register callback query handler for inline button confirmations
+            self._application.add_handler(
+                CallbackQueryHandler(self._handle_callback_query)
             )
 
             logger.info("python-telegram-bot Application instance created for long polling")
@@ -155,12 +212,21 @@ class TelegramAdapter:
         text = msg.text
 
         logger.info(f"Received telegram message from chat_id={chat_id}")
+        
+        import asyncio
+        asyncio.create_task(self._process_and_reply_background(chat_id, text))
 
+    async def _process_and_reply_background(self, chat_id: int, text: str) -> None:
+        """Runs the AmadeusService inside a background task to unblock the Telegram event loop."""
         try:
             from src.app.services.amadeus_service import AmadeusService
 
             # Instantiate AmadeusService isolated to this user session (chat_id)
             service = AmadeusService(session_id=str(chat_id), auto_start_orchestrator=False)
+            
+            # Inject Telegram-specific confirmation handler
+            service.tool_executor.confirmation_callback = TelegramConfirmationCallback(self, chat_id)
+            
             await service.initialize()
 
             # Handle command
@@ -174,6 +240,27 @@ class TelegramAdapter:
             await self.send_message(
                 chat_id, "⚠️ Sorry, something went wrong processing your request."
             )
+
+    async def _handle_callback_query(self, update: Any, context: Any) -> None:
+        """Handle inline button clicks for confirmations."""
+        query = update.callback_query
+        await query.answer()
+
+        data = query.data
+        if data and (data.startswith("confirm_yes:") or data.startswith("confirm_no:")):
+            approved = data.startswith("confirm_yes:")
+            request_id = data.split(":", 1)[1]
+            
+            future = self._pending_confirmations.get(request_id)
+            if future and not future.done():
+                future.set_result(approved)
+                status = "✅ Approved" if approved else "❌ Denied"
+                try:
+                    # Edit the message to replace buttons with the resulting status
+                    old_text = query.message.text if query.message else "Confirmation Required"
+                    await query.edit_message_text(f"{old_text}\n\n*Status*: {status}", parse_mode="Markdown")
+                except Exception as e:
+                    logger.debug(f"Failed to edit message text: {e}")
 
     async def start_polling(self) -> bool:
         """
