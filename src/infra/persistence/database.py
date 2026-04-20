@@ -83,7 +83,6 @@ def get_engine() -> AsyncEngine:
             async_db_url,
             echo=settings.DB_ECHO,
             future=True,
-            poolclass=QueuePool,
             pool_size=settings.DB_POOL_SIZE,
             max_overflow=settings.DB_MAX_OVERFLOW,
             pool_timeout=settings.DB_POOL_TIMEOUT,
