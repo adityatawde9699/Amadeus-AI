@@ -211,15 +211,42 @@ class ReActAgent:
                     continue
 
                 try:
-                    result = await self.tool_executor.execute(
-                        tool,
-                        action_input,
-                        permission_profile=self.permission_profile,
+                    # Per-tool timeout — mirrors amadeus_service fail-safe.
+                    # Sandbox can take up to 5 min; I/O tools 30s; others 15s.
+                    _REACT_TOOL_TIMEOUTS = {
+                        "execute_python_script": 300,
+                        "web_search": 30,
+                        "get_weather": 20,
+                        "get_news": 20,
+                        "wikipedia_search": 20,
+                        "send_email": 30,
+                        "read_unread_emails": 30,
+                        "create_excel_spreadsheet": 60,
+                        "create_word_document": 60,
+                        "take_screenshot": 15,
+                        "set_volume": 10,
+                        "set_brightness": 10,
+                    }
+                    _timeout = _REACT_TOOL_TIMEOUTS.get(action, 15)
+
+                    result = await asyncio.wait_for(
+                        self.tool_executor.execute(
+                            tool,
+                            action_input,
+                            permission_profile=self.permission_profile,
+                        ),
+                        timeout=_timeout,
                     )
                     self.current_observation = (
                         str(result.result) if result.success else f"Error: {result.error_message}"
                     )
                     self.tools_used.append(action)
+                except asyncio.TimeoutError:
+                    self.current_observation = (
+                        f"Tool '{action}' timed out after {_timeout}s. "
+                        "Try a simpler variant or check network/system resources."
+                    )
+                    logger.warning("ReAct ACT: tool '%s' timed out after %ds", action, _timeout)
                 except Exception as e:
                     self.current_observation = f"Error executing {action}: {e}"
                     logger.exception(f"Tool execution error: {e}")
@@ -348,7 +375,7 @@ class ReActAgent:
                 if memories:
                     formatted = self.memory_service.format_for_prompt(memories)  # type: ignore[attr-defined]
                     if formatted:
-                        memory_block = f"Past Context (Semantic):\n{formatted}\n\n"
+                        memory_block = f"\n[RETRIEVED MEMORIES]\n{formatted}\n"
             except Exception as mem_err:
                 logger.debug("Memory retrieval skipped: %s", mem_err)
 
@@ -382,29 +409,36 @@ class ReActAgent:
 
                 if facts:
                     graph_block = (
-                        "Known Facts (Relationships):\\n- "
-                        + "\\n- ".join(list(set(facts))[:10])
-                        + "\\n\\n"
+                        "\n[RELEVANT KG FACTS]\n- "
+                        + "\n- ".join(list(set(facts))[:10])
+                        + "\n"
                     )
             except Exception as graph_err:
                 logger.debug("Graph fact retrieval skipped: %s", graph_err)
 
-        prompt = f"""You are an AI assistant executing a multi-step task.
+        prompt = f"""You are Amadeus — an advanced autonomous AI agent.
+
+You operate in an agentic mode (OpenClaw-style): you can read/write files, control OS processes,
+manage system settings (volume, brightness), browse the web, execute code, and chain multiple
+tools to complete complex goals. ALWAYS prefer using a tool over guessing.
 
 {memory_block}{graph_block}Task: {task}
 {f"Context: {context}" if context else ""}
 
 Available Tools:
-{chr(10).join(tool_descriptions[:15])}
+{chr(10).join(tool_descriptions[:20])}
 - FINISH: Use when task is complete. Input: {{"answer": "your final response"}}
 
-IMPORTANT: When asked to perform data analysis, math, or logic processing, do not attempt to calculate it yourself. Write a Python script, execute it using the execute_python_script tool, observe the output, and report the final result.
+Key rules:
+- Use tools instead of fabricating results.
+- For math, data analysis, or code — write Python and use execute_python_script.
+- Chain tools if the task requires multiple steps.
+- If a tool fails, try an alternative or explain why clearly.
 
 Previous Steps:
 {scratchpad if scratchpad else "(none yet)"}
 
-Based on the task and what you've already done, decide the next action.
-Respond in this exact format:
+Decide the next action. Respond in this EXACT format:
 Thought: [your reasoning]
 Action: [tool_name or FINISH]
 Action Input: {{"param": "value"}}
@@ -643,13 +677,26 @@ class AgentOrchestrator:
             except Exception as e:
                 logger.exception(f"SVM routing failed: {e}")
 
-        # Fallback Keywords
+        # Fallback Keywords — expanded to match new system control tools
         lower_task = task.lower()
         if any(
-            w in lower_task for w in ["open", "close", "system", "volume", "brightness", "battery"]
+            w in lower_task
+            for w in [
+                "open", "close", "system", "volume", "brightness",
+                "battery", "mute", "screenshot", "screen", "running",
+                "process", "terminate", "kill", "launch", "start",
+                "apps", "programs", "windows",
+            ]
         ):
             return "system"
-        if any(w in lower_task for w in ["search", "weather", "news", "summarize", "find"]):
+        if any(
+            w in lower_task
+            for w in [
+                "search", "weather", "news", "summarize", "find",
+                "wikipedia", "web", "google", "look up", "article",
+                "headlines", "temperature", "forecast",
+            ]
+        ):
             return "research"
 
         return "general"

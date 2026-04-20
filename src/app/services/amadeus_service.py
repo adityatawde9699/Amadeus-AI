@@ -44,6 +44,7 @@ from src.app.services.tool_registry import ToolRegistry
 from src.core.config import Settings, get_settings
 from src.core.domain.models import PermissionProfile
 from src.infra.memory_service import QdrantMemoryService
+from src.infra.knowledge_graph import KnowledgeGraphService
 from src.infra.messaging.telegram_adapter import TelegramAdapter
 from src.infra.messaging.whatsapp_adapter import WhatsAppAdapter
 from src.infra.tools.base import ToolExecutor
@@ -242,17 +243,21 @@ class AmadeusService:
 
         # Long-term semantic memory (Qdrant + Gemini embeddings)
         self.memory_service = QdrantMemoryService(settings=self.settings)
+        
+        # Knowledge Graph (Tier 2 episodic memory)
+        self.kg_service = KnowledgeGraphService()
+
         if self.memory_service.is_enabled:
-            logger.info(
-                "Long-term memory ENABLED — ChromaDB ready (%d stored memories)",
-                self.memory_service.memory_count,
-            )
+            logger.info("Tiered memory system ENABLED — Qdrant + KG ready")
         else:
             logger.info("Long-term memory DISABLED — operating with session-only context")
 
         # Initialize components
         self._load_api_keys()
         self._register_all_tools()
+
+        # Load TF-IDF + LinearSVC classifier
+        self._setup_tfidf_classifier()
 
         # Build identity prompt
         self.identity_prompt = self._build_identity_prompt()
@@ -319,11 +324,14 @@ class AmadeusService:
             from src.infra.tools.info_tools import get_info_tools
             from src.infra.tools.monitor_tools import get_monitor_tools
             from src.infra.tools.productivity_tools import get_productivity_tools
+            from src.infra.tools.system_control_tools import get_system_control_tools
             from src.infra.tools.system_tools import get_system_tools
 
             for tool in get_info_tools():
                 self.tool_registry.register(tool)
             for tool in get_system_tools():
+                self.tool_registry.register(tool)
+            for tool in get_system_control_tools():
                 self.tool_registry.register(tool)
             for tool in get_monitor_tools():
                 self.tool_registry.register(tool)
@@ -348,56 +356,234 @@ class AmadeusService:
             logger.exception(f"Error registering tools: {e}")
 
     def _build_identity_prompt(self) -> str:
-        """Build the identity prompt for the AI."""
-        return f"""You are {self.settings.ASSISTANT_NAME}, an intelligent AI assistant.
+        """Build the operational system prompt for Amadeus.
 
-Personality: {self.settings.ASSISTANT_PERSONALITY}
-Current time: {{current_time}}
-Current Session ID: {{session_id}}
-Conversation context: {{context_summary}}
+        Identity (who Amadeus is, its memories, creator) is stored in the
+        Qdrant/KG memory layer and injected dynamically via _get_system_prompt.
+        This base prompt focuses purely on OPERATIONAL RULES and AGENTIC BEHAVIOR.
+        """
+        return """SYSTEM: AMADEUS — OPERATIONAL DIRECTIVES
 
-Guidelines:
-- Be concise, natural, and contextually aware
-- Don't introduce yourself unless asked
-- When using tools, explain what you're doing briefly
-- If a task fails, suggest alternatives
-- Adapt tone based on task urgency
-- Use the schedule_future_task tool to remind yourself to follow up proactively
-- When asked to perform data analysis, math, or logic processing, do not attempt to calculate it yourself. Write a Python script, execute it using the execute_python_script tool, observe the output, and report the final result."""
+You are Amadeus, an advanced autonomous AI assistant.
 
-    def _get_system_prompt(self) -> str:
-        """Return the current identity prompt (pre-formatted for the current moment)."""
-        return self.identity_prompt.format(
-            current_time=datetime.now().strftime("%I:%M %p on %A, %B %d"),
+--------------------------------------------------
+
+AGENTIC CAPABILITIES (OpenClaw-style autonomous operations)
+
+You are NOT a passive chatbot. You are an active agentic system that:
+- Reads and writes files on the local filesystem
+- Launches, monitors, and terminates OS processes
+- Manages email, calendars, and communication platforms
+- Sets system controls (volume, brightness, screenshots)
+- Searches the web, Wikipedia, and local data
+- Executes Python code in a secure sandbox
+- Chains multiple tools sequentially to complete complex goals
+
+When a user makes a request, ALWAYS:
+1. Identify whether a tool can fulfill it — tools take priority over conversation.
+2. Extract arguments precisely from the user's natural language.
+3. Use tools; do NOT hallucinate results.
+4. Compose a clear, concise response around the tool output.
+
+--------------------------------------------------
+
+RULES OF ENGAGEMENT
+
+1. TOOLS BEFORE CONJECTURE
+   - If you can fetch data via a tool, do it — never guess or fabricate.
+
+2. PRECISION
+   - Be direct and concise. No unnecessary preambles.
+   - Do not repeat what the tool returned verbatim — synthesize it.
+
+3. HONESTY
+   - If a request is impossible or the tool failed, say so clearly.
+   - Never pretend a failed tool succeeded.
+
+4. CONTEXT ADAPTATION
+   - Technical request → structured and precise.
+   - Casual conversation → slightly relaxed, but always sharp.
+
+5. MEMORY-DRIVEN
+   - Relevant retrieved memories (injected below) inform your responses.
+   - Do NOT fabricate memories that weren't retrieved.
+
+6. FAIL-SAFE
+   - If a user request conflicts with facts, logic, or system constraints:
+     challenge it and provide a correct alternative.
+
+--------------------------------------------------
+
+RESPONSE FORMAT
+
+- 1–3 sentences for simple answers.
+- Structured output (lists, steps) for complex tasks.
+- No emojis unless contextually appropriate.
+- No generic filler phrases ("Of course!", "Great question!").
+
+--------------------------------------------------
+
+Current time: {current_time}
+Session ID: {session_id}
+Context: {context_summary}"""
+
+    async def _get_system_prompt(self, user_query: str = "") -> str:
+        """
+        Return the tiered system prompt incorporating Identity, KG facts, and Semantic Memory.
+        """
+        current_time = datetime.now().strftime("%I:%M %p on %A, %B %d")
+        context_summary = self.conversation_manager.get_context_summary()
+
+        # Tier 1: Core Identity (Base Prompt)
+        base_prompt = self.identity_prompt.format(
+            current_time=current_time,
             session_id=self.session_id,
-            context_summary=self.conversation_manager.get_context_summary(),
+            context_summary=context_summary,
         )
+
+        kg_facts = ""
+        memories_context = ""
+
+        if user_query and self.memory_service.is_enabled:
+            # Tier 2: Knowledge Graph facts (Exact recall)
+            facts = await self.kg_service.retrieve_triples(user_query, limit=2)
+            if facts:
+                kg_facts = "\n[RELEVANT KG FACTS]\n" + "\n".join(f"- {f}" for f in facts)
+
+            # Tier 3: Semantic Memories (Weighted ranking)
+            memories = await self.memory_service.retrieve(user_query, top_k=3)
+            if memories:
+                # Use the new formatted retrieval
+                memories_context = "\n[RETRIEVED MEMORIES]\n" + self.memory_service.format_for_prompt(memories)
+
+        prompt_parts = [base_prompt]
+        if kg_facts:
+            prompt_parts.append(kg_facts)
+        if memories_context:
+            prompt_parts.append(memories_context)
+            
+        return "\n".join(prompt_parts) + "\n\n[USER MESSAGE]\n"
 
     # =========================================================================
     # TRIAGE & ROUTING
     # =========================================================================
 
+    # -------------------------------------------------------------------------
+    # TF-IDF + LinearSVC TOOL SELECTOR  (primary intent predictor)
+    # -------------------------------------------------------------------------
+
+    def _setup_tfidf_classifier(self) -> None:
+        """Load the TF-IDF + LinearSVC classifier for fast local intent routing."""
+        import joblib
+
+        model_dir = self.settings.BASE_DIR / "Model"
+        vec_path = model_dir / "tfidf_vectorizer.joblib"
+        clf_path = model_dir / "svm_classifier.joblib"
+        # Also accept the router naming scheme
+        if not vec_path.exists():
+            vec_path = model_dir / "router_vectorizer.joblib"
+        if not clf_path.exists():
+            clf_path = model_dir / "router_classifier.joblib"
+
+        try:
+            if vec_path.exists() and clf_path.exists():
+                self._tfidf_vec = joblib.load(str(vec_path))
+                self._svm_clf = joblib.load(str(clf_path))
+                logger.info(
+                    "TF-IDF + LinearSVC tool selector loaded (%d classes).",
+                    len(self._svm_clf.classes_),
+                )
+            else:
+                self._tfidf_vec = None
+                self._svm_clf = None
+                logger.warning(
+                    "TF-IDF model files not found in %s — SVM routing disabled.", model_dir
+                )
+        except Exception as e:
+            self._tfidf_vec = None
+            self._svm_clf = None
+            logger.error("Failed to load TF-IDF classifier: %s", e)
+
+    def _predict_intent_svm(self, query: str) -> tuple[str, str | None]:
+        """
+        Fast-path TF-IDF + LinearSVC intent prediction.
+
+        Returns one of:
+          ('tool', tool_name)   — a known tool was matched
+          ('conversational', None) — predicted as conversational / no tool
+        """
+        if self._tfidf_vec is None or self._svm_clf is None:
+            return "unknown", None
+
+        try:
+            import numpy as np
+
+            x = self._tfidf_vec.transform([query])
+            # decision_function gives confidence scores per class
+            scores = self._svm_clf.decision_function(x)[0]
+            classes = self._svm_clf.classes_
+            best_idx = int(np.argmax(scores))
+            best_class = classes[best_idx]
+            best_score = float(scores[best_idx])
+
+            # Confidence threshold — below this we distrust the SVM
+            CONFIDENCE_THRESHOLD = 0.15
+
+            if best_score < CONFIDENCE_THRESHOLD:
+                logger.debug(
+                    "SVM low-confidence (%.3f) for query — falling back.", best_score
+                )
+                return "unknown", None
+
+            if best_class == "conversational":
+                return "conversational", None
+
+            # Validate the predicted class is an actually registered tool
+            if best_class in self.tool_registry:
+                logger.info(
+                    "SVM routed '%s...' → [%s] (score=%.3f)",
+                    query[:30],
+                    best_class,
+                    best_score,
+                )
+                return "tool", best_class
+
+            # Class not in registry → treat as unknown
+            return "unknown", None
+
+        except Exception as e:
+            logger.error("SVM prediction error: %s", e)
+            return "unknown", None
+
     async def _predict_intent_llm(self, query: str) -> tuple[str, str | None]:
         """
-        Triage user intent using local LLM (LlamaCpp).
+        Two-stage intent triaging:
+
+        Stage 1 — TF-IDF + LinearSVC (fast, local, zero API cost).
+        Stage 2 — Local LLM (LlamaCpp) fallback when SVM is uncertain.
+
         Decides: tool (and which one), conversational, or cloud_escalation.
         """
+        # --- Stage 1: TF-IDF + LinearSVC ---
+        svm_intent, svm_tool = self._predict_intent_svm(query)
+        if svm_intent != "unknown":
+            return svm_intent, svm_tool
+
+        # --- Stage 2: LLM fallback ---
         if not self.llm_router:
             return "conversational", None
 
         tools_menu = self.tool_registry.get_tools_menu()
-        
-        # Construct triage prompt
         triage_prompt = f"""### Instructions
-You are the semantic router for Amadeus AI. Your job is to classify the user's request.
+You are the semantic router for Amadeus AI. Classify the user's request.
 
 ### Available Tools
 {tools_menu}
 
 ### Decision Rules
-1. If the request matches a tool description, output: ACTION: [tool_name]
-2. If it is a greeting, simple question, or general chat, output: ACTION: conversational
-3. If it is highly complex (advanced coding, math, philosophy, policy), output: ACTION: cloud_escalation
+1. If the request matches a tool, output EXACTLY: ACTION: <tool_name>
+2. Greeting / small-talk / general chat → ACTION: conversational
+3. Highly complex (advanced code, math, philosophy) → ACTION: cloud_escalation
 
 ### User Input
 {query}
@@ -406,31 +592,28 @@ You are the semantic router for Amadeus AI. Your job is to classify the user's r
 """
 
         try:
-            # We force 'simple' to ensure the local llama-cpp is the one deciding
-            # which keeps routing free, private, and local.
-            response, provider = await self.llm_router.generate(
+            response, _provider = await self.llm_router.generate(
                 prompt=triage_prompt,
                 complexity="simple",
-                temperature=0.0, # Deterministic for routing
+                temperature=0.0,
                 max_tokens=20,
             )
-            
+
             clean_res = response.strip().upper()
             if "ACTION: CLOUD_ESCALATION" in clean_res:
                 return "cloud_escalation", None
             if "ACTION: CONVERSATIONAL" in clean_res:
                 return "conversational", None
-            
-            # Check for tool name
+
+            # Check for a matching tool name in the response
             for t_name in self.tool_registry.list_names():
                 if t_name.upper() in clean_res:
                     return "tool", t_name
-            
-            # Fallback
+
             return "conversational", None
 
         except Exception as e:
-            logger.error(f"Semantic triage failed: {e}")
+            logger.error("LLM semantic triage failed: %s", e)
             return "conversational", None
 
 
@@ -465,7 +648,10 @@ You are the semantic router for Amadeus AI. Your job is to classify the user's r
             await self.conversation_manager.add("user", user_input)
 
             # Store user message in long-term semantic memory
-            await self.memory_service.store(self.session_id, "user", user_input)
+            # Subtype 'interaction' with standard importance
+            await self.memory_service.store(
+                self.session_id, "user", user_input, subtype="interaction", importance=0.5
+            )
 
             # Check if this is a multi-step query that needs the agent
             if self._is_multi_step_query(user_input):
@@ -484,7 +670,9 @@ You are the semantic router for Amadeus AI. Your job is to classify the user's r
             await self.conversation_manager.add("assistant", response, tool_used=tool_used)
 
             # Store assistant response in long-term semantic memory
-            await self.memory_service.store(self.session_id, "assistant", response)
+            await self.memory_service.store(
+                self.session_id, "assistant", response, subtype="interaction", importance=0.4
+            )
 
             return response
 
@@ -607,24 +795,53 @@ You are the semantic router for Amadeus AI. Your job is to classify the user's r
         tool = self.tool_registry.get(actual_tool_name)
 
         if tool:
-            # Extract args from user input using simple keyword parsing
-            args = await self._extract_args_for_tool(tool_name, user_input)
-            result = await self.tool_executor.execute(
-                tool, args, permission_profile=permission_profile
-            )
+            # Extract args from user input using keyword parsing / LLM
+            args = await self._extract_args_for_tool(actual_tool_name, user_input)
+
+            # ── Per-tool-category timeout fail-safes ─────────────────────────
+            # sandbox / developer tools can legitimately run longer (code exec);
+            # I/O-bound tools (web, email) get a generous but finite window;
+            # local OS / monitor tools should always be fast.
+            TOOL_TIMEOUTS = {
+                "execute_python_script": 300,  # sandbox
+                "web_search": 30,
+                "get_weather": 20,
+                "get_news": 20,
+                "wikipedia_search": 20,
+                "send_email": 30,
+                "read_unread_emails": 30,
+                "create_excel_spreadsheet": 60,
+                "create_word_document": 60,
+            }
+            timeout_s = TOOL_TIMEOUTS.get(actual_tool_name, 15)  # default 15 s
+
+            try:
+                result = await asyncio.wait_for(
+                    self.tool_executor.execute(
+                        tool, args, permission_profile=permission_profile
+                    ),
+                    timeout=timeout_s,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "Tool '%s' timed out after %ds", actual_tool_name, timeout_s
+                )
+                return (
+                    f"The {actual_tool_name} tool took too long to respond ({timeout_s}s). "
+                    "Please try again or simplify your request.",
+                    actual_tool_name,
+                )
 
             if result.success:
                 # Use LLMRouter (Llama/Groq) to compose a natural response.
-                # Complexity is pinned to "normal" — this is always a 1-2 sentence
-                # composition and we never want to escalate it to cloud unnecessarily.
                 response_text = await self._compose_tool_response_locally(
-                    user_input, tool_name, str(result.result)
+                    user_input, actual_tool_name, str(result.result)
                 )
-                return (response_text, tool_name)
+                return (response_text, actual_tool_name)
             # Tool failed — tell user clearly
             return (
-                f"I tried to use {tool_name} but encountered an issue: {result.error_message}",
-                tool_name,
+                f"I tried to use {actual_tool_name} but encountered an issue: {result.error_message}",
+                actual_tool_name,
             )
 
         # Step 4: Tool not in registry — fall back to Gemini if available
@@ -725,7 +942,76 @@ You are the semantic router for Amadeus AI. Your job is to classify the user's r
             return {"location": "current location"}
 
         if tool_name == "get_news":
-            return {"topic": text}
+            import re as _re
+
+            # Parse country from patterns like "news from usa", "us news", "india news"
+            country_map = {
+                "usa": "us", "us": "us", "america": "us", "american": "us",
+                "india": "in", "indian": "in",
+                "uk": "gb", "britain": "gb", "england": "gb",
+                "australia": "au", "canada": "ca",
+            }
+            country = "in"  # default
+            for kw, code in country_map.items():
+                if kw in lower:
+                    country = code
+                    break
+
+            # Parse category from keywords
+            cat_map = {
+                "tech": "technology", "technology": "technology",
+                "business": "business", "finance": "business", "economy": "business",
+                "sports": "sports", "sport": "sports",
+                "health": "health", "medical": "health",
+                "science": "science",
+                "entertainment": "entertainment", "bollywood": "entertainment",
+                "political": "general", "politics": "general", "wars": "general",
+            }
+            category = "general"
+            for kw, cat in cat_map.items():
+                if kw in lower:
+                    category = cat
+                    break
+
+            return {"category": category, "country": country, "count": 5}
+
+        if tool_name == "set_volume":
+            import re as _re
+
+            # Patterns: "set volume to 50", "volume 70%", "volume up", "mute"
+            if "mute" in lower:
+                return {"level": -1}
+            if "unmute" in lower:
+                return {"level": -2}
+            match = _re.search(r"(\d+)\s*%?", lower)
+            if match:
+                return {"level": int(match.group(1))}
+            if "max" in lower or "full" in lower:
+                return {"level": 100}
+            if "half" in lower:
+                return {"level": 50}
+            return {"level": 50}  # safe default
+
+        if tool_name == "set_brightness":
+            import re as _re
+
+            match = _re.search(r"(\d+)\s*%?", lower)
+            if match:
+                return {"level": int(match.group(1))}
+            if "max" in lower or "full" in lower:
+                return {"level": 100}
+            if "low" in lower or "dim" in lower:
+                return {"level": 20}
+            if "half" in lower:
+                return {"level": 50}
+            return {"level": 70}  # safe default
+
+        if tool_name in ("take_screenshot", "get_volume",
+                         "list_open_apps", "get_battery_info",
+                         "system_status", "get_running_processes",
+                         "get_cpu_usage", "get_memory_usage",
+                         "get_disk_usage", "get_network_info"):
+            return {}  # no args needed
 
         if tool_name == "calculate":
             for kw in ["calculate ", "compute ", "what is ", "evaluate "]:
@@ -912,19 +1198,7 @@ You are the semantic router for Amadeus AI. Your job is to classify the user's r
         Gemini-backed processing — used ONLY as a last resort when the tool
         is not in the registry or local processing fails.
         """
-        current_time = datetime.now().strftime("%I:%M %p on %A, %B %d")
-        context_summary = self.conversation_manager.get_context_summary()
-
-        long_term_memories = await self.memory_service.retrieve(user_input, top_k=5)
-        memory_context = self.memory_service.format_for_prompt(long_term_memories)
-
-        system_prompt = self.identity_prompt.format(
-            current_time=current_time,
-            session_id=self.session_id,
-            context_summary=context_summary,
-        )
-        if memory_context:
-            system_prompt = f"{system_prompt}\n\n{memory_context}"
+        system_prompt = await self._get_system_prompt(user_input)
 
         tools_config = self.tool_registry.build_gemini_tools(relevant_tools)
 

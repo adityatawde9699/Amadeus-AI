@@ -36,7 +36,7 @@ Amadeus AI is a FastAPI-based backend service that orchestrates a conversational
 - **100% Local Inference**: `SLM_MODEL_PATH` loads a GGUF model directly via `llama-cpp-python` — zero network calls, zero API cost, full conversation memory
 - **Local Server Option**: `LOCAL_ONLY_MODE` via Ollama for complete offline privacy and zero-cost inference.
 - **Redis-backed daily quota tracking** per provider — shared across all workers, auto-expires at midnight
-- **Semantic long-term memory** via Qdrant vector search — top-3 relevant memories injected into the agent prompt on every request
+- **Semantic long-term memory** via Qdrant vector search (`all-mpnet-base-v2` 768-dim embeddings) — top-3 relevant memories injected into the agent prompt on every request
 - **Episodic memory (Knowledge Graph)** — LLM-driven entity extraction stores relationships (Subject-Predicate-Object) in PostgreSQL for precision context recall
 - **Server-Sent Events (SSE) streaming**: `GET /api/v1/chat/stream` — native Gemini `stream=True` with word-by-word fallback for Groq
 - Persistent conversation memory with configurable context window
@@ -72,11 +72,12 @@ Amadeus AI is a FastAPI-based backend service that orchestrates a conversational
 - **Slack Integration**: Read channels, and send or read messages via `slack-sdk`
 
 **System & monitoring tools:**
-- CPU, memory, disk, battery monitoring with configurable alert thresholds
+- System Controls (set/get volume, screen brightness, take screenshots, list open apps)
+- Hardware monitoring (CPU, memory, disk, battery) with configurable alert thresholds
 
 ### ML Classifier (Tool Selection)
-- **TF-IDF + LinearSVC pipeline** (`scikit-learn`) — selects relevant tools locally without an LLM call
-- **3,168 training examples** across **23 tool categories** — 5-fold cross-validation accuracy: **96.2%**
+- **TF-IDF + LinearSVC pipeline** (`scikit-learn`) — dynamically routes user intents locally without an LLM payload
+- **Robust Training Data** across **42 tool categories** — systematically crafted examples covering system hardware, web tasks, and conversational fallback.
 - Eliminates 40–60× Gemini tool-selection calls; prediction latency < 10ms vs 500ms+
 - Models committed at `Model/tfidf_vectorizer.joblib` + `Model/svm_classifier.joblib`
 - **CI auto-retraining**: `train-model` GitHub Actions job triggers on `data/training_data.json` changes

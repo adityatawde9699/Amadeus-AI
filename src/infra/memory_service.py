@@ -40,7 +40,18 @@ logger = logging.getLogger(__name__)
 class MemoryResult:
     """A single semantic memory retrieved from the vector store."""
 
-    __slots__ = ("distance", "role", "session_id", "text", "timestamp")
+    __slots__ = (
+        "distance",
+        "role",
+        "session_id",
+        "text",
+        "timestamp",
+        "type",
+        "subtype",
+        "importance",
+        "source",
+        "score",
+    )
 
     def __init__(
         self,
@@ -49,15 +60,25 @@ class MemoryResult:
         text: str,
         timestamp: str,
         distance: float = 0.0,
+        type: str = "memory",
+        subtype: str = "interaction",
+        importance: float = 0.5,
+        source: str = "user",
+        score: float = 0.0,
     ) -> None:
         self.session_id = session_id
         self.role = role
         self.text = text
         self.timestamp = timestamp
-        self.distance = distance
+        self.distance = distance  # Raw cosine similarity
+        self.type = type
+        self.subtype = subtype
+        self.importance = importance
+        self.source = source
+        self.score = score  # Final weighted score
 
     def __repr__(self) -> str:
-        return f"<MemoryResult role={self.role!r} distance={self.distance:.3f} text={self.text[:40]!r}>"
+        return f"<MemoryResult subtype={self.subtype!r} score={self.score:.3f} text={self.text[:40]!r}>"
 
 
 # =============================================================================
@@ -167,12 +188,12 @@ class QdrantMemoryService:
         try:
             from sentence_transformers import SentenceTransformer
 
-            # all-MiniLM-L6-v2: 384-dim, ~80MB, fast on CPU, no GPU required
-            self._local_embed_model = SentenceTransformer("all-MiniLM-L6-v2")
-            self._embed_dim = 384
+            # all-mpnet-base-v2: ~420MB, 768-dim, best in class for quality (upgraded from MiniLM)
+            self._local_embed_model = SentenceTransformer("sentence-transformers/all-mpnet-base-v2")
+            self._embed_dim = 768
             self._use_local_embed = True
             logger.info(
-                "Local sentence-transformers embedding model loaded (all-MiniLM-L6-v2, dim=384)"
+                "Local sentence-transformers embedding model loaded (all-mpnet-base-v2, dim=768)"
             )
             return
         except ImportError:
@@ -257,12 +278,25 @@ class QdrantMemoryService:
     # Public API
     # -------------------------------------------------------------------------
 
-    async def store(self, session_id: str, role: str, text: str) -> bool:
+    async def store(
+        self,
+        session_id: str,
+        role: str,
+        text: str,
+        type: str = "memory",
+        subtype: str = "interaction",
+        importance: float = 0.5,
+        source: str = "user",
+    ) -> bool:
         """
-        Embed and persist a message into the vector store.
+        Embed and persist a message into the vector store with metadata.
         """
         if not self._enabled or not self._initialized:
             return False
+
+        # Identity memories have fixed high importance
+        if subtype == "identity":
+            importance = 1.0
 
         embedding = await self._embed_async(text, "retrieval_document")
         if embedding is None:
@@ -287,6 +321,10 @@ class QdrantMemoryService:
                             "role": role,
                             "text": text,
                             "timestamp": timestamp_str,
+                            "type": type,
+                            "subtype": subtype,
+                            "importance": importance,
+                            "source": source,
                         },
                     )
                 ],
@@ -309,31 +347,75 @@ class QdrantMemoryService:
             return []
 
         try:
+            import math
+
             results = await self._client.search(
                 collection_name=self._settings.CHROMA_COLLECTION_NAME,
                 query_vector=embedding,
-                limit=top_k,
+                limit=top_k * 2,  # Fetch more to allow for re-ranking
                 with_payload=True,
             )
 
             memories: list[MemoryResult] = []
+            now = datetime.now(UTC)
+            tau_seconds = 7 * 24 * 3600  # 7 days for recency decay
+
             for hit in results:
                 payload = hit.payload or {}
+                
+                # --- Tiered Ranking Logic ---
+                similarity = hit.score
+                
+                # Filter by similarity threshold
+                if similarity < 0.65:
+                    continue
+
+                importance = payload.get("importance", 0.5)
+                subtype = payload.get("subtype", "interaction")
+                
+                # Calculate recency decay
+                timestamp_str = payload.get("timestamp", "")
+                recency_decay = 0.0
+                if timestamp_str and subtype != "identity":
+                    try:
+                        mem_time = datetime.fromisoformat(timestamp_str)
+                        if mem_time.tzinfo is None:
+                            mem_time = mem_time.replace(tzinfo=UTC)
+                        time_delta = (now - mem_time).total_seconds()
+                        recency_decay = math.exp(-max(0, time_delta) / tau_seconds)
+                    except Exception:
+                        recency_decay = 0.5
+                elif subtype == "identity":
+                    importance = 1.0
+                    recency_decay = 1.0 # Never decays
+                
+                # score = 0.6 * similarity + 0.25 * importance + 0.15 * recency_decay
+                weighted_score = (0.6 * similarity) + (0.25 * importance) + (0.15 * recency_decay)
+
                 memories.append(
                     MemoryResult(
                         session_id=payload.get("session_id", ""),
                         role=payload.get("role", "unknown"),
                         text=payload.get("text", ""),
-                        timestamp=payload.get("timestamp", ""),
-                        distance=hit.score,  # Qdrant returns similarity score
+                        timestamp=timestamp_str,
+                        distance=similarity,
+                        type=payload.get("type", "memory"),
+                        subtype=subtype,
+                        importance=importance,
+                        source=payload.get("source", "user"),
+                        score=weighted_score,
                     )
                 )
 
-            logger.debug("Retrieved %d memories for query snippet=%r", len(memories), query[:40])
+            # Sort by weighted score descending and take top_k
+            memories.sort(key=lambda x: x.score, reverse=True)
+            memories = memories[:top_k]
+
+            logger.debug("Ranking complete: retrieved %d weighted memories", len(memories))
             return memories
 
         except Exception as exc:
-            logger.warning("Qdrant search failed: %s", exc)
+            logger.warning("Qdrant search failed (client type=%s): %s", type(self._client), exc)
             return []
 
     async def clear_session(self, session_id: str) -> int:
@@ -398,12 +480,11 @@ class QdrantMemoryService:
         if not memories:
             return ""
 
-        lines: list[str] = ["Relevant long-term memory (past conversations):"]
-        char_count = len(lines[0])
+        lines: list[str] = []
+        char_count = 0
 
-        for mem in memories:
-            prefix = "User" if mem.role == "user" else "Amadeus"
-            line = f"  [{prefix}]: {mem.text}"
+        for i, mem in enumerate(memories, 1):
+            line = f"{i}. {mem.text}"
             if char_count + len(line) > max_chars:
                 break
             lines.append(line)
