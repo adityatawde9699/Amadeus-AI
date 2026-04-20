@@ -166,16 +166,29 @@ Guidelines:
 
             config = types.GenerateContentConfig(
                 temperature=temperature,
-                max_output_tokens=max_tokens or 1024,
+                max_output_tokens=max_tokens or 4096,
                 system_instruction=self._get_system_prompt(),
             )
 
             assert self._client is not None  # set by _configure()
-            response = self._client.models.generate_content(
-                model=self._model_name,
-                contents=full_prompt,
-                config=config,
-            )
+            
+            # Simple retry loop for 503 errors (High Demand)
+            max_retries = 2
+            for attempt in range(max_retries):
+                try:
+                    response = self._client.models.generate_content(
+                        model=self._model_name,
+                        contents=full_prompt,
+                        config=config,
+                    )
+                    break 
+                except Exception as e:
+                    if "503" in str(e) and attempt < max_retries - 1:
+                        logger.warning("Gemini 503 (High Demand) - retrying in 2s...")
+                        import asyncio
+                        await asyncio.sleep(2)
+                        continue
+                    raise e
 
             if not response.text:
                 raise LLMResponseError("Empty response from Gemini")

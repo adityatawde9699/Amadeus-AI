@@ -1092,7 +1092,9 @@ Respond naturally and conversationally. Be concise."""
         try:
             if hasattr(self, "llm_router") and self.llm_router:
                 response_text, provider = await self.llm_router.generate(
-                    prompt=prompt, complexity=complexity
+                    prompt=prompt, 
+                    complexity=complexity,
+                    max_tokens=2048 if complexity == "high" else None
                 )
                 logger.info(
                     "Conversational response: provider=%s complexity=%s",

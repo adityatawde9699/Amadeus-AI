@@ -23,7 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml ./
+COPY pyproject.toml README.md ./
 
 # Create virtual environment and install ALL extras
 RUN python -m venv /opt/venv
@@ -81,7 +81,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy application source
 COPY src/ ./src/
-COPY pyproject.toml ./
+COPY pyproject.toml alembic.ini .env* ./
+COPY alembic/ ./alembic/
 
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash amadeus && \

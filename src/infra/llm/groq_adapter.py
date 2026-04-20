@@ -107,7 +107,7 @@ class GroqAdapter(ILLMService):
                     model=self._settings.GROQ_MODEL,
                     messages=messages,
                     temperature=temperature,
-                    max_tokens=max_tokens or 1024,
+                    max_tokens=max_tokens or 4096,
                 )
                 return response.choices[0].message.content or ""
 

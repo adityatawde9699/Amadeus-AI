@@ -332,7 +332,7 @@ class LLMRouter:
     _CHARS_PER_TOKEN: ClassVar[float] = 4.0
 
     # llama_cpp context ceiling — skip local if prompt is this close to the limit
-    _LLAMA_CTX_LIMIT: ClassVar[int] = 2048
+    _LLAMA_CTX_LIMIT: ClassVar[int] = 4096
     _LLAMA_CTX_SAFETY_RATIO: ClassVar[float] = 0.85  # skip when > 85% of ctx used
 
     async def generate(
@@ -389,9 +389,9 @@ class LLMRouter:
 
         # ── Build provider priority list ─────────────────────────────────────
         if effective_complexity == "high" and not self._local_only_mode:
-            # High complexity: skip local models entirely — they'll likely fail
-            providers_order = ["groq", "gemini", "openai"]
-            logger.info("LLMRouter: high complexity → cloud-only queue: %s", providers_order)
+            # High complexity: prioritize cloud models, but keep local as last-resort fallback
+            providers_order = ["groq", "gemini", "openai", "llama_cpp", "ollama"]
+            logger.info("LLMRouter: high complexity → prioritizing cloud with local fallback: %s", providers_order)
         else:
             # simple / normal: local first, cloud as fallback
             providers_order = ["llama_cpp", "ollama", "groq", "gemini"]
