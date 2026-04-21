@@ -15,7 +15,7 @@ import pytest
 
 
 # Stub heavy imports
-for _mod in ("joblib", "numpy", "google.generativeai", "openai", "groq"):
+for _mod in ("joblib", "google.generativeai", "openai", "groq"):
     if _mod not in sys.modules:
         sys.modules[_mod] = types.ModuleType(_mod)
 

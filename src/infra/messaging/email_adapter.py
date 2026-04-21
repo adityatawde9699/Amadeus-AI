@@ -107,7 +107,8 @@ class EmailAdapter:
         """Synchronous IMAP fetch — called inside asyncio.to_thread."""
         results: list[ParsedEmail] = []
 
-        assert self._email is not None and self._password is not None
+        if not self._email or not self._password:
+            raise ValueError("Email credentials not configured")
         with MailBox(self._imap_server).login(self._email, self._password) as mailbox:
             for msg in mailbox.fetch(AND(seen=False), limit=limit, reverse=True):
                 body = msg.text or _strip_html(msg.html or "")
@@ -163,7 +164,8 @@ class EmailAdapter:
         message.attach(MIMEText(body, "plain"))
 
         try:
-            assert self._email is not None and self._password is not None
+            if not self._email or not self._password:
+                raise ValueError("Email credentials not configured")
             await aiosmtplib.send(
                 message,
                 hostname=self._smtp_server,

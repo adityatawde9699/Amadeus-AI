@@ -81,8 +81,12 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy application source
 COPY src/ ./src/
-COPY pyproject.toml alembic.ini .env* ./
+COPY pyproject.toml alembic.ini ./
+# Only copy the example env — NEVER copy .env, .env.prod, .env.staging into the image.
+# Real secrets are injected via Railway/Docker environment variables at runtime.
+COPY .env.example ./
 COPY alembic/ ./alembic/
+
 
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash amadeus && \

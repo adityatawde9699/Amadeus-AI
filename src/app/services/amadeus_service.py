@@ -1,14 +1,18 @@
 """
 Amadeus Service - Main AI Assistant Orchestrator.
 
-This service uses a local-first semantic routing architecture. It triages
-user intent via a local LLM (llama-cpp) to decide between local tool 
-execution, conversational chat, or cloud escalation.
+This service uses a local-first, zero-training semantic routing architecture.
+It triages user intent in two stages:
+  1. SemanticToolRouter — embeds the query and performs cosine similarity
+     against all tool description vectors (sentence-transformers, all-mpnet-base-v2).
+     No retraining required; new tools are hot-plugged automatically.
+  2. Local LLM (LlamaCpp) — fallback when the semantic router confidence
+     is below threshold, handling conversational or cloud-escalation paths.
 
 Architecture:
 - Public API: handle_command, get_response
 - Internal Logic: _process_command_internal, _predict_intent_llm
-- Infrastructure: tool registry, conversation manager, voice services
+- Infrastructure: tool registry, semantic_router, conversation manager, voice services
 """
 
 import asyncio
@@ -16,7 +20,6 @@ import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 
@@ -35,16 +38,15 @@ if TYPE_CHECKING:
         async def clear_session(self, session_id: str) -> None: ...
 
 
-# import joblib - removed legacy SVM
-# import numpy as np - removed legacy SVM
 from google import genai
 from google.genai import types
 
+from src.app.services.semantic_router import SemanticToolRouter
 from src.app.services.tool_registry import ToolRegistry
 from src.core.config import Settings, get_settings
 from src.core.domain.models import PermissionProfile
-from src.infra.memory_service import QdrantMemoryService
 from src.infra.knowledge_graph import KnowledgeGraphService
+from src.infra.memory_service import QdrantMemoryService
 from src.infra.messaging.telegram_adapter import TelegramAdapter
 from src.infra.messaging.whatsapp_adapter import WhatsAppAdapter
 from src.infra.tools.base import ToolExecutor
@@ -256,8 +258,13 @@ class AmadeusService:
         self._load_api_keys()
         self._register_all_tools()
 
-        # Load TF-IDF + LinearSVC classifier
-        self._setup_tfidf_classifier()
+        # Build zero-training semantic tool router
+        self._semantic_router = SemanticToolRouter(
+            registry=self.tool_registry,
+            model_dir=self.settings.BASE_DIR / "Model",
+            threshold=0.50,
+        )
+        self._semantic_router.build_index()
 
         # Build identity prompt
         self.identity_prompt = self._build_identity_prompt()
@@ -272,7 +279,8 @@ class AmadeusService:
 
             async def _generate(prompt: str) -> str:
                 loop = asyncio.get_running_loop()
-                assert self.client is not None
+                if self.client is None:
+                    raise ValueError("client is missing")
                 response = await loop.run_in_executor(
                     None,
                     lambda: self.client.models.generate_content(  # type: ignore[union-attr]
@@ -350,6 +358,15 @@ class AmadeusService:
                     self.tool_registry.register(tool)
             except Exception as e:
                 logger.warning("Failed to register developer_tools: %s", e)
+
+            # Workspace search tool (Omni-Workspace RAG)
+            try:
+                from src.infra.tools.workspace_tools import get_workspace_tools
+
+                for tool in get_workspace_tools():
+                    self.tool_registry.register(tool)
+            except Exception as e:
+                logger.warning("Failed to register workspace_tools: %s", e)
 
             logger.info(f"Registered {len(self.tool_registry)} tools from modules")
         except Exception as e:
@@ -468,106 +485,23 @@ Context: {context_summary}"""
     # TRIAGE & ROUTING
     # =========================================================================
 
-    # -------------------------------------------------------------------------
-    # TF-IDF + LinearSVC TOOL SELECTOR  (primary intent predictor)
-    # -------------------------------------------------------------------------
-
-    def _setup_tfidf_classifier(self) -> None:
-        """Load the TF-IDF + LinearSVC classifier for fast local intent routing."""
-        import joblib
-
-        model_dir = self.settings.BASE_DIR / "Model"
-        vec_path = model_dir / "tfidf_vectorizer.joblib"
-        clf_path = model_dir / "svm_classifier.joblib"
-        # Also accept the router naming scheme
-        if not vec_path.exists():
-            vec_path = model_dir / "router_vectorizer.joblib"
-        if not clf_path.exists():
-            clf_path = model_dir / "router_classifier.joblib"
-
-        try:
-            if vec_path.exists() and clf_path.exists():
-                self._tfidf_vec = joblib.load(str(vec_path))
-                self._svm_clf = joblib.load(str(clf_path))
-                logger.info(
-                    "TF-IDF + LinearSVC tool selector loaded (%d classes).",
-                    len(self._svm_clf.classes_),
-                )
-            else:
-                self._tfidf_vec = None
-                self._svm_clf = None
-                logger.warning(
-                    "TF-IDF model files not found in %s — SVM routing disabled.", model_dir
-                )
-        except Exception as e:
-            self._tfidf_vec = None
-            self._svm_clf = None
-            logger.error("Failed to load TF-IDF classifier: %s", e)
-
-    def _predict_intent_svm(self, query: str) -> tuple[str, str | None]:
-        """
-        Fast-path TF-IDF + LinearSVC intent prediction.
-
-        Returns one of:
-          ('tool', tool_name)   — a known tool was matched
-          ('conversational', None) — predicted as conversational / no tool
-        """
-        if self._tfidf_vec is None or self._svm_clf is None:
-            return "unknown", None
-
-        try:
-            import numpy as np
-
-            x = self._tfidf_vec.transform([query])
-            # decision_function gives confidence scores per class
-            scores = self._svm_clf.decision_function(x)[0]
-            classes = self._svm_clf.classes_
-            best_idx = int(np.argmax(scores))
-            best_class = classes[best_idx]
-            best_score = float(scores[best_idx])
-
-            # Confidence threshold — below this we distrust the SVM
-            CONFIDENCE_THRESHOLD = 0.15
-
-            if best_score < CONFIDENCE_THRESHOLD:
-                logger.debug(
-                    "SVM low-confidence (%.3f) for query — falling back.", best_score
-                )
-                return "unknown", None
-
-            if best_class == "conversational":
-                return "conversational", None
-
-            # Validate the predicted class is an actually registered tool
-            if best_class in self.tool_registry:
-                logger.info(
-                    "SVM routed '%s...' → [%s] (score=%.3f)",
-                    query[:30],
-                    best_class,
-                    best_score,
-                )
-                return "tool", best_class
-
-            # Class not in registry → treat as unknown
-            return "unknown", None
-
-        except Exception as e:
-            logger.error("SVM prediction error: %s", e)
-            return "unknown", None
-
     async def _predict_intent_llm(self, query: str) -> tuple[str, str | None]:
         """
         Two-stage intent triaging:
 
-        Stage 1 — TF-IDF + LinearSVC (fast, local, zero API cost).
-        Stage 2 — Local LLM (LlamaCpp) fallback when SVM is uncertain.
+        Stage 1 — SemanticToolRouter (zero-training, pure cosine similarity).
+                   Embeds the query and compares against all tool description
+                   vectors. No retraining required when adding new tools.
+        Stage 2 — Local LLM (LlamaCpp) fallback when semantic confidence is
+                   below threshold or the router is not yet initialised.
 
         Decides: tool (and which one), conversational, or cloud_escalation.
         """
-        # --- Stage 1: TF-IDF + LinearSVC ---
-        svm_intent, svm_tool = self._predict_intent_svm(query)
-        if svm_intent != "unknown":
-            return svm_intent, svm_tool
+        # --- Stage 1: Semantic Router (sentence-transformers cosine similarity) ---
+        if self._semantic_router.is_ready:
+            matched_tool = self._semantic_router.route(query)
+            if matched_tool:
+                return "tool", matched_tool
 
         # --- Stage 2: LLM fallback ---
         if not self.llm_router:
@@ -1212,7 +1146,8 @@ You are the semantic router for Amadeus AI. Classify the user's request.
             config = types.GenerateContentConfig(
                 tools=tools_config if tools_config else None,
             )
-            assert self.client is not None
+            if self.client is None:
+                raise ValueError("client is missing")
             gemini_response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=system_prompt + "\n\n" + user_input,
@@ -1394,7 +1329,8 @@ Respond naturally and conversationally. Be concise."""
                 )
                 return response_text
 
-            assert self.client is not None, "Gemini client not initialized"
+            if self.client is None:
+                raise ValueError("Gemini client not initialized")
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=prompt,
@@ -1416,7 +1352,8 @@ Tool result: {result}
 Provide a natural, concise response that incorporates this result. Don't just repeat the result - present it helpfully."""
 
         try:
-            assert self.client is not None, "Gemini client not initialized"
+            if self.client is None:
+                raise ValueError("Gemini client not initialized")
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=prompt,

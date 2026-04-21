@@ -491,7 +491,8 @@ class TaskResponse(BaseModel):
 
     @classmethod
     def from_domain(cls, task: Task) -> "TaskResponse":
-        assert task.id is not None, "Cannot convert unsaved Task to TaskResponse"
+        if task.id is None:
+            raise ValueError("Cannot convert unsaved Task to TaskResponse")
         return cls(
             id=task.id,
             content=task.content,

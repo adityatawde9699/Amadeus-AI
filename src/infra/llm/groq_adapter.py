@@ -125,9 +125,9 @@ class GroqAdapter(ILLMService):
         except Exception as e:
             error_str = str(e).lower()
             if "429" in error_str or "rate" in error_str:
-                raise LLMRateLimitError("Groq", retry_after=60)
+                raise LLMRateLimitError("Groq", retry_after=60) from e
             if "connection" in error_str or "network" in error_str:
-                raise LLMConnectionError("Groq", str(e))
+                raise LLMConnectionError("Groq", str(e)) from e
             logger.exception("Groq error: %s", type(e).__name__)
             raise LLMResponseError(str(e)) from e
 

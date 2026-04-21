@@ -170,7 +170,8 @@ Guidelines:
                 system_instruction=self._get_system_prompt(),
             )
 
-            assert self._client is not None  # set by _configure()
+            if self._client is None:
+                raise ValueError("client is missing")
             
             # Simple retry loop for 503 errors (High Demand)
             max_retries = 2
@@ -203,13 +204,13 @@ Guidelines:
             error_str = str(e).lower()
             if "block" in error_str or "safety" in error_str:
                 logger.warning(f"Prompt blocked: {e}")
-                raise LLMResponseError("Content was blocked by safety filters")
+                raise LLMResponseError("Content was blocked by safety filters") from e
             if "429" in error_str or "rate" in error_str:
-                raise LLMRateLimitError("Gemini", retry_after=60)
+                raise LLMRateLimitError("Gemini", retry_after=60) from e
             if "connection" in error_str or "network" in error_str:
-                raise LLMConnectionError("Gemini", str(e))
+                raise LLMConnectionError("Gemini", str(e)) from e
             logger.exception(f"Gemini error: {e}")
-            raise LLMResponseError(str(e))
+            raise LLMResponseError(str(e)) from e
 
     async def generate_with_tools(
         self,
@@ -243,7 +244,8 @@ Guidelines:
                 tools=gemini_tools if gemini_tools else None,
             )
 
-            assert self._client is not None  # set by _configure()
+            if self._client is None:
+                raise ValueError("client is missing")
             response = self._client.models.generate_content(
                 model=self._model_name,
                 contents=full_prompt,

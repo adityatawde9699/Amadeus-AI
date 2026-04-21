@@ -120,9 +120,9 @@ class OpenAIAdapter(ILLMService):
         except Exception as e:
             error_str = str(e).lower()
             if "429" in error_str or "rate_limit" in error_str or "rate limit" in error_str:
-                raise LLMRateLimitError("OpenAI", retry_after=60)
+                raise LLMRateLimitError("OpenAI", retry_after=60) from e
             if "connection" in error_str or "network" in error_str or "timeout" in error_str:
-                raise LLMConnectionError("OpenAI", str(e))
+                raise LLMConnectionError("OpenAI", str(e)) from e
             logger.exception("OpenAI error: %s", type(e).__name__)
             raise LLMResponseError(str(e)) from e
 
@@ -196,6 +196,6 @@ class OpenAIAdapter(ILLMService):
         except Exception as e:
             error_str = str(e).lower()
             if "429" in error_str or "rate_limit" in error_str:
-                raise LLMRateLimitError("OpenAI", retry_after=60)
+                raise LLMRateLimitError("OpenAI", retry_after=60) from e
             logger.exception("OpenAI tool-call error: %s", type(e).__name__)
             raise LLMResponseError(str(e)) from e

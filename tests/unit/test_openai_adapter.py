@@ -20,7 +20,7 @@ import pytest
 # Stub heavy imports so tests run without installing them
 for _mod in (
     "joblib",
-    "numpy",
+    "google.generativeai",
     "google.generativeai",
     "openai",
     "groq",

@@ -87,7 +87,7 @@ async def chat(
                     permission_profile=profile,
                 )
             except QueueFullError as e:
-                raise HTTPException(status_code=429, detail=str(e))
+                raise HTTPException(status_code=429, detail=str(e)) from e
 
         return ChatResponse(
             response=response,
@@ -100,7 +100,7 @@ async def chat(
         raise  # Re-raise known HTTP errors (503 above) unchanged
     except Exception as e:
         logger.error(f"Chat error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="An internal error occurred")
+        raise HTTPException(status_code=500, detail="An internal error occurred") from e
 
 
 @router.get("/history", response_model=HistoryResponse)
@@ -127,7 +127,7 @@ async def get_history(
         raise
     except Exception as e:
         logger.error(f"History error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/tools", response_model=ToolListResponse)
@@ -218,7 +218,7 @@ async def chat_stream(
                         permission_profile=profile,
                     )
                 except QueueFullError as e:
-                    raise HTTPException(status_code=429, detail=str(e))
+                    raise HTTPException(status_code=429, detail=str(e)) from e
 
             words = response_text.split(" ")
             for i, word in enumerate(words):
