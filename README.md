@@ -194,7 +194,6 @@ cp .env.example .env
 | `REDIS_URL` | Redis for caching + quota tracking (default: `redis://localhost:6379/0`) |
 | `WEATHER_API_KEY` | OpenWeatherMap API key |
 | `NEWS_API_KEY` | NewsAPI key |
-
 | `TAVILY_API_KEY` | Tavily deep search |
 | `EDGE_TTS_VOICE` | Edge TTS voice name (default: `en-US-JennyNeural`) |
 | `SENTRY_DSN` | Sentry error tracking DSN |
