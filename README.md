@@ -37,6 +37,7 @@ Amadeus AI is a FastAPI-based backend service that orchestrates a conversational
 - **Local Server Option**: `LOCAL_ONLY_MODE` via Ollama for complete offline privacy and zero-cost inference.
 - **Redis-backed daily quota tracking** per provider — shared across all workers, auto-expires at midnight
 - **Semantic long-term memory** via Qdrant vector search (`all-mpnet-base-v2` 768-dim embeddings) — top-3 relevant memories injected into the agent prompt on every request
+- **Flash Memory Cache (L1)** — tier-1 in-process ring buffer (100 entries, NumPy float32) intercepts Qdrant calls with cosine similarity check (threshold 0.85); cache hit skips Qdrant entirely (~microsecond vs ~5ms)
 - **Episodic memory (Knowledge Graph)** — LLM-driven entity extraction stores relationships (Subject-Predicate-Object) in PostgreSQL for precision context recall
 - **Server-Sent Events (SSE) streaming**: `GET /api/v1/chat/stream` — native Gemini `stream=True` with word-by-word fallback for Groq
 - Persistent conversation memory with configurable context window
@@ -85,11 +86,12 @@ Amadeus AI is a FastAPI-based backend service that orchestrates a conversational
 
 ### Omni-Workspace RAG (Hybrid Search)
 - **WorkspaceIndexer** (`src/infra/workspace_indexer.py`) — hybrid BM25 + dense vector retrieval
-- **Dual retrieval**: all-mpnet-base-v2 dense embeddings + BM25Okapi lexical search, fused via Reciprocal Rank Fusion (k=60)
+- **Dual retrieval**: `all-mpnet-base-v2` dense embeddings + BM25Okapi lexical search, fused via Reciprocal Rank Fusion (k=60)
 - **Exact-match recall**: Code-aware BM25 tokenizer preserves identifiers (`AUTH_UUID_7392`, port numbers, error codes) that dense embeddings miss
 - **Incremental builds**: Only re-embeds files whose mtime or MD5 hash changed — subsequent runs take seconds
 - **RAM-safe**: `max_chunks=15_000` default (≈66 MB total) with `mmap_mode='r'` loading — designed for 4 GB machines
-- **Context-enriched embeddings**: File-level header (imports, globals, headings) prepended to encoder input — display snippets stay clean
+- **Context-augmented chunking**: File-level metadata (imports, globals, headings) prepended to encoder input — display snippets stay clean
+- **Workspace Search Tool** (`search_workspace`): Amadeus tool enabling autonomous semantic search over the local project repository
 - **CLI**: `python scripts/index_workspace.py --root C:\Users\ASUS\Downloads --max-chunks 15000`
 
 ### API & Security
@@ -128,7 +130,7 @@ Amadeus AI is a FastAPI-based backend service that orchestrates a conversational
 ### CI/CD & Deployment
 - GitHub Actions pipeline: lint (ruff — 100% clean), format check, strict type check (mypy), bandit (0 HIGH gate), pip-audit
 - Automated test run with real PostgreSQL + Redis service containers
-- **`train-model` CI job**: auto-retrains the ML classifier when `data/training_data.json` changes and commits updated model artifacts back to the repo
+- **`train-model` CI job**: auto-generates semantic tool embeddings for the `SemanticToolRouter` when tool metadata changes; commits updated `.npz` artifacts to ensure zero cold-start latency in production.
 - **Coverage threshold: 80%** enforced in both CI (`--cov-fail-under=80`) and locally via `pyproject.toml`
 - Staging deploy to Railway on `develop` branch merge
 
@@ -376,8 +378,11 @@ curl -N -H "Authorization: Bearer $TOKEN" \
 - **Google Generative AI (Gemini 2.5 Flash)** — Secondary cloud LLM, supports native `stream=True`
 - **OpenAI GPT-4o-mini** — Emergency fallback (paid, optional) via `openai_adapter.py`
 - **Qdrant** — vector database for semantic long-term memory
+- **Flash Memory Cache** — Tier-1 in-process ring buffer for high-frequency memories
 - **Knowledge Graph** — structured entity relationship storage via SQLAlchemy/PostgreSQL
 - **LLMRouter** — Redis-backed daily-quota-aware routing engine with atomic `INCR`/`EXPIRE`
+- **SemanticToolRouter** — sentence-transformers based zero-training tool intent triaging
+- **WorkspaceIndexer** — hybrid BM25 + dense vector retrieval engine for project RAG
 
 ### Voice
 - **faster-whisper** — CTranslate2 Whisper STT (CPU/CUDA)
@@ -406,6 +411,8 @@ curl -N -H "Authorization: Bearer $TOKEN" \
 - **Bandit** — security scanning
 - **pip-audit** — dependency vulnerability auditing
 - **uv** — dependency management and virtual environments
+- **rank-bm25** — lexical search for RAG
+- **sentence-transformers** — dense vector embeddings for memory and routing
 
 ---
 
@@ -455,10 +462,12 @@ block-beta
     block:datablock["💾 Data"]:1
       columns 1
       T["PostgreSQL / SQLite"] U["Redis Cache"] V["Qdrant Vectors"]
+      V2["Flash Memory Cache"]
     end
     block:svcblock["🛠️ Services"]:1
       columns 1
       W["Whisper STT\nEdge TTS"] X["DDG→Tavily\nSearch Router"] Y["Tools: info /\nproductivity / system"]
+      Z["Workspace Indexer\nHybrid RAG"]
     end
   end
 
@@ -495,12 +504,13 @@ sequenceDiagram
     alt Cache HIT
         Cache-->>Amadeus: Cached response
     else Cache MISS
-        Amadeus->>Classifier: predict_intent(message)
+        Amadeus->>Classifier: route(message)
+        Note over Classifier: SemanticToolRouter (cosine sim)
         Classifier-->>Amadeus: tool_name (< 10ms)
         Amadeus->>Agent: run_agent_loop()
         Agent->>Router: generate(prompt, context)
         Router->>LlamaCpp: is_available()?
-        alt LlamaCpp available (LOCAL_ONLY or SLM_MODEL_PATH set)
+        alt LlamaCpp available
             LlamaCpp-->>Router: ✅ Response
         else LlamaCpp not configured
             Router->>Ollama: is_available()?
@@ -699,6 +709,11 @@ flowchart LR
     <td width="33%" style="padding-top:4px">
       <table width="100%" cellspacing="0" cellpadding="6" border="0" style="background:#f8d5c4;border:1px solid #F5C4B3;border-radius:6px">
         <tr><td><strong style="font-size:12px;color:#4A1B0C">Search router</strong><br><span style="font-size:11px;color:#993C1D">DDG → Tavily</span></td></tr>
+      </table>
+    </td>
+    <td width="33%" style="padding-top:4px">
+      <table width="100%" cellspacing="0" cellpadding="6" border="0" style="background:#f8d5c4;border:1px solid #F5C4B3;border-radius:6px">
+        <tr><td><strong style="font-size:12px;color:#4A1B0C">RAG Engine</strong><br><span style="font-size:11px;color:#993C1D">WorkspaceIndexer</span></td></tr>
       </table>
     </td>
   </tr></table>
@@ -952,59 +967,62 @@ Amadeus-AI/
 │
 ├── scripts/
 │   ├── generate_training_data.py # Generates training_data.json from templates
-│   └── train_classifier.py       # Trains and saves joblib model artifacts
+│   ├── train_classifier.py       # (Legacy) Trains SVM classifier
+│   └── index_workspace.py        # CLI for building Hybrid Workspace Index (v3.1.0)
 │
 ├── src/
-│   ├── container.py              # IoC container — wires all dependencies (dependency-injector)
+│   ├── container.py              # IoC container — wires all dependencies
 │   │
 │   ├── api/                      # ── API LAYER ──────────────────────────────────────────
-│   │   ├── server.py             #    FastAPI app factory, middleware registration, lifespan
+│   │   ├── server.py             #    FastAPI app factory, middleware registration
 │   │   ├── middleware/
 │   │   │   ├── authentication.py #    JWT Bearer token verification (HS256)
 │   │   │   ├── rbac.py           #    READ_ONLY / SYSTEM_FULL permission profiles
-│   │   │   └── audit_logger.py   #    Request ID injection, latency headers, client IP log
+│   │   │   └── audit_logger.py   #    Request ID injection, latency headers
 │   │   └── routes/
-│   │       ├── chat.py           #    POST /chat · GET /chat/stream (SSE) · /history · /tools
-│   │       ├── messaging.py      #    POST /messaging/send · GET /messaging/status
+│   │       ├── chat.py           #    POST /chat · GET /chat/stream (SSE)
+│   │       ├── messaging.py      #    POST /messaging/send
 │   │       ├── webhooks.py       #    Telegram + WhatsApp inbound webhooks
 │   │       ├── voice.py          #    WS  /ws/voice  (real-time bidirectional)
 │   │       ├── tasks.py          #    CRUD /tasks
-│   │       ├── health.py         #    GET /health/detailed  (DB · Redis · classifier status)
-│   │       └── llm.py            #    GET /llm/usage  (daily quota report)
+│   │       ├── health.py         #    Detailed health (DB · Redis · classifier)
+│   │       └── llm.py            #    Daily quota report
 │   │
 │   ├── app/                      # ── APPLICATION LAYER ──────────────────────────────────
 │   │   └── services/
 │   │       ├── amadeus_service.py #   Main orchestrator — routes request → agent / voice
 │   │       ├── agent_loop.py      #   LLM ↔ tool loop with memory injection
-│   │       ├── tool_registry.py   #   Tool discovery, ML classification, dispatch
+│   │       ├── semantic_router.py #   Zero-Training Tool Router (v3.1.0)
+│   │       ├── tool_registry.py   #   Tool discovery and dispatch
 │   │       └── voice_service.py   #   STT → LLM → TTS pipeline
 │   │
 │   ├── core/                     # ── CORE LAYER (no external deps) ──────────────────────
 │   │   ├── config.py             #    Pydantic-settings: typed env var schema
-│   │   ├── exceptions.py         #    AmadeusError hierarchy (→ HTTP 400 / 503)
+│   │   ├── exceptions.py         #    AmadeusError hierarchy
 │   │   ├── domain/
-│   │   │   └── models.py         #    Pydantic domain models (ChatRequest, Task, etc.)
+│   │   │   └── models.py         #    Pydantic domain models
 │   │   └── interfaces/
-│   │       ├── llm.py            #    LLMAdapter ABC — all adapters must implement this
-│   │       └── repositories.py   #    Abstract repository interfaces (ABCs)
+│   │       ├── llm.py            #    LLMAdapter ABC
+│   │       └── repositories.py   #    Abstract repository interfaces
 │   │
 │   └── infra/                    # ── INFRASTRUCTURE LAYER ────────────────────────────────
 │       ├── llm/
-│       │   ├── router.py             #    Multi-LLM routing + Redis quota tracking (INCR/EXPIRE)
-│       │   ├── llama_cpp_adapter.py  #    LlamaCpp — local GGUF offline inference (PRIMARY)
-│       │   ├── ollama_adapter.py     #    Ollama — local server inference (SECONDARY)
-│       │   ├── groq_adapter.py       #    Groq — Llama 3.3 70B cloud (free tier)
-│       │   ├── gemini_adapter.py     #    Gemini 2.5 Flash — supports native stream=True
-│       │   ├── openai_adapter.py     #    GPT-4o-mini — emergency paid fallback
-│       │   └── memory_manager.py     #    Qdrant semantic memory + Knowledge Graph (SPO)
+│       │   ├── router.py             #    Multi-LLM routing + Redis quota tracking
+│       │   ├── llama_cpp_adapter.py  #    LlamaCpp — local GGUF offline inference
+│       │   ├── ollama_adapter.py     #    Ollama — local server inference
+│       │   ├── groq_adapter.py       #    Groq — Llama 3.3 70B cloud
+│       │   ├── gemini_adapter.py     #    Gemini 2.5 Flash — native streaming
+│       │   └── openai_adapter.py     #    GPT-4o-mini — emergency paid fallback
+│       ├── memory_service.py         #    Qdrant + Flash Cache + KG (v3.1.0)
+│       ├── workspace_indexer.py      #    Hybrid BM25 + Dense RAG (v3.1.0)
 │       ├── messaging/
-│       │   ├── telegram_adapter.py  # Telegram Bot API — send + parse inbound
-│       │   ├── whatsapp_adapter.py  # Meta WhatsApp Cloud API — challenge + messages
-│       │   └── email_adapter.py     # SMTP (aiosmtplib) send + IMAP (imap_tools) fetch
+│       │   ├── telegram_adapter.py  # Telegram Bot API
+│       │   ├── whatsapp_adapter.py  # Meta WhatsApp Cloud API
+│       │   └── email_adapter.py     # SMTP send + IMAP fetch
 │       ├── cache/
-│       │   └── cache_service.py  #    Redis async client — LLM / TTS / tool / search TTLs
+│       │   └── cache_service.py  #    Redis async client
 │       ├── persistence/
-│       │   ├── database.py       #    Async engine + session factory (asyncpg / aiosqlite)
+│       │   ├── database.py       #    Async engine + session factory
 │       │   ├── orm_models.py     #    SQLAlchemy ORM models
 │       │   └── repositories/     #    Concrete repository implementations
 │       ├── speech/
@@ -1046,8 +1064,8 @@ Amadeus-AI/
 | API | `src/api/` | HTTP routing, auth middleware, request/response serialization |
 | Application | `src/app/` | Orchestration, agent loop, tool dispatch, voice pipeline |
 | Core | `src/core/` | Domain models, interfaces, config, exceptions — zero external deps |
-| Infrastructure | `src/infra/` | LLM adapters, DB, cache, speech, search, messaging |
-| Data | — | PostgreSQL · SQLite · Redis · Qdrant |
+| Infrastructure | `src/infra/` | LLM adapters, DB, cache, speech, search, messaging, RAG engine |
+| Data | — | PostgreSQL · SQLite · Redis · Qdrant · Flash Cache |
 
 ---
 
@@ -1118,13 +1136,11 @@ Set the following environment variables in the Railway dashboard:
 
 ```bash
 # Production profile (4 Gunicorn workers, resource limits)
+# Note: Redis and PostgreSQL ports are internal-only for security
 docker-compose --profile prod up -d
 
 # View logs
 docker-compose logs -f api-prod
-
-# Run migrations manually
-docker-compose exec api-prod python -m alembic upgrade head
 ```
 
 ### Deploy as a Standalone Windows Daemon
@@ -1170,7 +1186,7 @@ alembic upgrade head && uvicorn src.api.server:app --host 0.0.0.0 --port 8000 --
 - **No user registration or RBAC**: JWT tokens must be generated externally. There is no `/register` or `/login` endpoint. All authenticated users share the same assistant context unless `session_id` is explicitly scoped.
 - **Voice WebSocket — no auth on upgrade**: WebSocket JWT enforcement depends on the client handshake; the current server accepts connections and errors downstream if the token is missing.
 - **Local TTS/STT resource usage**: Running `faster-whisper` (`small` model) and Edge TTS simultaneously on a single CPU core may cause response latency of 1–5 seconds per voice round-trip.
-- **Semantic memory — Qdrant must be running**: If `QDRANT_URL` is not configured or Qdrant is unreachable, memory retrieval is silently skipped — the agent continues without memories.
+- **Semantic memory — Qdrant must be running**: If `QDRANT_URL` is not configured or Qdrant is unreachable, memory retrieval is silently skipped — the agent continues without memories. The **Flash Memory Cache (L1)** provides a high-speed fallback for the most recent interactions.
 
 ---
 
@@ -1181,8 +1197,8 @@ alembic upgrade head && uvicorn src.api.server:app --host 0.0.0.0 --port 8000 --
 - **WebSocket JWT enforcement**: Move token validation to the WebSocket upgrade handshake rather than relying on downstream checks.
 - **Voice streaming**: Support streaming TTS back over the WebSocket as audio chunks arrive (rather than waiting for the full synthesis).
 - **Mobile / browser SDK**: Thin client library for the SSE streaming and voice WebSocket endpoints.
-- **Fine-tuned classifier**: Replace the TF-IDF + SVM pipeline with a fine-tuned sentence-transformer model for even higher accuracy on ambiguous multi-intent queries.
 - **Cost dashboard**: Dedicated Grafana dashboard for the Prometheus cost gauges with daily/monthly aggregations.
+- **Dynamic Skill Loading**: Support for downloading and mounting new tools as sandboxed Docker containers at runtime.
 
 ---
 
