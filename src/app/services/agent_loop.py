@@ -446,7 +446,8 @@ Action Input: {{"param": "value"}}
 Your response:"""
 
         try:
-            assert self.llm_generate is not None
+            if self.llm_generate is None:
+                raise ValueError("llm_generate is not configured")
             response = await self.llm_generate(prompt)
             return self._parse_llm_response(response)
         except Exception as e:
@@ -755,12 +756,12 @@ class AgentOrchestrator:
 
         try:
             self.queue.put_nowait((task, context, permission_profile, future))
-        except asyncio.QueueFull:
+        except asyncio.QueueFull as e:
             logger.warning(
                 "AgentOrchestrator queue is full (maxsize=%s), rejecting request.",
                 self.max_queue_size,
             )
-            raise QueueFullError("Agent system is currently overloaded. Please try again later.")
+            raise QueueFullError("Agent system is currently overloaded. Please try again later.") from e
 
         # Wait for the worker to process our specific task
         result: AgentResult = await future

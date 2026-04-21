@@ -97,9 +97,14 @@ __pycache__
 *.sqlite3
 *.db
 *.log
-*.json
-*.env
 *.pyc
+# Specific generated/sensitive JSON (NOT all *.json — too broad and hides legitimate files)
+memory.json
+service_account*.json
+*credentials*.json
+*secrets*.json
+.env
+*.env
 .env
 
 # =============================================================================
@@ -133,6 +138,10 @@ Thumbs.db
 amadeus.log
 memory.json
 data/
+
+# Workspace indexer outputs — may contain file paths and env key names
+data/workspace_index/
+
 
 # mypy
 .mypy_cache/

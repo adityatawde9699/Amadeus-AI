@@ -1,6 +1,6 @@
 <div align="center">
 
-# Amadeus AI v3.0.0
+# Amadeus AI v3.1.0
 
 **A production-grade, multi-modal AI assistant backend built on Clean Architecture — text, voice, and tool execution unified under one API.**
 
@@ -11,7 +11,7 @@
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 > **Tech Stack Highlights:**
-> `Python 3.11+` · `FastAPI` · `SQLAlchemy 2.0` · `Ollama` · `Groq (Llama 3.3)` · `Gemini` · `OpenAI (GPT-4o-mini)` · `Redis` · `Qdrant` · `PostgreSQL` · `JWT Auth` · `SSE Streaming` · `faster-whisper` · `Edge TTS` · `Telegram` · `WhatsApp` · `Docker` · `GitHub Actions` · `scikit-learn (TF-IDF + SVM)` · `Prometheus`
+> `Python 3.11+` · `FastAPI` · `SQLAlchemy 2.0` · `Ollama` · `Groq (Llama 3.3)` · `Gemini` · `OpenAI (GPT-4o-mini)` · `Redis` · `Qdrant` · `PostgreSQL` · `JWT Auth` · `SSE Streaming` · `faster-whisper` · `Edge TTS` · `Telegram` · `WhatsApp` · `Docker` · `GitHub Actions` · `sentence-transformers (all-mpnet-base-v2)` · `rank-bm25` · `Prometheus`
 
 </div>
 
@@ -75,13 +75,22 @@ Amadeus AI is a FastAPI-based backend service that orchestrates a conversational
 - System Controls (set/get volume, screen brightness, take screenshots, list open apps)
 - Hardware monitoring (CPU, memory, disk, battery) with configurable alert thresholds
 
-### ML Classifier (Tool Selection)
-- **TF-IDF + LinearSVC pipeline** (`scikit-learn`) — dynamically routes user intents locally without an LLM payload
-- **Robust Training Data** across **42 tool categories** — systematically crafted examples covering system hardware, web tasks, and conversational fallback.
-- Eliminates 40–60× Gemini tool-selection calls; prediction latency < 10ms vs 500ms+
-- Models committed at `Model/tfidf_vectorizer.joblib` + `Model/svm_classifier.joblib`
-- **CI auto-retraining**: `train-model` GitHub Actions job triggers on `data/training_data.json` changes
+### Semantic Tool Routing (Zero-Training)
+- **SemanticToolRouter** (`src/app/services/semantic_router.py`) — replaces the legacy sklearn SVM classifier
+- **Model**: `sentence-transformers/all-mpnet-base-v2` (768-dim, CPU-only, no retraining)
+- **Mechanism**: Tool descriptions are embedded once and cached to `Model/semantic_tool_embeddings.npz`. At query time, the user's message is embedded and cosine-compared against all tool vectors in a single NumPy matrix multiply (<10ms on i3)
+- **Hot-pluggable**: New tools registered in the `ToolRegistry` are automatically embedded on next startup — zero retraining
+- **Fallback**: Confidence < 0.50 → falls back to the LlamaCpp LLM router for intent triage
 - Classifier status exposed in `/api/v1/health/detailed` → `classifier_enabled: true/false`
+
+### Omni-Workspace RAG (Hybrid Search)
+- **WorkspaceIndexer** (`src/infra/workspace_indexer.py`) — hybrid BM25 + dense vector retrieval
+- **Dual retrieval**: all-mpnet-base-v2 dense embeddings + BM25Okapi lexical search, fused via Reciprocal Rank Fusion (k=60)
+- **Exact-match recall**: Code-aware BM25 tokenizer preserves identifiers (`AUTH_UUID_7392`, port numbers, error codes) that dense embeddings miss
+- **Incremental builds**: Only re-embeds files whose mtime or MD5 hash changed — subsequent runs take seconds
+- **RAM-safe**: `max_chunks=15_000` default (≈66 MB total) with `mmap_mode='r'` loading — designed for 4 GB machines
+- **Context-enriched embeddings**: File-level header (imports, globals, headings) prepended to encoder input — display snippets stay clean
+- **CLI**: `python scripts/index_workspace.py --root C:\Users\ASUS\Downloads --max-chunks 15000`
 
 ### API & Security
 - **Permission Profiles**: Supports `READ_ONLY` and `SYSTEM_FULL` JWT claims to explicitly block destructive tool executions on unprivileged accounts.
@@ -170,9 +179,10 @@ cp .env.example .env
 
 | Variable | Description |
 |----------|-------------|
-| `SECRET_KEY` | JWT signing secret — generate with `openssl rand -hex 32` |
+| `SECRET_KEY` | JWT signing secret — generate with `python -c "import secrets; print(secrets.token_hex(32))"` |
 | `GROQ_API_KEY` | Groq API key — [console.groq.com](https://console.groq.com) (free tier: 14,400 req/day) |
 | `GEMINI_API_KEY` | Google Gemini key — [makersuite.google.com](https://makersuite.google.com/app/apikey) |
+| `POSTGRES_PASSWORD` | Production DB password — the default `amadeus_password` is a development placeholder only |
 | `DATABASE_URL` | Database connection string (defaults to SQLite for dev) |
 
 **Optional variables:**

@@ -20,9 +20,7 @@ import pytest
 # that would fail in a minimal test environment.
 # ---------------------------------------------------------------------------
 
-for _mod in ("joblib", "numpy", "numpy.core"):
-    if _mod not in sys.modules:
-        sys.modules[_mod] = MagicMock()
+
 
 if "google.genai" not in sys.modules:
     _genai = types.ModuleType("google.genai")

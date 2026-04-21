@@ -63,11 +63,11 @@ async def list_tasks(
             try:
                 status_enum = TaskStatus(status_filter)
                 tasks = await repo.get_by_status(status_enum)
-            except ValueError:
+            except ValueError as e:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Invalid status: {status_filter}. Use 'pending' or 'completed'.",
-                )
+                ) from e
         else:
             tasks = await repo.get_all(limit=limit, offset=offset)
 

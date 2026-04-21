@@ -73,6 +73,10 @@ Amadeus/
 *.pth
 Model/
 
+# Workspace indexer outputs (contain file paths/content from local filesystem)
+data/workspace_index/
+
+
 # OS files
 .DS_Store
 Thumbs.db

@@ -136,7 +136,8 @@ class TelegramAdapter:
             )
 
             # Using ApplicationBuilder is required for v20+ polling
-            assert self._token is not None, "Token must be set at this point"
+            if self._token is None:
+                raise ValueError("Token must be set at this point")
             self._application = ApplicationBuilder().token(self._token).build()
             self._bot = self._application.bot
 

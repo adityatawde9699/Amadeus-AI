@@ -23,12 +23,12 @@ services:
     environment:
       - ENV=development
       - DEBUG=true
-      - DATABASE_URL=postgresql://amadeus:amadeus_password@postgres:5432/amadeus_db
+      - DATABASE_URL=postgresql://amadeus:${POSTGRES_PASSWORD:-amadeus_password}@postgres:5432/amadeus_db
       - REDIS_URL=redis://redis:6379/0
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - WEATHER_API_KEY=${WEATHER_API_KEY}
       - NEWS_API_KEY=${NEWS_API_KEY}
-      - SECRET_KEY=${SECRET_KEY}
+      - SECRET_KEY=${SECRET_KEY:-change_me_in_production}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - LOG_LEVEL=INFO
     volumes:
@@ -67,16 +67,20 @@ services:
     environment:
       - ENV=production
       - DEBUG=false
-      - DATABASE_URL=postgresql://amadeus:amadeus_password@postgres:5432/amadeus_db
+      - DATABASE_URL=postgresql://amadeus:${POSTGRES_PASSWORD:-change_me_in_production}@postgres:5432/amadeus_db
+      - REDIS_URL=redis://redis:6379/0
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - WEATHER_API_KEY=${WEATHER_API_KEY}
       - NEWS_API_KEY=${NEWS_API_KEY}
+      - SECRET_KEY=${SECRET_KEY}
       - LOG_LEVEL=WARNING
     command: gunicorn -k uvicorn.workers.UvicornWorker --workers 4 --bind 0.0.0.0:8000 src.api.server:app
     volumes:
       - amadeus-data:/app/data
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/detailed')" ]
@@ -102,8 +106,8 @@ services:
   redis:
     image: redis:7-alpine
     container_name: amadeus-redis
-    ports:
-      - "6379:6379"
+    # Port 6379 is NOT exposed to the host — Redis is internal to the Docker network.
+    # Expose only if you need external Redis access (add auth first: --requirepass).
     command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -120,11 +124,10 @@ services:
   postgres:
     image: postgres:15-alpine
     container_name: amadeus-postgres
-    ports:
-      - "5432:5432"
+    # Port 5432 is NOT exposed to the host — DB is internal to the Docker network.
     environment:
       - POSTGRES_USER=amadeus
-      - POSTGRES_PASSWORD=amadeus_password
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-amadeus_password}
       - POSTGRES_DB=amadeus_db
     volumes:
       - postgres-data:/var/lib/postgresql/data

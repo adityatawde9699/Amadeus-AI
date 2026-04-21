@@ -81,17 +81,26 @@ pip install llama-cpp-python
 src/
 ├── api/          # FastAPI routes, middleware, auth
 ├── app/          # Use-cases, services, agent loop
+│   └── services/
+│       ├── amadeus_service.py    ← main AI service + SemanticToolRouter integration
+│       └── semantic_router.py   ← zero-training tool router (all-mpnet-base-v2)
 ├── core/         # Domain models, exceptions, interfaces (no external deps)
 │   ├── domain/
 │   ├── interfaces/
-│   │   └── llm.py        ← LLMAdapter ABC (all adapters must implement this)
+│   │   └── llm.py               ← LLMAdapter ABC (all adapters must implement this)
 │   └── exceptions.py
 └── infra/        # Infrastructure implementations
     ├── llm/      ← LLM adapters (add new providers here)
     ├── cache/
     ├── persistence/
     ├── search/
-    └── speech/
+    ├── speech/
+    ├── memory_service.py        ← FlashMemoryCache (L1) + QdrantMemoryService (L2)
+    ├── workspace_indexer.py     ← Hybrid BM25+dense workspace RAG
+    └── tools/    ← All Amadeus tools (add new tools here)
+        └── workspace_tools.py   ← search_workspace tool
+scripts/
+    └── index_workspace.py       ← CLI to build/update the workspace RAG index
 tests/
 ├── unit/         # Fast, isolated unit tests (no I/O)
 └── integration/  # Tests that need DB / external services

@@ -9,6 +9,36 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+---
+
+## [3.1.0] — 2026-04-22
+
+### Added
+- **Zero-Training Semantic Tool Router** (`src/app/services/semantic_router.py`): Replaced sklearn SVM classifier with `sentence-transformers/all-mpnet-base-v2` cosine similarity routing. Supports hot-pluggable tool registration with zero retraining. Confidence threshold: `0.50`; falls back to LlamaCpp LLM router below threshold.
+- **Hybrid Workspace Indexer** (`src/infra/workspace_indexer.py`): Dense vector (all-mpnet-base-v2) + BM25 (rank-bm25) retrieval fused via Reciprocal Rank Fusion (RRF, k=60). Supports incremental builds (mtime + MD5 content hash), `max_chunks` cap (default 15,000 ≈ 66 MB RAM), `mmap_mode='r'` loading, and context-augmented chunking.
+- **Context-Augmented Chunking**: File-level metadata header (imports, globals, titles, section names) prepended to embedding input — not stored in display snippets. Improves semantic vector quality for code QA without polluting BM25 or search results.
+- **Workspace Search Tool** (`src/infra/tools/workspace_tools.py`): Amadeus tool `search_workspace` enabling autonomous semantic search over the local project repository.
+- **Flash Memory Cache** (`FlashMemoryCache` in `src/infra/memory_service.py`): Tier-1 in-process ring buffer (100 entries, 307 KB, NumPy float32). Intercepts `QdrantMemoryService.retrieve()` calls with cosine similarity check (threshold `0.85`). Cache hit skips Qdrant entirely (~microsecond vs ~5ms). Invalidated on `clear_session()`.
+- **Workspace Indexer CLI** (`scripts/index_workspace.py`): `--root`, `--force`, `--max-chunks`, `--quiet` flags. Default root: `C:\Users\ASUS\Downloads`.
+- `rank-bm25>=0.2.2` added to core dependencies.
+
+### Security
+- **docker-compose.yml**: Removed hardcoded `amadeus_password` — Postgres password now sourced from `${POSTGRES_PASSWORD:-amadeus_password}`.
+- **docker-compose.yml**: Removed Redis host port exposure (`6379:6379`). Redis is now internal to `amadeus-network` only.
+- **docker-compose.yml**: Removed Postgres host port exposure (`5432:5432`). DB is now internal to `amadeus-network` only.
+- **docker-compose.yml**: `api-prod` now correctly inherits `REDIS_URL` and `SECRET_KEY`; added `depends_on: redis`.
+- **Dockerfile**: Replaced `.env*` glob COPY with explicit `.env.example` only — prevents `.env.prod`/`.env.staging` from being baked into image layers.
+- **Setup_Amadeus.bat**: Auto-generates `SECRET_KEY` via `secrets.token_hex(32)` and writes it to `.env`. Added security reminder banner.
+- **Start_Amadeus.bat**: Added `.env` pre-flight check — fails fast if setup hasn't been run.
+- **SECURITY.md**: Updated to v3.x support matrix; added Docker network isolation and workspace index privacy notes.
+- **.gitignore**: Removed blanket `*.json` rule (too broad — was suppressing legitimate JSON files). Replaced with specific sensitive file patterns. Added `data/workspace_index/` exclusion.
+- **.dockerignore**: Added `data/workspace_index/` exclusion.
+
+### Fixed
+- `api-prod` service in docker-compose was missing Redis dependency and `SECRET_KEY` — production deployments were silently failing quota tracking.
+
+---
+
 ## [3.0.0] — 2026-04-19
 
 ### Added
@@ -67,5 +97,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Initial prototype — single-file assistant with basic GPT-2/Gemini integration.
 
-[Unreleased]: https://github.com/adityatawde9699/Amadeus-AI/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/adityatawde9699/Amadeus-AI/compare/v3.1.0...HEAD
+[3.1.0]: https://github.com/adityatawde9699/Amadeus-AI/compare/v3.0.0...v3.1.0
+[3.0.0]: https://github.com/adityatawde9699/Amadeus-AI/compare/v2.0.0...v3.0.0
 [2.0.0]: https://github.com/adityatawde9699/Amadeus-AI/releases/tag/v2.0.0

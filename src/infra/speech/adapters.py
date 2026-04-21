@@ -69,11 +69,11 @@ class WhisperVoiceInput(ISpeechToTextService):
         if not audio_data or len(audio_data) < settings.SPEECH_MIN_AUDIO_LENGTH:
             return ""  # Silence — not an error
 
-        temp_path = tempfile.mktemp(suffix=".wav")
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            temp_path = f.name
+            f.write(audio_data)
+
         try:
-            # Write bytes to temp file for faster_whisper
-            with Path(temp_path).open("wb") as f:
-                f.write(audio_data)
 
             # Run in a single-worker executor to limit memory scaling (OOM protection)
             from src.container import global_container
@@ -82,7 +82,8 @@ class WhisperVoiceInput(ISpeechToTextService):
 
             loop = asyncio.get_running_loop()
             model = WhisperVoiceInput._model_cache
-            assert model is not None  # Guarded above
+            if model is None:
+                raise ValueError("Whisper model not loaded")
 
             def _transcribe_sync() -> str:
                 segments, _ = model.transcribe(temp_path, language=language)

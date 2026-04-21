@@ -84,6 +84,110 @@ class MemoryResult:
 # =============================================================================
 # QDRANT MEMORY SERVICE
 # =============================================================================
+# FLASH MEMORY L1 CACHE
+# =============================================================================
+
+
+class FlashMemoryCache:
+    """
+    Tier-1 in-memory ring-buffer that intercepts Qdrant calls for recently
+    stored memories.
+
+    Architecture
+    -----------
+    - Pre-allocates a (capacity × dim) NumPy float32 matrix on first push.
+    - New memories are written in a circular fashion (oldest is overwritten).
+    - At query time: single matrix-vector dot product over the active rows
+      returns cosine similarities in one C-array call — sub-microsecond on
+      an i3 for capacity=100.
+    - If best_score ≥ threshold → return the cached MemoryResult immediately,
+      skipping Qdrant entirely.
+    - If no hit → falls through to the normal Qdrant lookup.
+
+    RAM cost: capacity × dim × 4 bytes = 100 × 768 × 4 ≈ 307 KB. Trivial.
+
+    Parameters
+    ----------
+    capacity:
+        Maximum number of memories held in the L1 cache (ring buffer).
+    threshold:
+        Minimum cosine similarity to accept a cache hit (default 0.85).
+    """
+
+    def __init__(self, capacity: int = 100, threshold: float = 0.85) -> None:
+        self._capacity = capacity
+        self._threshold = threshold
+        self._embeddings: Any = None           # np.ndarray (capacity, dim), lazy-init
+        self._entries: list[Any] = [None] * capacity  # parallel MemoryResult list
+        self._head: int = 0                    # next write position
+        self._slots: int = 0                   # number of valid entries (0 → capacity)
+
+    def push(self, result: Any, embedding: list[float]) -> None:
+        """
+        Add a memory + its embedding to the ring buffer.
+        Overwrites the oldest entry once the buffer is full.
+        """
+        import numpy as np
+
+        emb = np.array(embedding, dtype=np.float32)
+        # L2-normalise so the dot product equals cosine similarity
+        norm = float(np.linalg.norm(emb))
+        if norm > 0:
+            emb /= norm
+
+        # Lazy-initialise the matrix on the first push
+        if self._embeddings is None:
+            self._embeddings = np.zeros((self._capacity, emb.shape[0]), dtype=np.float32)
+
+        self._embeddings[self._head] = emb
+        self._entries[self._head] = result
+        self._head = (self._head + 1) % self._capacity
+        self._slots = min(self._slots + 1, self._capacity)
+
+    def check(self, query_embedding: list[float]) -> Any:
+        """
+        Return the best-matching MemoryResult if its cosine similarity to
+        query_embedding is ≥ threshold, otherwise return None.
+        """
+        if self._slots == 0 or self._embeddings is None:
+            return None
+
+        import numpy as np
+
+        q = np.array(query_embedding, dtype=np.float32)
+        norm = float(np.linalg.norm(q))
+        if norm > 0:
+            q /= norm
+
+        # Cosine similarity across all active slots (pure NumPy → C BLAS)
+        scores: Any = self._embeddings[: self._slots] @ q  # shape (slots,)
+        best_idx = int(np.argmax(scores))
+        best_score = float(scores[best_idx])
+
+        if best_score >= self._threshold:
+            hit = self._entries[best_idx]
+            if hit is not None:
+                hit.score = best_score  # surface the actual score to caller
+                return hit
+
+        return None
+
+    def invalidate(self) -> None:
+        """Clear all cached entries (e.g. after a session reset)."""
+        self._embeddings = None
+        self._entries = [None] * self._capacity
+        self._head = 0
+        self._slots = 0
+
+    @property
+    def size(self) -> int:
+        """Number of valid entries currently in the cache."""
+        return self._slots
+
+
+# =============================================================================
+# QDRANT MEMORY SERVICE
+# =============================================================================
 
 
 # Global cache for the Qdrant client to avoid FileLock collisions
@@ -106,6 +210,9 @@ class QdrantMemoryService:
         # Reuse CHROMA settings for Qdrant location/collection name
         self._enabled = self._settings.CHROMA_ENABLED
         self._initialized = False
+
+        # Tier-1 Flash Memory Cache (intercepts Qdrant for recent memories)
+        self._flash_cache = FlashMemoryCache(capacity=100, threshold=0.85)
 
     async def initialize(self) -> None:
         """Call this async method before using the service."""
@@ -262,9 +369,11 @@ class QdrantMemoryService:
                 config=types.EmbedContentConfig(task_type=task_type),
             )
             embeddings = result.embeddings
-            assert embeddings is not None and len(embeddings) > 0
+            if not embeddings:
+                raise ValueError("No embeddings returned")
             values = embeddings[0].values
-            assert values is not None
+            if values is None:
+                raise ValueError("No embedding values returned")
             return list(values)
 
         try:
@@ -330,6 +439,23 @@ class QdrantMemoryService:
                 ],
             )
             logger.debug("Memory stored — id=%s, role=%s", id_str[:8], role)
+
+            # --- Push to L1 Flash Cache ---
+            # Build a MemoryResult so the cache stores the full object
+            flash_result = MemoryResult(
+                session_id=session_id,
+                role=role,
+                text=text,
+                timestamp=timestamp_str,
+                distance=1.0,
+                type=type,
+                subtype=subtype,
+                importance=importance,
+                source=source,
+                score=1.0,
+            )
+            self._flash_cache.push(flash_result, embedding)
+
             return True
         except Exception as exc:
             logger.warning("Qdrant upsert failed: %s", exc)
@@ -337,7 +463,11 @@ class QdrantMemoryService:
 
     async def retrieve(self, query: str, top_k: int = 5) -> list[MemoryResult]:
         """
-        Semantically retrieve the most relevant past messages for a query.
+        Two-tier semantic retrieval:
+          Tier 1 — Flash Memory Cache (NumPy cosine similarity, ~microsecond).
+                    Returns immediately if any recent memory scores ≥ 0.85.
+          Tier 2 — Qdrant (async network call, full historical search).
+                    Only reached on L1 cache miss.
         """
         if not self._enabled or not self._initialized:
             return []
@@ -346,6 +476,15 @@ class QdrantMemoryService:
         if embedding is None:
             return []
 
+        # --- Tier 1: Flash Memory Cache ---
+        flash_hit = self._flash_cache.check(embedding)
+        if flash_hit is not None:
+            logger.debug(
+                "Flash cache HIT (score=%.3f) — skipping Qdrant lookup.", flash_hit.score
+            )
+            return [flash_hit]
+
+        # --- Tier 2: Full Qdrant search ---
         try:
             import math
 
@@ -362,17 +501,17 @@ class QdrantMemoryService:
 
             for hit in results:
                 payload = hit.payload or {}
-                
+
                 # --- Tiered Ranking Logic ---
                 similarity = hit.score
-                
+
                 # Filter by similarity threshold
                 if similarity < 0.65:
                     continue
 
                 importance = payload.get("importance", 0.5)
                 subtype = payload.get("subtype", "interaction")
-                
+
                 # Calculate recency decay
                 timestamp_str = payload.get("timestamp", "")
                 recency_decay = 0.0
@@ -387,9 +526,8 @@ class QdrantMemoryService:
                         recency_decay = 0.5
                 elif subtype == "identity":
                     importance = 1.0
-                    recency_decay = 1.0 # Never decays
-                
-                # score = 0.6 * similarity + 0.25 * importance + 0.15 * recency_decay
+                    recency_decay = 1.0  # Never decays
+
                 weighted_score = (0.6 * similarity) + (0.25 * importance) + (0.15 * recency_decay)
 
                 memories.append(
@@ -411,7 +549,7 @@ class QdrantMemoryService:
             memories.sort(key=lambda x: x.score, reverse=True)
             memories = memories[:top_k]
 
-            logger.debug("Ranking complete: retrieved %d weighted memories", len(memories))
+            logger.debug("Qdrant: retrieved %d weighted memories (L1 miss).", len(memories))
             return memories
 
         except Exception as exc:
@@ -445,10 +583,13 @@ class QdrantMemoryService:
                     ),
                 )
                 logger.info("Cleared %d memories for session=%s", count, session_id[:8])
+            # Flush flash cache so no stale entries survive a session reset
+            self._flash_cache.invalidate()
             return int(count)
         except Exception as exc:
             logger.warning("Qdrant session clear failed: %s", exc)
             return 0
+
 
     @property
     def is_enabled(self) -> bool:
