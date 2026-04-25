@@ -20,8 +20,6 @@ import pytest
 # that would fail in a minimal test environment.
 # ---------------------------------------------------------------------------
 
-
-
 if "google.genai" not in sys.modules:
     _genai = types.ModuleType("google.genai")
     _genai.Client = MagicMock()
@@ -42,18 +40,21 @@ def _make_service(debug: bool = False) -> "AmadeusService":  # noqa: F821
 
     with (
         patch("src.app.services.amadeus_service.genai"),
-        patch("src.app.services.amadeus_service.joblib"),
         patch("src.app.services.amadeus_service.QdrantMemoryService") as mock_mem,
+        patch("src.app.services.amadeus_service.KnowledgeGraphService"),
         patch("src.app.services.amadeus_service.ToolRegistry"),
         patch("src.app.services.amadeus_service.ToolExecutor"),
-        # AgentOrchestrator is lazily imported *inside* __init__ from agent_loop;
-        # patch it at the source module so the local `from ... import` picks it up.
+        patch("src.app.services.amadeus_service.ArgumentExtractor"),
+        patch("src.app.services.amadeus_service.ToolDispatcher"),
+        patch("src.app.services.amadeus_service.ResponseComposer"),
+        patch("src.app.services.amadeus_service.UnifiedSemanticRouter") as mock_router,
+        # AgentOrchestrator is lazily imported inside __init__ from agent_loop
         patch("src.app.services.agent_loop.AgentOrchestrator"),
-        patch("src.infra.messaging.telegram_adapter.TelegramAdapter"),
-        patch("src.infra.messaging.whatsapp_adapter.WhatsAppAdapter"),
     ):
         mock_mem.return_value.is_enabled = False
-        mock_mem.return_value.memory_count = 0
+        mock_mem.return_value.store = AsyncMock()
+        mock_router.return_value.is_ready = False
+        mock_router.return_value.build_index = MagicMock()
 
         mock_settings = MagicMock()
         mock_settings.GEMINI_API_KEY = None
@@ -62,6 +63,8 @@ def _make_service(debug: bool = False) -> "AmadeusService":  # noqa: F821
         mock_settings.ASSISTANT_NAME = "Amadeus"
         mock_settings.ASSISTANT_PERSONALITY = "helpful"
         mock_settings.GEMINI_MODEL = "gemini-flash"
+        mock_settings.LOCAL_ONLY_MODE = True
+        mock_settings.BASE_DIR = MagicMock()
 
         svc = AmadeusService(settings=mock_settings, debug_mode=debug)
         svc.model = None  # No Gemini
@@ -129,7 +132,6 @@ class TestHandleCommandErrorHandling:
         """A successful command returns the expected response (no error)."""
         svc = _make_service(debug=False)
 
-        # Mock the conversation_manager and internal processing to succeed
         svc.conversation_manager.add = AsyncMock()
         svc.memory_service.store = AsyncMock()
         svc.memory_service.retrieve = AsyncMock(return_value=[])
