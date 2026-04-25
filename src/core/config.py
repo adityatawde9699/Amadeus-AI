@@ -74,7 +74,7 @@ class Settings(BaseSettings):
     # API KEYS
     # =========================================================================
     GEMINI_API_KEY: str | None = None
-    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_MODEL: str = "gemini-3-flash-preview"
     WEATHER_API_KEY: str | None = None
     NEWS_API_KEY: str | None = None
     OPENAI_API_KEY: str | None = None  # Reserved for future use
@@ -93,7 +93,7 @@ class Settings(BaseSettings):
     # gemma3:2b  → 2B,  ~1.5 GB RAM  (smallest viable)
     OLLAMA_MODEL: str = "phi3:mini"
     # When True: ONLY use local offline providers, disable all cloud providers
-    LOCAL_ONLY_MODE: bool = False
+    LOCAL_ONLY_MODE: bool = True
     OLLAMA_TIMEOUT_SECONDS: float = 120.0  # CPU inference can be slow
     OLLAMA_NUM_CTX: int = 4096  # Context window (tokens)
 

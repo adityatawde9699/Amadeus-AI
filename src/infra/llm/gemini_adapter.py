@@ -55,7 +55,7 @@ class GeminiAdapter(ILLMService):
         self._api_key = api_key or self._settings.GEMINI_API_KEY
         self._redis = redis_client
         self._client: genai.Client | None = None
-        self._model_name = "gemini-2.5-flash"
+        self._model_name = self._settings.GEMINI_MODEL
         self._configured = False
 
     def _configure(self) -> None:
@@ -209,6 +209,10 @@ Guidelines:
                 raise LLMRateLimitError("Gemini", retry_after=60) from e
             if "connection" in error_str or "network" in error_str:
                 raise LLMConnectionError("Gemini", str(e)) from e
+            if isinstance(e, TypeError) and "nonetype" in error_str and "iterable" in error_str:
+                logger.warning(f"Gemini SDK returned NoneType iterable error (likely an empty response due to safety or rate limits): {e}")
+                raise LLMResponseError("Gemini returned an empty or invalid response") from e
+            
             logger.exception(f"Gemini error: {e}")
             raise LLMResponseError(str(e)) from e
 
@@ -265,7 +269,10 @@ Guidelines:
             return response.text, None
 
         except Exception as e:
-            logger.exception(f"Gemini function calling error: {e}")
+            if isinstance(e, TypeError) and "'NoneType'" in str(e):
+                logger.warning(f"Gemini function calling SDK error: {e}. Falling back to text response.")
+            else:
+                logger.warning(f"Gemini function calling error: {e}. Falling back to text response.")
             # Fall back to text-only response
             text = await self.generate_response(prompt, context)
             return text, None
