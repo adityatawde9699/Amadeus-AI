@@ -41,7 +41,7 @@ if TYPE_CHECKING:
 from google import genai
 from google.genai import types
 
-from src.app.services.semantic_router import SemanticToolRouter
+from src.app.services.semantic_router import UnifiedSemanticRouter
 from src.app.services.tool_registry import ToolRegistry
 from src.core.config import Settings, get_settings
 from src.core.domain.models import PermissionProfile
@@ -258,11 +258,11 @@ class AmadeusService:
         self._load_api_keys()
         self._register_all_tools()
 
-        # Build zero-training semantic tool router
-        self._semantic_router = SemanticToolRouter(
+        # Build zero-training unified semantic router
+        self._semantic_router = UnifiedSemanticRouter(
             registry=self.tool_registry,
             model_dir=self.settings.BASE_DIR / "Model",
-            threshold=0.50,
+            threshold=0.45,
         )
         self._semantic_router.build_index()
 
@@ -487,68 +487,21 @@ Context: {context_summary}"""
 
     async def _predict_intent_llm(self, query: str) -> tuple[str, str | None]:
         """
-        Two-stage intent triaging:
-
-        Stage 1 — SemanticToolRouter (zero-training, pure cosine similarity).
-                   Embeds the query and compares against all tool description
-                   vectors. No retraining required when adding new tools.
-        Stage 2 — Local LLM (LlamaCpp) fallback when semantic confidence is
-                   below threshold or the router is not yet initialised.
-
-        Decides: tool (and which one), conversational, or cloud_escalation.
+        Unified Intent Routing using Sentence-Transformers.
+        
+        Uses UnifiedSemanticRouter to classify the query into:
+        - 'tool': specific localized tool execution.
+        - 'conversational': general chat.
+        - 'cloud_escalation': complex reasoning.
+        
+        Zero LLM calls are used for triage, ensuring maximum speed and privacy.
         """
-        # --- Stage 1: Semantic Router (sentence-transformers cosine similarity) ---
         if self._semantic_router.is_ready:
-            matched_tool = self._semantic_router.route(query)
-            if matched_tool:
-                return "tool", matched_tool
+            intent_type, detail = self._semantic_router.route(query)
+            return intent_type, detail
 
-        # --- Stage 2: LLM fallback ---
-        if not self.llm_router:
-            return "conversational", None
-
-        tools_menu = self.tool_registry.get_tools_menu()
-        triage_prompt = f"""### Instructions
-You are the semantic router for Amadeus AI. Classify the user's request.
-
-### Available Tools
-{tools_menu}
-
-### Decision Rules
-1. If the request matches a tool, output EXACTLY: ACTION: <tool_name>
-2. Greeting / small-talk / general chat → ACTION: conversational
-3. Highly complex (advanced code, math, philosophy) → ACTION: cloud_escalation
-
-### User Input
-{query}
-
-### Decision
-"""
-
-        try:
-            response, _provider = await self.llm_router.generate(
-                prompt=triage_prompt,
-                complexity="simple",
-                temperature=0.0,
-                max_tokens=20,
-            )
-
-            clean_res = response.strip().upper()
-            if "ACTION: CLOUD_ESCALATION" in clean_res:
-                return "cloud_escalation", None
-            if "ACTION: CONVERSATIONAL" in clean_res:
-                return "conversational", None
-
-            # Check for a matching tool name in the response
-            for t_name in self.tool_registry.list_names():
-                if t_name.upper() in clean_res:
-                    return "tool", t_name
-
-            return "conversational", None
-
-        except Exception as e:
-            logger.error("LLM semantic triage failed: %s", e)
-            return "conversational", None
+        # Safety fallback if router is not ready
+        return "conversational", None
 
 
     # =========================================================================
@@ -779,7 +732,7 @@ You are the semantic router for Amadeus AI. Classify the user's request.
             )
 
         # Step 4: Tool not in registry — fall back to Gemini if available
-        if getattr(self, "client", None):
+        if getattr(self, "client", None) and not self.settings.LOCAL_ONLY_MODE:
             return await self._process_with_gemini(user_input, [actual_tool_name], permission_profile)
 
         return (
@@ -1329,8 +1282,8 @@ Respond naturally and conversationally. Be concise."""
                 )
                 return response_text
 
-            if self.client is None:
-                raise ValueError("Gemini client not initialized")
+            if self.client is None or self.settings.LOCAL_ONLY_MODE:
+                raise ValueError("Gemini client not initialized or LOCAL_ONLY_MODE active")
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=prompt,
@@ -1352,8 +1305,8 @@ Tool result: {result}
 Provide a natural, concise response that incorporates this result. Don't just repeat the result - present it helpfully."""
 
         try:
-            if self.client is None:
-                raise ValueError("Gemini client not initialized")
+            if self.client is None or self.settings.LOCAL_ONLY_MODE:
+                raise ValueError("Gemini client not initialized or LOCAL_ONLY_MODE active")
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=prompt,

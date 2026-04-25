@@ -36,12 +36,29 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Constants
+# Constants & Intents
 # ---------------------------------------------------------------------------
 
 _EMBED_MODEL_NAME = "sentence-transformers/all-mpnet-base-v2"
-_CACHE_FILENAME = "semantic_tool_embeddings.npz"
-_DEFAULT_THRESHOLD = 0.50
+_CACHE_FILENAME = "unified_semantic_cache.npz"
+_DEFAULT_THRESHOLD = 0.38  # Tuned: weather=0.40, cpu=0.84 with mpnet
+
+# Anchor phrases for global intents to guide the vector space
+_GLOBAL_INTENTS = {
+    "conversational": [
+        "hello", "hi there", "how are you?", "good morning", "thanks", "thank you",
+        "who are you?", "what's up?", "hey Amadeus", "tell me a joke", "chat with me",
+        "you're helpful", "bye", "goodbye", "see ya"
+    ],
+    "cloud_escalation": [
+        "write a complex python script for quantum simulation",
+        "explain the mathematical proof of fermat's last theorem",
+        "solve this advanced calculus problem",
+        "architect a distributed system for high availability",
+        "deep dive into the philosophy of mind and consciousness",
+        "write a comprehensive technical research paper"
+    ]
+}
 
 
 # ---------------------------------------------------------------------------
@@ -51,37 +68,36 @@ _DEFAULT_THRESHOLD = 0.50
 
 def _tool_text(name: str, description: str, category: str = "") -> str:
     """Produce a rich embedding-ready text representation for a tool."""
-    parts = [f"Tool: {name}", f"Description: {description}"]
+    parts = [
+        description,
+        f"Tool name: {name}",
+        f"Use this tool to: {description}",
+    ]
     if category:
         parts.append(f"Category: {category}")
     return "\n".join(parts)
 
 
-def _registry_fingerprint(tool_names: list[str]) -> str:
-    """Stable hash of the sorted tool names — used to detect registry changes."""
-    key = "|".join(sorted(tool_names))
+def _registry_fingerprint(tool_names: list[str], tool_descs: list[str] | None = None) -> str:
+    """Stable hash of the tool names, descriptions, and intents — used to detect changes."""
+    all_keys = sorted(tool_names) + sorted(_GLOBAL_INTENTS.keys())
+    if tool_descs:
+        all_keys += sorted(tool_descs)
+    key = "|".join(all_keys)
     return hashlib.md5(key.encode()).hexdigest()  # noqa: S324 — non-security hash
 
 
 # ---------------------------------------------------------------------------
-# SemanticToolRouter
+# UnifiedSemanticRouter
 # ---------------------------------------------------------------------------
 
 
-class SemanticToolRouter:
+class UnifiedSemanticRouter:
     """
-    Zero-training semantic router that maps a user query to a registered tool
-    via cosine similarity over sentence-transformer embeddings.
+    Zero-training unified router that maps user queries to either a specific
+    tool or a global intent (conversational, escalation) via cosine similarity.
 
-    Parameters
-    ----------
-    registry:
-        The live ToolRegistry to route against.
-    model_dir:
-        Directory where the embedding cache (.npz) is persisted.
-    threshold:
-        Minimum cosine similarity score to accept a tool match.
-        Queries scoring below this value return None (→ LLM fallback).
+    Uses sentence-transformers/all-mpnet-base-v2 for high-quality embeddings.
     """
 
     def __init__(
@@ -94,183 +110,131 @@ class SemanticToolRouter:
         self._model_dir = Path(model_dir)
         self._threshold = threshold
 
-        # Populated by _build_index()
-        self._tool_names: list[str] = []
-        self._tool_matrix: Any = None  # np.ndarray shape (N, 768)
+        # Populated by build_index()
+        self._labels: list[str] = []  # Names of tools or intents
+        self._types: list[str] = []   # 'tool' or 'intent'
+        self._matrix: Any = None      # np.ndarray shape (N, 768)
         self._embed_model: Any = None  # SentenceTransformer instance
         self._ready = False
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
     def build_index(self) -> None:
-        """
-        Load the embedding model and build (or restore) the tool embedding matrix.
-        Call this once after all tools have been registered.
-        """
+        """Load the model and build the unified embedding matrix."""
         try:
             import numpy as np
             from sentence_transformers import SentenceTransformer
         except ImportError as exc:
-            logger.error(
-                "SemanticToolRouter requires sentence-transformers and numpy. "
-                "Install with: pip install sentence-transformers numpy. Error: %s",
-                exc,
-            )
+            logger.error("UnifiedSemanticRouter requires sentence-transformers and numpy: %s", exc)
             return
 
-        # --- Load embedding model ---
         try:
             self._embed_model = SentenceTransformer(_EMBED_MODEL_NAME)
-            logger.info("SemanticToolRouter: loaded embedding model '%s'", _EMBED_MODEL_NAME)
         except Exception as exc:
-            logger.error("SemanticToolRouter: failed to load embedding model: %s", exc)
+            logger.error("UnifiedSemanticRouter: failed to load embedding model: %s", exc)
             return
 
-        # --- Collect current tool metadata ---
         all_tools = self._registry.list_all()
-        if not all_tools:
-            logger.warning("SemanticToolRouter: registry is empty — index not built.")
-            return
+        tool_names = [t.name for t in all_tools]
+        tool_descs = [t.description for t in all_tools]
+        current_fp = _registry_fingerprint(tool_names, tool_descs)
 
-        current_names = [t.name for t in all_tools]
-        current_fp = _registry_fingerprint(current_names)
-
-        # --- Try to restore from cache ---
         cache_path = self._model_dir / _CACHE_FILENAME
         if self._try_load_cache(cache_path, current_fp, np):
-            logger.info(
-                "SemanticToolRouter: restored embedding cache for %d tools.", len(self._tool_names)
-            )
+            logger.info("UnifiedSemanticRouter: restored cache for %d items.", len(self._labels))
             self._ready = True
             return
 
-        # --- Build fresh embeddings ---
-        logger.info(
-            "SemanticToolRouter: building embeddings for %d tools (this may take a moment)...",
-            len(all_tools),
-        )
-        texts = [_tool_text(t.name, t.description, t.category.value) for t in all_tools]
+        # Build fresh embeddings
+        logger.info("UnifiedSemanticRouter: indexing tools and intents...")
+        
+        texts = []
+        labels = []
+        types = []
+
+        # 1. Tools
+        for t in all_tools:
+            texts.append(_tool_text(t.name, t.description, t.category.value))
+            labels.append(t.name)
+            types.append("tool")
+
+        # 2. Intents
+        for intent, anchors in _GLOBAL_INTENTS.items():
+            for phrase in anchors:
+                texts.append(f"Intent: {intent}\nExample: {phrase}")
+                labels.append(intent)
+                types.append("intent")
 
         try:
             matrix = self._embed_model.encode(
                 texts,
-                show_progress_bar=False,
-                normalize_embeddings=True,  # L2-normalise → dot product == cosine similarity
-                batch_size=32,
+                normalize_embeddings=True,
+                show_progress_bar=False
             )
-            self._tool_names = current_names
-            self._tool_matrix = matrix  # shape (N, 768), float32
+            self._labels = labels
+            self._types = types
+            self._matrix = matrix
 
-            # Persist to disk
+            # Cache
             self._model_dir.mkdir(parents=True, exist_ok=True)
             np.savez(
                 cache_path,
                 matrix=matrix,
-                names=np.array(current_names),
+                labels=np.array(labels),
+                types=np.array(types),
                 fingerprint=np.array([current_fp]),
             )
-            logger.info(
-                "SemanticToolRouter: embeddings built and cached to '%s'.", cache_path
-            )
             self._ready = True
+            logger.info("UnifiedSemanticRouter: index built with %d vectors.", len(labels))
         except Exception as exc:
-            logger.error("SemanticToolRouter: embedding build failed: %s", exc)
+            logger.error("UnifiedSemanticRouter: index build failed: %s", exc)
 
-    def route(self, query: str) -> str | None:
+    def route(self, query: str) -> tuple[str, str | None]:
         """
-        Route a user query to the best-matching tool name.
-
-        Returns the tool name string if cosine similarity ≥ threshold,
-        or None if no tool reaches the threshold (triggers LLM fallback).
+        Route query to (intent_type, tool_name_or_none).
+        
+        Types: 'tool', 'conversational', 'cloud_escalation'.
         """
-        if not self._ready or self._embed_model is None or self._tool_matrix is None:
-            return None
+        if not self._ready or self._matrix is None:
+            return "conversational", None
 
         try:
             import numpy as np
-
-            # Embed query (normalised so dot == cosine similarity)
-            q_vec = self._embed_model.encode(
-                query,
-                show_progress_bar=False,
-                normalize_embeddings=True,
-            )  # shape (768,)
-
-            # Cosine similarity = dot product (both vectors are L2-normalised)
-            scores: Any = self._tool_matrix @ q_vec  # shape (N,)
-
+            q_vec = self._embed_model.encode(query, normalize_embeddings=True, show_progress_bar=False)
+            scores = self._matrix @ q_vec
+            
             best_idx = int(np.argmax(scores))
-            best_score = float(scores[best_idx])
-            best_tool = self._tool_names[best_idx]
+            score = float(scores[best_idx])
+            label = self._labels[best_idx]
+            kind = self._types[best_idx]
 
-            logger.debug(
-                "SemanticRouter: query='%.40s...' → tool='%s' (score=%.4f, threshold=%.2f)",
-                query,
-                best_tool,
-                best_score,
-                self._threshold,
-            )
+            logger.debug("UnifiedRouter: '%s' -> %s:%s (score=%.4f)", query[:40], kind, label, score)
 
-            if best_score >= self._threshold:
-                # Validate the winning tool is still in the live registry
-                if best_tool in self._registry:
-                    logger.info(
-                        "SemanticRouter: routed → [%s] (score=%.4f)", best_tool, best_score
-                    )
-                    return best_tool
-                logger.warning(
-                    "SemanticRouter: top match '%s' not in live registry — skipping.", best_tool
-                )
+            if score < self._threshold:
+                return "conversational", None
 
-            return None
+            if kind == "tool":
+                return "tool", label
+            
+            return label, None  # 'conversational' or 'cloud_escalation'
 
         except Exception as exc:
-            logger.error("SemanticRouter: routing error: %s", exc)
-            return None
+            logger.error("UnifiedRouter: routing error: %s", exc)
+            return "conversational", None
 
-    # ------------------------------------------------------------------
-    # Properties
-    # ------------------------------------------------------------------
+    def _try_load_cache(self, cache_path: Path, expected_fp: str, np: Any) -> bool:
+        if not cache_path.exists():
+            return False
+        try:
+            data = np.load(cache_path, allow_pickle=False)
+            if str(data["fingerprint"][0]) != expected_fp:
+                return False
+            self._matrix = data["matrix"]
+            self._labels = list(data["labels"])
+            self._types = list(data["types"])
+            return True
+        except Exception:
+            return False
 
     @property
     def is_ready(self) -> bool:
-        """True when the router has a valid embedding index."""
         return self._ready
 
-    @property
-    def tool_count(self) -> int:
-        """Number of tools in the current index."""
-        return len(self._tool_names)
-
-    # ------------------------------------------------------------------
-    # Cache helpers
-    # ------------------------------------------------------------------
-
-    def _try_load_cache(self, cache_path: Path, expected_fp: str, np: Any) -> bool:
-        """
-        Attempt to load a previously saved embedding matrix.
-        Returns True on success, False if the cache is missing or stale.
-        """
-        if not cache_path.exists():
-            return False
-
-        try:
-            data = np.load(cache_path, allow_pickle=False)
-            cached_fp = str(data["fingerprint"][0])
-
-            if cached_fp != expected_fp:
-                logger.info(
-                    "SemanticToolRouter: registry changed (fingerprint mismatch) — "
-                    "rebuilding embedding cache."
-                )
-                return False
-
-            self._tool_matrix = data["matrix"]
-            self._tool_names = list(data["names"])
-            return True
-
-        except Exception as exc:
-            logger.warning("SemanticToolRouter: cache load failed (%s) — rebuilding.", exc)
-            return False

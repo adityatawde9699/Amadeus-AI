@@ -90,7 +90,7 @@ def execute_python_script(code: str | None = None, **kwargs: Any) -> str:
                 "Fix the code and try again."
             )
     except Exception as e:
-        logger.exception("Sandbox execution failed: %s", e)
+        logger.warning("Sandbox execution failed (Docker may not be running): %s", e)
         return (
             f"Sandbox unavailable: {e}\n"
             "Ensure Docker Desktop is running and the 'docker' Python package is installed."
