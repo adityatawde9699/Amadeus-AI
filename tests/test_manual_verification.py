@@ -1,33 +1,45 @@
 import asyncio
 import logging
 
-from src.container import get_tool_registry
-from src.infra.llm.gemini_adapter import GeminiAdapter
+import pytest
+
+from src.infra.tools.base import ToolExecutor
 
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("test_script")
 
 
+@pytest.mark.integration
 async def test_tools():
+    """
+    Integration test — requires a running DB session.
+    Tools are executed via ToolExecutor, not directly via Tool.execute().
+    """
+    from src.container import get_tool_registry
+    from src.core.domain.models import PermissionProfile
+
     logger.info("Testing tools with injected repositories...")
     registry = get_tool_registry()
+    executor = ToolExecutor()
 
     # Test task tools
-    add_task = registry.get_tool("add_task")
+    add_task = registry.get("add_task")
     assert add_task is not None, "add_task tool not found"
 
-    res = await add_task.execute(task_content="Buy milk")
+    res = await executor.execute(add_task, {"task_content": "Buy milk"},
+                                 permission_profile=PermissionProfile.SYSTEM_FULL)
     logger.info(f"add_task result: {res}")
-    assert "Task added" in res, "add_task failed"
+    assert res.success, f"add_task failed: {res.error_message}"
 
     # Test pomodoro tools
-    start_pomodoro = registry.get_tool("start_pomodoro")
+    start_pomodoro = registry.get("start_pomodoro")
     assert start_pomodoro is not None, "start_pomodoro tool not found"
 
-    res2 = await start_pomodoro.execute(task="Test task", duration=25)
+    res2 = await executor.execute(start_pomodoro, {"task": "Test task", "duration": 25},
+                                  permission_profile=PermissionProfile.SYSTEM_FULL)
     logger.info(f"start_pomodoro result: {res2}")
-    assert "Pomodoro started" in res2, "start_pomodoro failed"
+    assert res2.success, f"start_pomodoro failed: {res2.error_message}"
 
     logger.info("Tool testing completed successfully.")
 

@@ -1,8 +1,8 @@
 <div align="center">
 
-# Amadeus AI v3.1.0
+# Amadeus AI v3.2.0
 
-**A production-grade, multi-modal AI assistant backend built on Clean Architecture — text, voice, and tool execution unified under one API.**
+**A production-grade, modular AI assistant backend built on Clean Architecture — text, voice, and autonomous tool execution unified under a single, fully decomposed service layer.**
 
 [![CI Pipeline](https://github.com/adityatawde9699/Amadeus-AI/actions/workflows/main.yml/badge.svg)](https://github.com/adityatawde9699/Amadeus-AI/actions)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
@@ -77,12 +77,12 @@ Amadeus AI is a FastAPI-based backend service that orchestrates a conversational
 - Hardware monitoring (CPU, memory, disk, battery) with configurable alert thresholds
 
 ### Semantic Tool Routing (Zero-Training)
-- **SemanticToolRouter** (`src/app/services/semantic_router.py`) — replaces the legacy sklearn SVM classifier
-- **Model**: `sentence-transformers/all-mpnet-base-v2` (768-dim, CPU-only, no retraining)
-- **Mechanism**: Tool descriptions are embedded once and cached to `Model/semantic_tool_embeddings.npz`. At query time, the user's message is embedded and cosine-compared against all tool vectors in a single NumPy matrix multiply (<10ms on i3)
-- **Hot-pluggable**: New tools registered in the `ToolRegistry` are automatically embedded on next startup — zero retraining
-- **Fallback**: Confidence < 0.50 → falls back to the LlamaCpp LLM router for intent triage
-- Classifier status exposed in `/api/v1/health/detailed` → `classifier_enabled: true/false`
+- **UnifiedSemanticRouter** (`src/app/services/semantic_router.py`) — single-stage embedding-based triage; replaces the legacy sklearn SVM + TF-IDF pipeline entirely
+- **Model**: `sentence-transformers/all-mpnet-base-v2` (768-dim, CPU-only, no retraining required)
+- **Mechanism**: Tool descriptions + intent anchors are embedded once and persisted to `Model/semantic_tool_embeddings.npz`. At query time, the user message is embedded and cosine-compared against the full matrix in a single NumPy `matmul` — **sub-10 ms on any CPU**, zero LLM calls
+- **Hot-pluggable**: New tools registered in `ToolRegistry` are automatically re-embedded on the next startup via MD5 fingerprint cache invalidation — no retraining, no CI step
+- **Routing outcomes**: `tool` (dispatches named tool) · `conversational` (local LLM prose) · `cloud_escalation` (routes to cloud LLM for high-complexity reasoning)
+- **Threshold**: Configurable cosine similarity threshold (default `0.38`); queries below threshold fall back to `conversational`
 
 ### Omni-Workspace RAG (Hybrid Search)
 - **WorkspaceIndexer** (`src/infra/workspace_indexer.py`) — hybrid BM25 + dense vector retrieval
@@ -441,7 +441,8 @@ block-beta
 
   block:app["🧠  APPLICATION LAYER  —  src/app/"]:1
     columns 3
-    J["🤖 AmadeusService\nOrchestrator"] K["🔧 ToolRegistry\nML Classifier"] L["🎤 VoiceService\nSTT → LLM → TTS"]
+    J["🤖 AmadeusService\nOrchestrator"] K["📝 ConversationManager\nHistory · DB Sync"] L["🎤 VoiceService\nSTT → LLM → TTS"]
+    J2["🔍 ArgumentExtractor\nLLM · Regex"] K2["⚙️ ToolDispatcher\nTimeouts · Cache"] L2["✍️ ResponseComposer\nPromptz · LOCAL_ONLY"]
   end
 
   space
@@ -632,9 +633,12 @@ flowchart LR
 </tr>
 <tr>
   <td style="padding:4px 14px 10px">
-    <code style="background:#c5edd9;border:1px solid #9FE1CB;border-radius:4px;padding:2px 8px;font-size:12px;color:#085041;margin:2px 4px 2px 0;display:inline-block">AmadeusService</code>
-    <code style="background:#c5edd9;border:1px solid #9FE1CB;border-radius:4px;padding:2px 8px;font-size:12px;color:#085041;margin:2px 4px 2px 0;display:inline-block">ML Classifier</code>
-    <code style="background:#c5edd9;border:1px solid #9FE1CB;border-radius:4px;padding:2px 8px;font-size:12px;color:#085041;margin:2px 4px 2px 0;display:inline-block">ToolRegistry</code>
+    <code style="background:#c5edd9;border:1px solid #9FE1CB;border-radius:4px;padding:2px 8px;font-size:12px;color:#085041;margin:2px 4px 2px 0;display:inline-block">AmadeusService <em>(orchestrator)</em></code>
+    <code style="background:#c5edd9;border:1px solid #9FE1CB;border-radius:4px;padding:2px 8px;font-size:12px;color:#085041;margin:2px 4px 2px 0;display:inline-block">ConversationManager</code>
+    <code style="background:#c5edd9;border:1px solid #9FE1CB;border-radius:4px;padding:2px 8px;font-size:12px;color:#085041;margin:2px 4px 2px 0;display:inline-block">ArgumentExtractor</code>
+    <code style="background:#c5edd9;border:1px solid #9FE1CB;border-radius:4px;padding:2px 8px;font-size:12px;color:#085041;margin:2px 4px 2px 0;display:inline-block">ToolDispatcher</code>
+    <code style="background:#c5edd9;border:1px solid #9FE1CB;border-radius:4px;padding:2px 8px;font-size:12px;color:#085041;margin:2px 4px 2px 0;display:inline-block">ResponseComposer</code>
+    <code style="background:#c5edd9;border:1px solid #9FE1CB;border-radius:4px;padding:2px 8px;font-size:12px;color:#085041;margin:2px 4px 2px 0;display:inline-block">UnifiedSemanticRouter</code>
     <code style="background:#c5edd9;border:1px solid #9FE1CB;border-radius:4px;padding:2px 8px;font-size:12px;color:#085041;margin:2px 4px 2px 0;display:inline-block">VoiceService — STT → LLM → TTS</code>
   </td>
 </tr>
@@ -962,13 +966,12 @@ Amadeus-AI/
 │   └── amadeus.db                # SQLite database (development only)
 │
 ├── Model/
-│   ├── tfidf_vectorizer.joblib   # TF-IDF feature extractor (trained artifact)
-│   └── svm_classifier.joblib     # LinearSVC tool classifier — 96.2% CV accuracy
+│   └── semantic_tool_embeddings.npz  # Pre-built 768-dim tool embeddings (all-mpnet-base-v2)
+│                                     # Auto-regenerated on tool metadata change via fingerprint
 │
 ├── scripts/
 │   ├── generate_training_data.py # Generates training_data.json from templates
-│   ├── train_classifier.py       # (Legacy) Trains SVM classifier
-│   └── index_workspace.py        # CLI for building Hybrid Workspace Index (v3.1.0)
+│   └── index_workspace.py        # CLI for building Hybrid Workspace Index (v3.2.0)
 │
 ├── src/
 │   ├── container.py              # IoC container — wires all dependencies
@@ -990,11 +993,15 @@ Amadeus-AI/
 │   │
 │   ├── app/                      # ── APPLICATION LAYER ──────────────────────────────────
 │   │   └── services/
-│   │       ├── amadeus_service.py #   Main orchestrator — routes request → agent / voice
-│   │       ├── agent_loop.py      #   LLM ↔ tool loop with memory injection
-│   │       ├── semantic_router.py #   Zero-Training Tool Router (v3.1.0)
-│   │       ├── tool_registry.py   #   Tool discovery and dispatch
-│   │       └── voice_service.py   #   STT → LLM → TTS pipeline
+│   │       ├── amadeus_service.py    #  Thin orchestrator (~260 lines) — coordinates sub-services
+│   │       ├── conversation_manager.py # ConversationMessage + history cache + DB sync (v3.2.0)
+│   │       ├── argument_extractor.py #  NLP → tool args: LLM JSON + 15 regex fast-paths (v3.2.0)
+│   │       ├── tool_dispatcher.py    #  Tool lookup, per-tool timeouts, result caching (v3.2.0)
+│   │       ├── response_composer.py  #  LLM prose + 3-tier system prompt + LOCAL_ONLY guard (v3.2.0)
+│   │       ├── semantic_router.py    #  UnifiedSemanticRouter — zero-training cosine triage
+│   │       ├── agent_loop.py         #  ReAct agent: LLM ↔ tool loop with memory injection
+│   │       ├── tool_registry.py      #  Tool discovery and single-source registration
+│   │       └── voice_service.py      #  STT → LLM → TTS pipeline
 │   │
 │   ├── core/                     # ── CORE LAYER (no external deps) ──────────────────────
 │   │   ├── config.py             #    Pydantic-settings: typed env var schema
@@ -1040,12 +1047,18 @@ Amadeus-AI/
 │
 ├── tests/
 │   ├── conftest.py               # Pytest fixtures — async DB session, DI container
+│   ├── manual_routing_check.py   # Dev script: print top-3 routing scores per query
 │   ├── unit/
-│   │   ├── test_classifier_loading.py
-│   │   ├── test_openai_adapter.py
-│   │   └── test_memory_agent_integration.py
+│   │   ├── test_classifier_loading.py        # UnifiedSemanticRouter init + routing tests
+│   │   ├── test_amadeus_service_errors.py    # Error handling: production vs debug modes
+│   │   ├── test_llm_router.py                # LLMRouter quota + fallback logic
+│   │   ├── test_memory_agent_integration.py  # ReAct agent memory injection
+│   │   ├── test_memory_service.py            # Qdrant store/retrieve + Flash Cache
+│   │   ├── test_openai_adapter.py            # OpenAI adapter contract tests
+│   │   └── core/test_config.py               # Settings validation
 │   └── integration/
-│       └── test_llm_routing_fallback.py  # testcontainers PostgreSQL
+│       ├── api/test_health.py                # Live endpoint smoke tests (testcontainers)
+│       └── test_llm_routing_fallback.py      # Full LLM fallback chain (PostgreSQL container)
 │
 ├── Dockerfile                    # 3-stage: builder → model_cache (Whisper) → runtime
 ├── docker-compose.yml            # dev profile (API + PostgreSQL) + prod profile (gunicorn)
@@ -1061,8 +1074,8 @@ Amadeus-AI/
 
 | Layer | Path | Responsibility |
 |-------|------|----------------|
-| API | `src/api/` | HTTP routing, auth middleware, request/response serialization |
-| Application | `src/app/` | Orchestration, agent loop, tool dispatch, voice pipeline |
+| API | `src/api/` | HTTP routing, JWT auth middleware, request/response serialization |
+| Application | `src/app/services/` | **Orchestrator** (`AmadeusService`) + 4 focused sub-services: `ConversationManager`, `ArgumentExtractor`, `ToolDispatcher`, `ResponseComposer` |
 | Core | `src/core/` | Domain models, interfaces, config, exceptions — zero external deps |
 | Infrastructure | `src/infra/` | LLM adapters, DB, cache, speech, search, messaging, RAG engine |
 | Data | — | PostgreSQL · SQLite · Redis · Qdrant · Flash Cache |
@@ -1183,22 +1196,25 @@ alembic upgrade head && uvicorn src.api.server:app --host 0.0.0.0 --port 8000 --
 
 ## 13. Known Limitations
 
-- **No user registration or RBAC**: JWT tokens must be generated externally. There is no `/register` or `/login` endpoint. All authenticated users share the same assistant context unless `session_id` is explicitly scoped.
-- **Voice WebSocket — no auth on upgrade**: WebSocket JWT enforcement depends on the client handshake; the current server accepts connections and errors downstream if the token is missing.
+- **No user registration or RBAC**: JWT tokens must be generated externally. There is no `/register` or `/login` endpoint. All authenticated users share the same assistant context unless `session_id` is explicitly scoped per request.
+- **Session isolation is caller-scoped**: The `AmadeusService` singleton reads `session_id` from the incoming request at the API layer. Concurrent requests with different session IDs are correctly isolated at the `ConversationManager` level, but share the same singleton service instance — full per-request instance isolation requires the DI container to be refactored to a request-scoped provider.
+- **Voice WebSocket — no auth on upgrade**: WebSocket JWT enforcement depends on the client handshake; the server accepts connections and errors downstream if the token is missing.
 - **Local TTS/STT resource usage**: Running `faster-whisper` (`small` model) and Edge TTS simultaneously on a single CPU core may cause response latency of 1–5 seconds per voice round-trip.
-- **Semantic memory — Qdrant must be running**: If `QDRANT_URL` is not configured or Qdrant is unreachable, memory retrieval is silently skipped — the agent continues without memories. The **Flash Memory Cache (L1)** provides a high-speed fallback for the most recent interactions.
+- **Semantic memory — Qdrant must be running**: If `QDRANT_URL` is not configured or Qdrant is unreachable, memory retrieval is silently skipped — the agent continues without memories. The Flash Memory Cache (L1) provides a high-speed fallback for recent interactions.
+- **`calculate` tool uses `simpleeval` (eval RCE mitigated)**: The calculator sanitises input but does not support symbolic maths or matrix operations. Use `execute_python_script` for complex numerical workloads.
 
 ---
 
 ## 14. Future Improvements
 
-- **User authentication system**: Implement `/auth/register`, `/auth/login`, and `/auth/refresh` endpoints with persistent user-scoped session isolation.
-- **RBAC**: Add role-based access control to support multi-tenant usage with per-user tool restrictions.
-- **WebSocket JWT enforcement**: Move token validation to the WebSocket upgrade handshake rather than relying on downstream checks.
-- **Voice streaming**: Support streaming TTS back over the WebSocket as audio chunks arrive (rather than waiting for the full synthesis).
-- **Mobile / browser SDK**: Thin client library for the SSE streaming and voice WebSocket endpoints.
-- **Cost dashboard**: Dedicated Grafana dashboard for the Prometheus cost gauges with daily/monthly aggregations.
-- **Dynamic Skill Loading**: Support for downloading and mounting new tools as sandboxed Docker containers at runtime.
+- **Session-scoped DI container**: Refactor `container.py` to use request-scoped `AmadeusService` providers, eliminating the singleton session-ID assumption and enabling true concurrent multi-user isolation.
+- **User authentication system**: Implement `/auth/register`, `/auth/login`, and `/auth/refresh` endpoints with persistent user-scoped session and memory isolation.
+- **RBAC**: Add role-based access control to support multi-tenant usage with per-user tool permission profiles beyond the current binary `READ_ONLY` / `SYSTEM_FULL` split.
+- **WebSocket JWT enforcement**: Move token validation to the WebSocket upgrade handshake (HTTP 101) rather than relying on downstream session checks.
+- **Streaming TTS over WebSocket**: Return Edge TTS audio chunks as they are synthesised rather than buffering the entire response — reduces perceived voice latency by 40–60%.
+- **`ArgumentExtractor` unit tests**: The extractor is now fully decoupled; add parametrised tests for all 15 regex fast-paths and the LLM JSON extraction flow with a mocked `LLMRouter`.
+- **Mobile / browser SDK**: Thin TypeScript client library wrapping the SSE streaming and voice WebSocket endpoints.
+- **Cost dashboard**: Grafana dashboard consuming the Prometheus cost gauges with daily/monthly aggregations and per-provider breakdown.
 
 ---
 
