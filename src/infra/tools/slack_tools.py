@@ -60,10 +60,10 @@ def send_slack_message(channel: str, message: str, **kwargs: Any) -> str:
             return f"Successfully sent Slack message to {channel}."
         return str(f"Error: Failed to send Slack message: {response['error']}")
     except SlackApiError as e:
-        logger.exception(f"Slack API error: {e.response['error']}")
+        logger.exception("Slack API error: %s", e.response["error"])
         return str(f"Error: Slack API error: {e.response['error']}")
     except Exception as e:
-        logger.exception(f"Failed to send Slack message: {e}")
+        logger.exception("Failed to send Slack message: %s", e)
         return f"Error: Failed to send Slack message: {e}"
 
 

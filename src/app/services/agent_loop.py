@@ -644,10 +644,12 @@ class AgentOrchestrator:
     def _load_classifier(self) -> None:
         """Load TF-IDF vectorizer and SVM classifier tailored for intent routing."""
         import joblib
+        from src.core.config import get_settings
 
         try:
-            vectorizer_path = str(self.settings.BASE_DIR / "Model" / "router_vectorizer.joblib")
-            classifier_path = str(self.settings.BASE_DIR / "Model" / "router_classifier.joblib")
+            settings = get_settings()
+            vectorizer_path = str(settings.BASE_DIR / "Model" / "router_vectorizer.joblib")
+            classifier_path = str(settings.BASE_DIR / "Model" / "router_classifier.joblib")
 
             if Path(vectorizer_path).exists() and Path(classifier_path).exists():
                 self.vectorizer = joblib.load(vectorizer_path)

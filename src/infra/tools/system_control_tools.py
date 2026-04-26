@@ -11,6 +11,7 @@ from typing import Any
 
 from src.infra.tools.base import Tool, ToolCategory, tool
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -48,7 +49,10 @@ def set_volume(level: int = 50, **kwargs: Any) -> str:
             from ctypes import POINTER, cast
 
             from comtypes import CLSCTX_ALL  # type: ignore[import-not-found]
-            from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume  # type: ignore[import-not-found]
+            from pycaw.pycaw import (  # type: ignore[import-not-found]
+                AudioUtilities,
+                IAudioEndpointVolume,
+            )
 
             devices = AudioUtilities.GetSpeakers()
             interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
@@ -144,7 +148,10 @@ def get_volume(**kwargs: Any) -> str:
             from ctypes import POINTER, cast
 
             from comtypes import CLSCTX_ALL  # type: ignore[import-not-found]
-            from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume  # type: ignore[import-not-found]
+            from pycaw.pycaw import (  # type: ignore[import-not-found]
+                AudioUtilities,
+                IAudioEndpointVolume,
+            )
 
             devices = AudioUtilities.GetSpeakers()
             interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
@@ -469,8 +476,10 @@ def list_open_apps(**kwargs: Any) -> str:
 
 def get_system_control_tools() -> list[Tool]:
     """Get all system control tools."""
-    tools = []
-    for _name, obj in globals().items():
-        if hasattr(obj, "_tool_metadata"):
-            tools.append(obj._tool_metadata)
-    return tools
+    return [
+        set_volume._tool_metadata,  # type: ignore[attr-defined]
+        get_volume._tool_metadata,  # type: ignore[attr-defined]
+        set_brightness._tool_metadata,  # type: ignore[attr-defined]
+        take_screenshot._tool_metadata,  # type: ignore[attr-defined]
+        list_open_apps._tool_metadata,  # type: ignore[attr-defined]
+    ]

@@ -23,7 +23,6 @@ from src.core.config import get_settings
 from src.infra.tools.base import Tool, ToolCategory, tool
 
 
-
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -142,8 +141,6 @@ async def search_workspace(query: str, top_k: int = 5) -> str:
 
 def get_workspace_tools() -> list[Tool]:
     """Return all workspace tools for manual registration."""
-    tools = []
-    for _name, obj in globals().items():
-        if hasattr(obj, "_tool_metadata"):
-            tools.append(obj._tool_metadata)
-    return tools
+    return [
+        search_workspace._tool_metadata,  # type: ignore[attr-defined]
+    ]

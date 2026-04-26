@@ -9,6 +9,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Security
+- **info_tools**: Replaced `eval()` with a restricted AST math evaluator for safe tool calculation.
+- **Sentry**: Set `send_default_pii=False` and `traces_sample_rate=0.1` to prevent user PII leakage and reduce overhead.
+- **API**: Removed the permanent unauthenticated `/sentry-debug` crash endpoint from production (now gated behind `settings.is_development`).
+- **Chat**: Locked `/chat/history` endpoint behind the `current_active_user` dependency to prevent session enumeration and unauthorized access.
+- **Chat**: Fixed session_id race condition in chat and SSE endpoints by binding session IDs to the authenticated user ID.
+- **Prompt Injection**: Mitigated injection risks by wrapping user input explicitly inside `<user_input>` tags during LLM argument extraction.
+- **IPC**: Replaced per-process IPC token generation with a persistent fallback token `data/ipc_secret.token` to ensure consistent authentication across worker restarts.
+
 ---
 
 ## [3.1.0] — 2026-04-22

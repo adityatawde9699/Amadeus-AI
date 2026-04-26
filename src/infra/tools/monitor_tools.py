@@ -35,7 +35,7 @@ def get_cpu_usage() -> str:
         cpu = psutil.cpu_percent(interval=0.5)
         return f"CPU usage: {cpu:.1f}%"
     except Exception as e:
-        logger.exception(f"Error getting CPU usage: {e}")
+        logger.exception("Error getting CPU usage: %s", e)
         return "CPU information unavailable"
 
 
@@ -52,7 +52,7 @@ def get_memory_usage() -> str:
         total_gb = mem.total / (1024**3)
         return f"Memory: {used_gb:.1f} GB / {total_gb:.1f} GB ({mem.percent:.1f}% used)"
     except Exception as e:
-        logger.exception(f"Error getting memory usage: {e}")
+        logger.exception("Error getting memory usage: %s", e)
         return "Memory information unavailable"
 
 
@@ -74,7 +74,7 @@ def get_disk_usage(path: str = "/") -> str:
         free_gb = disk.free / (1024**3)
         return f"Disk: {used_gb:.1f} GB / {total_gb:.1f} GB ({disk.percent:.1f}% used, {free_gb:.1f} GB free)"
     except Exception as e:
-        logger.exception(f"Error getting disk usage: {e}")
+        logger.exception("Error getting disk usage: %s", e)
         return "Disk information unavailable"
 
 
@@ -111,7 +111,7 @@ def get_battery_info() -> str:
         return result
 
     except Exception as e:
-        logger.exception(f"Error getting battery info: {e}")
+        logger.exception("Error getting battery info: %s", e)
         return "Battery information unavailable"
 
 
@@ -128,7 +128,7 @@ def get_network_info() -> str:
         recv_mb = net.bytes_recv / (1024**2)
         return f"Network: Sent {sent_mb:.1f} MB, Received {recv_mb:.1f} MB"
     except Exception as e:
-        logger.exception(f"Error getting network info: {e}")
+        logger.exception("Error getting network info: %s", e)
         return "Network information unavailable"
 
 
@@ -160,7 +160,7 @@ def get_system_uptime() -> str:
         return f"System uptime: {uptime_str} (since {boot_str})"
 
     except Exception as e:
-        logger.exception(f"Error getting uptime: {e}")
+        logger.exception("Error getting uptime: %s", e)
         return "Uptime information unavailable"
 
 
@@ -200,7 +200,7 @@ def get_running_processes(count: int = 10) -> str:
         return result.strip()
 
     except Exception as e:
-        logger.exception(f"Error getting processes: {e}")
+        logger.exception("Error getting processes: %s", e)
         return "Process information unavailable"
 
 
@@ -236,7 +236,7 @@ def get_gpu_stats() -> str:
         return "GPU monitoring requires GPUtil. Install with: pip install gputil"
 
     except Exception as e:
-        logger.exception(f"Error getting GPU stats: {e}")
+        logger.exception("Error getting GPU stats: %s", e)
         return "GPU information unavailable"
 
 
@@ -263,7 +263,7 @@ def get_temperature_sensors() -> str:
         return result.strip()
 
     except Exception as e:
-        logger.exception(f"Error getting temperatures: {e}")
+        logger.exception("Error getting temperatures: %s", e)
         return "Temperature information unavailable"
 
 
@@ -322,7 +322,7 @@ def generate_system_summary() -> str:
         return "\n".join(lines)
 
     except Exception as e:
-        logger.exception(f"Error generating system summary: {e}")
+        logger.exception("Error generating system summary: %s", e)
         return "Error generating system summary"
 
 
@@ -370,7 +370,7 @@ def check_system_alerts() -> str:
         return "✅ No system alerts. All metrics normal."
 
     except Exception as e:
-        logger.exception(f"Error checking alerts: {e}")
+        logger.exception("Error checking alerts: %s", e)
         return "Error checking system alerts"
 
 
@@ -435,7 +435,7 @@ def get_full_system_report() -> str:
         return "\n".join(lines)
 
     except Exception as e:
-        logger.exception(f"Error generating report: {e}")
+        logger.exception("Error generating report: %s", e)
         return "Error generating full report"
 
 
@@ -446,8 +446,17 @@ def get_full_system_report() -> str:
 
 def get_monitor_tools() -> list[Tool]:
     """Get all monitor tools for manual registration."""
-    tools = []
-    for _name, obj in globals().items():
-        if hasattr(obj, "_tool_metadata"):
-            tools.append(obj._tool_metadata)
-    return tools
+    return [
+        get_cpu_usage._tool_metadata,  # type: ignore[attr-defined]
+        get_memory_usage._tool_metadata,  # type: ignore[attr-defined]
+        get_disk_usage._tool_metadata,  # type: ignore[attr-defined]
+        get_battery_info._tool_metadata,  # type: ignore[attr-defined]
+        get_network_info._tool_metadata,  # type: ignore[attr-defined]
+        get_system_uptime._tool_metadata,  # type: ignore[attr-defined]
+        get_running_processes._tool_metadata,  # type: ignore[attr-defined]
+        get_gpu_stats._tool_metadata,  # type: ignore[attr-defined]
+        get_temperature_sensors._tool_metadata,  # type: ignore[attr-defined]
+        generate_system_summary._tool_metadata,  # type: ignore[attr-defined]
+        check_system_alerts._tool_metadata,  # type: ignore[attr-defined]
+        get_full_system_report._tool_metadata,  # type: ignore[attr-defined]
+    ]

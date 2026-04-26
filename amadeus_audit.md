@@ -424,11 +424,11 @@ The Alembic async session (with `aiosqlite`) will surface this under moderate lo
 
 | Priority | Issue | Effort | Impact |
 |---|---|---|---|
-| P0 | Replace `eval()` in `calculate()` with `simpleeval` | LOW | Eliminates RCE vector |
-| P0 | Set `send_default_pii=False` in Sentry | LOW | Stops user message leakage |
-| P0 | Add auth to `/chat/history` endpoint | LOW | Prevents session enumeration |
-| P0 | Remove `/sentry-debug` from production | LOW | Eliminates DoS vector |
-| P0 | Fix session_id race condition in chat endpoint | MEDIUM | Data integrity + privacy |
+| ✅ | Replace `eval()` in `calculate()` with `simpleeval` | LOW | Eliminates RCE vector |
+| ✅ | Set `send_default_pii=False` in Sentry | LOW | Stops user message leakage |
+| ✅ | Add auth to `/chat/history` endpoint | LOW | Prevents session enumeration |
+| ✅ | Remove `/sentry-debug` from production | LOW | Eliminates DoS vector |
+| ✅ | Fix session_id race condition in chat endpoint | MEDIUM | Data integrity + privacy |
 | P1 | Move `build_index()` to async startup (thread pool) | LOW | Unblocks FastAPI startup |
 | P1 | Replace f-string logging with `%s` format args | LOW | CPU efficiency at scale |
 | P1 | Remove `_register_all_tools()` from AmadeusService | LOW | Eliminates double-registration |
@@ -438,7 +438,7 @@ The Alembic async session (with `aiosqlite`) will surface this under moderate lo
 | P2 | Extract `ResponseComposer` from AmadeusService | HIGH | Testability + SRP |
 | P2 | Switch memory embeddings to local mpnet model | MEDIUM | Enforces LOCAL_ONLY_MODE |
 | P2 | Add shared `aiohttp.ClientSession` per adapter | MEDIUM | 30-50ms latency win per call |
-| P2 | Add prompt injection delimiting for user input | MEDIUM | LLM security hardening |
+| ✅ | Add prompt injection delimiting for user input | MEDIUM | LLM security hardening |
 | P3 | Add cycle detection to agent loop | MEDIUM | Agent stability |
 | P3 | Add cloud_escalation anchor phrases (expand to 20+) | LOW | Better high-complexity routing |
 | P3 | Multi-stage Docker build with pre-baked models | MEDIUM | Cold start performance |
@@ -481,13 +481,13 @@ go to dedicated classes with their own test files.
 
 | Risk | CVSS-like Severity | Status |
 |---|---|---|
-| Code execution via `eval()` in calculate tool | **9.8 CRITICAL** | Unmitigated |
-| User PII sent to Sentry | **7.5 HIGH** | Unmitigated |
-| Unauthenticated conversation history access | **7.3 HIGH** | Unmitigated |
-| Session ID race condition (data cross-contamination) | **7.0 HIGH** | Unmitigated |
-| Prompt injection via unsanitized user input | **6.5 MEDIUM** | Partial (HITL gate helps) |
-| Exposed crash endpoint `/sentry-debug` | **5.3 MEDIUM** | Unmitigated |
-| IPC token regenerated on restart | **4.0 LOW** | Design flaw |
+| Code execution via `eval()` in calculate tool | **9.8 CRITICAL** | Mitigated |
+| User PII sent to Sentry | **7.5 HIGH** | Mitigated |
+| Unauthenticated conversation history access | **7.3 HIGH** | Mitigated |
+| Session ID race condition (data cross-contamination) | **7.0 HIGH** | Mitigated |
+| Prompt injection via unsanitized user input | **6.5 MEDIUM** | Mitigated |
+| Exposed crash endpoint `/sentry-debug` | **5.3 MEDIUM** | Mitigated |
+| IPC token regenerated on restart | **4.0 LOW** | Mitigated |
 | LLM error messages exposed via ALLOW_DEBUG_RESPONSES | **3.5 LOW** | Guarded by flag |
 
 ---

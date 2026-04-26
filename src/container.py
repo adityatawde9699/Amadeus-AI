@@ -37,7 +37,7 @@ def _build_redis_client() -> redis.asyncio.Redis | None:
         logger.info("Redis cache client configured via container")
         return client
     except Exception as e:
-        logger.exception(f"Failed to configure Redis client: {e}")
+        logger.exception("Failed to configure Redis client: %s", e)
         return None
 
 

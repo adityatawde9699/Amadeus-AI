@@ -39,9 +39,9 @@ logger = logging.getLogger(__name__)
 # Constants & Intents
 # ---------------------------------------------------------------------------
 
-_EMBED_MODEL_NAME = "sentence-transformers/all-mpnet-base-v2"
+_EMBED_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 _CACHE_FILENAME = "unified_semantic_cache.npz"
-_DEFAULT_THRESHOLD = 0.38  # Tuned: weather=0.40, cpu=0.84 with mpnet
+_DEFAULT_THRESHOLD = 0.30  # Tuned for MiniLM-L6-v2
 
 # Anchor phrases for global intents to guide the vector space
 _GLOBAL_INTENTS = {

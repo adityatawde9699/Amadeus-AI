@@ -327,7 +327,10 @@ class ToolExecutor:
         for attempt in range(self.max_retries + 1):
             try:
                 logger.info(
-                    f"Executing tool '{tool.name}' with args: {args} (attempt {attempt + 1})"
+                    "Executing tool '%s' with args: %s (attempt %d)",
+                    tool.name,
+                    args,
+                    attempt + 1,
                 )
 
                 # Validate arguments against expected parameters
@@ -364,7 +367,7 @@ class ToolExecutor:
                 )
 
             except TypeError as e:
-                logger.warning(f"Argument error for {tool.name}: {e}")
+                logger.warning("Argument error for %s: %s", tool.name, e)
                 if attempt == self.max_retries:
                     return ToolExecutionResult(
                         tool_name=tool.name,
@@ -374,7 +377,7 @@ class ToolExecutor:
                     )
 
             except Exception as e:
-                logger.error(f"Tool execution error ({tool.name}): {e}", exc_info=True)
+                logger.error("Tool execution error (%s): %s", tool.name, e, exc_info=True)
                 if attempt == self.max_retries:
                     self.execution_history.append(
                         {
@@ -415,7 +418,7 @@ class ToolExecutor:
                 and name not in cleaned
                 and name not in ("self", "cls")
             ):
-                logger.warning(f"Missing required parameter '{name}' for {tool.name}")
+                logger.warning("Missing required parameter '%s' for %s", name, tool.name)
 
         return cleaned
 

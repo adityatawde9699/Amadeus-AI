@@ -1,17 +1,17 @@
 """
-Amadeus Service — Main AI Assistant Orchestrator.
+Amadeus Service - main AI assistant orchestrator.
 
 This module is intentionally thin. All heavy logic lives in focused sub-services:
 
-  ConversationManager  — history storage, in-memory cache, DB sync
-  UnifiedSemanticRouter — zero-LLM intent triage via sentence-transformers
-  ArgumentExtractor    — NLP → tool argument dicts (LLM + regex)
-  ToolDispatcher       — tool lookup, execution, timeouts, result caching
-  ResponseComposer     — LLM prose generation, system prompt building
+  ConversationManager  - history storage, in-memory cache, DB sync
+  UnifiedSemanticRouter - embedding-based intent triage
+  ArgumentExtractor    - NLP to tool argument dicts (LLM + regex)
+  ToolDispatcher       - tool lookup, execution, timeouts, result caching
+  ResponseComposer     - LLM prose generation, system prompt building
 
 Architecture:
   Public API : handle_command()
-  Routing    : _predict_intent()  → router
+  Routing    : _predict_intent() through UnifiedSemanticRouter
   Processing : _process_command_internal()
   Delegation : _process_with_agent() for multi-step queries
 """
@@ -21,7 +21,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from typing import TYPE_CHECKING, Any
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING
 
 from google import genai
 
@@ -38,6 +39,7 @@ from src.infra.memory_service import QdrantMemoryService
 from src.infra.messaging.telegram_adapter import TelegramAdapter
 from src.infra.messaging.whatsapp_adapter import WhatsAppAdapter
 from src.infra.tools.base import ToolExecutor
+
 
 if TYPE_CHECKING:
     from src.infra.cache.cache_service import CacheService
@@ -72,6 +74,10 @@ class AmadeusService:
         self.debug_mode = debug_mode
         self.cache_service = cache_service
         self.session_id = session_id or str(uuid.uuid4())
+        self.client: genai.Client | None = None
+        self.model_name: str = self.settings.GEMINI_MODEL
+        self._conversation_repo = conversation_repo
+        self._conversation_managers: dict[str, ConversationManager] = {}
 
         # ── LLM Router ────────────────────────────────────────────────
         if llm_router:
@@ -94,6 +100,7 @@ class AmadeusService:
             session_id=self.session_id,
             repo=conversation_repo,
         )
+        self._conversation_managers[self.session_id] = self.conversation_manager
 
         # ── Long-term Memory (Qdrant + KG) ────────────────────────────
         self.memory_service = QdrantMemoryService(settings=self.settings)
@@ -113,7 +120,6 @@ class AmadeusService:
             model_dir=self.settings.BASE_DIR / "Model",
             threshold=0.38,
         )
-        self._semantic_router.build_index()
 
         # ── Sub-services ──────────────────────────────────────────────
         self._arg_extractor = ArgumentExtractor(
@@ -157,6 +163,9 @@ class AmadeusService:
         """Async startup: warm memory service and hydrate conversation cache from DB."""
         await self.memory_service.initialize()
         await self.conversation_manager.load_from_db()
+        if not self._semantic_router.is_ready:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, self._semantic_router.build_index)
 
     # ------------------------------------------------------------------
     # Public API
@@ -167,37 +176,45 @@ class AmadeusService:
         user_input: str,
         source: str = "text",
         request_id: str | None = None,
+        session_id: str | None = None,
         permission_profile: PermissionProfile = PermissionProfile.SYSTEM_FULL,
     ) -> str:
         """
         Main entry point. Returns the assistant's response as a string.
 
-        session_id is read from self.session_id; callers that need per-request
-        isolation should pass their own AmadeusService instance (or pass
-        session_id explicitly through a future refactor of the API layer).
+        ``session_id`` is passed per call so singleton service instances are
+        safe under concurrent requests.
         """
         if not user_input.strip():
             return "I didn't catch that. Could you repeat?"
 
+        active_session_id = session_id or self.session_id
+        conversation_manager = await self._get_conversation_manager(active_session_id)
+
         try:
-            await self.conversation_manager.add("user", user_input)
+            await conversation_manager.add("user", user_input)
             await self.memory_service.store(
-                self.session_id, "user", user_input, subtype="interaction", importance=0.5
+                active_session_id, "user", user_input, subtype="interaction", importance=0.5
             )
 
             if self._is_multi_step_query(user_input):
                 response, tools_used = await self._process_with_agent(
-                    user_input, permission_profile=permission_profile
+                    user_input,
+                    conversation_manager=conversation_manager,
+                    permission_profile=permission_profile,
                 )
                 tool_used = ", ".join(tools_used) if tools_used else None
             else:
                 response, tool_used = await self._process_command_internal(
-                    user_input, permission_profile=permission_profile
+                    user_input,
+                    session_id=active_session_id,
+                    conversation_manager=conversation_manager,
+                    permission_profile=permission_profile,
                 )
 
-            await self.conversation_manager.add("assistant", response, tool_used=tool_used)
+            await conversation_manager.add("assistant", response, tool_used=tool_used)
             await self.memory_service.store(
-                self.session_id, "assistant", response, subtype="interaction", importance=0.4
+                active_session_id, "assistant", response, subtype="interaction", importance=0.4
             )
             return response
 
@@ -225,6 +242,8 @@ class AmadeusService:
     async def _process_command_internal(
         self,
         user_input: str,
+        session_id: str,
+        conversation_manager: ConversationManager,
         permission_profile: PermissionProfile = PermissionProfile.SYSTEM_FULL,
     ) -> tuple[str, str | None]:
         """Single-step triage → extract → dispatch → compose pipeline."""
@@ -234,9 +253,9 @@ class AmadeusService:
             logger.info("Triage: cloud escalation detected")
             response = await self._composer.compose_conversational(
                 user_input=user_input,
-                session_id=self.session_id,
-                context_summary=self.conversation_manager.get_context_summary(),
-                recent_history=self.conversation_manager.get_formatted_history(3),
+                session_id=session_id,
+                context_summary=conversation_manager.get_context_summary(),
+                recent_history=conversation_manager.get_formatted_history(3),
                 complexity="high",
             )
             return response, None
@@ -245,9 +264,9 @@ class AmadeusService:
             logger.info("Triage: conversational")
             response = await self._composer.compose_conversational(
                 user_input=user_input,
-                session_id=self.session_id,
-                context_summary=self.conversation_manager.get_context_summary(),
-                recent_history=self.conversation_manager.get_formatted_history(3),
+                session_id=session_id,
+                context_summary=conversation_manager.get_context_summary(),
+                recent_history=conversation_manager.get_formatted_history(3),
             )
             return response, None
 
@@ -269,7 +288,13 @@ class AmadeusService:
 
         # Tool not in registry — Gemini last-resort (blocked in LOCAL_ONLY_MODE)
         if getattr(self, "client", None) and not self.settings.LOCAL_ONLY_MODE:
-            return await self._process_with_gemini(user_input, [actual_tool_name], permission_profile)
+            return await self._process_with_gemini(
+                user_input,
+                [actual_tool_name],
+                session_id=session_id,
+                conversation_manager=conversation_manager,
+                permission_profile=permission_profile,
+            )
 
         return "I couldn't find the right tool for that. Try rephrasing your request.", None
 
@@ -292,9 +317,10 @@ class AmadeusService:
     async def _process_with_agent(
         self,
         user_input: str,
+        conversation_manager: ConversationManager,
         permission_profile: PermissionProfile = PermissionProfile.SYSTEM_FULL,
     ) -> tuple[str, list[str]]:
-        context = self.conversation_manager.get_context_summary()
+        context = conversation_manager.get_context_summary()
         result = await self.orchestrator.execute(
             task=user_input, context=context, permission_profile=permission_profile
         )
@@ -305,7 +331,10 @@ class AmadeusService:
     async def handle_background_event(self, event_prompt: str) -> None:
         """Process a background/proactive event silently via the agent loop."""
         try:
-            _response, tools_used = await self._process_with_agent(event_prompt)
+            manager = await self._get_conversation_manager(self.session_id)
+            _response, tools_used = await self._process_with_agent(
+                event_prompt, conversation_manager=manager
+            )
             logger.info("Background event processed. Tools used: %s", tools_used)
         except Exception:
             logger.exception("Error handling background event")
@@ -318,14 +347,16 @@ class AmadeusService:
         self,
         user_input: str,
         relevant_tools: list[str],
+        session_id: str,
+        conversation_manager: ConversationManager,
         permission_profile: PermissionProfile = PermissionProfile.SYSTEM_FULL,
     ) -> tuple[str, str | None]:
         """Last-resort Gemini call. Only reached when LOCAL_ONLY_MODE is False."""
         from google.genai import types
 
         system_prompt = await self._composer.build_system_prompt(
-            session_id=self.session_id,
-            context_summary=self.conversation_manager.get_context_summary(),
+            session_id=session_id,
+            context_summary=conversation_manager.get_context_summary(),
             user_query=user_input,
         )
         tools_config = self.tool_registry.build_gemini_tools(relevant_tools)
@@ -377,12 +408,14 @@ class AmadeusService:
     # Utility methods
     # ------------------------------------------------------------------
 
-    def get_tool_summary(self) -> dict:
+    def get_tool_summary(self) -> dict[str, object]:
         return self.tool_registry.get_summary()
 
-    async def clear_conversation(self) -> None:
-        await self.conversation_manager.clear()
-        await self.memory_service.clear_session(self.session_id)
+    async def clear_conversation(self, session_id: str | None = None) -> None:
+        active_session_id = session_id or self.session_id
+        manager = await self._get_conversation_manager(active_session_id)
+        await manager.clear()
+        await self.memory_service.clear_session(active_session_id)
 
     async def shutdown(self) -> None:
         if hasattr(self, "orchestrator"):
@@ -391,7 +424,8 @@ class AmadeusService:
     async def send_outbound_message(self, user_id: str, platform: str, message: str) -> bool:
         try:
             logger.info("Preparing outbound %s message to %s...", platform, user_id)
-            await self.conversation_manager.add(
+            manager = await self._get_conversation_manager(user_id)
+            await manager.add(
                 "assistant", message, metadata={"outbound": True, "platform": platform}
             )
             if platform.lower() == "telegram":
@@ -414,6 +448,14 @@ class AmadeusService:
     # Private helpers
     # ------------------------------------------------------------------
 
+    async def _get_conversation_manager(self, session_id: str) -> ConversationManager:
+        manager = self._conversation_managers.get(session_id)
+        if manager is None:
+            manager = ConversationManager(session_id=session_id, repo=self._conversation_repo)
+            self._conversation_managers[session_id] = manager
+        await manager.load_from_db()
+        return manager
+
     def _load_api_keys(self) -> None:
         if not self.settings.GEMINI_API_KEY:
             logger.warning("GEMINI_API_KEY not found — Gemini features disabled")
@@ -424,7 +466,7 @@ class AmadeusService:
         self.model_name = self.settings.GEMINI_MODEL
         logger.info("Gemini API configured with model: %s", self.model_name)
 
-    def _make_llm_generate(self):
+    def _make_llm_generate(self) -> Callable[[str], Awaitable[str]] | None:
         """Build an async Gemini generate closure for the AgentOrchestrator."""
         if not (hasattr(self, "client") and self.client):
             return None

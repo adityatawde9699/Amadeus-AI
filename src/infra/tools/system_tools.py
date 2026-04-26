@@ -56,7 +56,7 @@ def open_program(
             "You may need to trigger a system scan using `scan_system_applications`."
         )
 
-    logger.info(f"Opening application: {target_app} ({app_exec})")
+    logger.info("Opening application: %s (%s)", target_app, app_exec)
 
     try:
         if platform.system() == "Windows":
@@ -78,7 +78,7 @@ def open_program(
         return f"Opening {target_app}..."
 
     except Exception as e:
-        logger.exception(f"Error launching app {target_app}: {e}")
+        logger.exception("Error launching app %s: %s", target_app, e)
         return f"Failed to open {target_app}: {e}"
 
 
@@ -123,7 +123,9 @@ def terminate_program(
                 if target.lower() in proc.info["name"].lower():
                     psutil.Process(proc.info["pid"]).terminate()
                     count += 1
-                    logger.info(f"Terminated: {proc.info['name']} (PID: {proc.info['pid']})")
+                    logger.info(
+                        "Terminated: %s (PID: %s)", proc.info["name"], proc.info["pid"]
+                    )
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
 
@@ -132,7 +134,7 @@ def terminate_program(
         return f"No processes found matching '{target}'"
 
     except Exception as e:
-        logger.exception(f"Error terminating '{target}': {e}")
+        logger.exception("Error terminating '%s': %s", target, e)
         return f"Error terminating process: {e}"
 
 
@@ -235,11 +237,11 @@ def copy_file(
         dst_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src_path, dst_path)
 
-        logger.info(f"File copied: {src_path} → {dst_path}")
+        logger.info("File copied: %s -> %s", src_path, dst_path)
         return f"File copied to {dst_path}"
 
     except Exception as e:
-        logger.exception(f"Error copying file: {e}")
+        logger.exception("Error copying file: %s", e)
         return f"Error copying file: {e}"
 
 
@@ -272,11 +274,11 @@ def move_file(
         dst_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(src_path), str(dst_path))
 
-        logger.info(f"File moved: {src_path} → {dst_path}")
+        logger.info("File moved: %s -> %s", src_path, dst_path)
         return f"File moved to {dst_path}"
 
     except Exception as e:
-        logger.exception(f"Error moving file: {e}")
+        logger.exception("Error moving file: %s", e)
         return f"Error moving file: {e}"
 
 
@@ -306,11 +308,11 @@ def delete_file(file_path: str | None = None, path: str | None = None, **kwargs:
         shutil.copy2(file_to_delete, backup_path)
 
         Path(file_to_delete).unlink()
-        logger.info(f"File deleted: {file_to_delete} (backup: {backup_path})")
+        logger.info("File deleted: %s (backup: %s)", file_to_delete, backup_path)
         return "File deleted (backup saved to temp folder)"
 
     except Exception as e:
-        logger.exception(f"Error deleting file: {e}")
+        logger.exception("Error deleting file: %s", e)
         return f"Error deleting file: {e}"
 
 
@@ -335,11 +337,11 @@ def create_folder(folder_name: str | None = None, name: str | None = None, **kwa
             return f"Path exists but is not a directory: {folder_path}"
 
         folder_path.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Folder created: {folder_path}")
+        logger.info("Folder created: %s", folder_path)
         return f"Folder created: {folder_path}"
 
     except Exception as e:
-        logger.exception(f"Error creating folder: {e}")
+        logger.exception("Error creating folder: %s", e)
         return f"Error creating folder: {e}"
 
 
@@ -350,14 +352,16 @@ def create_folder(folder_name: str | None = None, name: str | None = None, **kwa
 
 def get_system_tools() -> list[Tool]:
     """Get all system tools for manual registration."""
-    tools = []
-    # Collect tools from this module (system_tools.py)
-    for _name, obj in globals().items():
-        if hasattr(obj, "_tool_metadata"):
-            tools.append(obj._tool_metadata)
-
-    # Collect from office and slack sub-modules
+    tools = [
+        open_program._tool_metadata,  # type: ignore[attr-defined]
+        scan_system_applications._tool_metadata,  # type: ignore[attr-defined]
+        terminate_program._tool_metadata,  # type: ignore[attr-defined]
+        search_file._tool_metadata,  # type: ignore[attr-defined]
+        copy_file._tool_metadata,  # type: ignore[attr-defined]
+        move_file._tool_metadata,  # type: ignore[attr-defined]
+        delete_file._tool_metadata,  # type: ignore[attr-defined]
+        create_folder._tool_metadata,  # type: ignore[attr-defined]
+    ]
     tools.extend(get_office_tools())
     tools.extend(get_slack_tools())
-
     return tools

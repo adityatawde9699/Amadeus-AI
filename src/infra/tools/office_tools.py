@@ -116,7 +116,7 @@ def create_excel_spreadsheet(
 
             return f"Successfully created Excel spreadsheet at {save_path}"
     except Exception as e:
-        logger.exception(f"Failed to create Excel spreadsheet: {e}")
+        logger.exception("Failed to create Excel spreadsheet: %s", e)
         return f"Error: Failed to create Excel spreadsheet: {e}"
 
 
@@ -182,7 +182,7 @@ def create_word_document(file_name: str, title: str, content: str, **kwargs: Any
 
             return f"Successfully created Word document at {save_path}"
     except Exception as e:
-        logger.exception(f"Failed to create Word document: {e}")
+        logger.exception("Failed to create Word document: %s", e)
         return f"Error: Failed to create Word document: {e}"
 
 
@@ -221,7 +221,7 @@ def send_outlook_email(to: str, subject: str, body: str, **kwargs: Any) -> str:
             mail.Send()
             return f"Successfully sent email to {to} via Outlook."
     except Exception as e:
-        logger.exception(f"Failed to send Outlook email: {e}")
+        logger.exception("Failed to send Outlook email: %s", e)
         return f"Error: Failed to send Outlook email: {e}"
 
 
@@ -278,7 +278,7 @@ def read_outlook_emails(count: int = 5, **kwargs: Any) -> str:
 
             return f"Found {len(emails)} recent emails:\n\n" + "\n---\n".join(emails)
     except Exception as e:
-        logger.exception(f"Failed to read Outlook emails: {e}")
+        logger.exception("Failed to read Outlook emails: %s", e)
         return f"Error: Failed to read Outlook emails: {e}"
 
 
@@ -364,7 +364,7 @@ def read_excel_spreadsheet(
                 excel.Quit()
 
     except Exception as e:
-        logger.exception(f"Failed to read Excel spreadsheet: {e}")
+        logger.exception("Failed to read Excel spreadsheet: %s", e)
         return f"Error: Failed to read Excel spreadsheet: {e}"
 
 

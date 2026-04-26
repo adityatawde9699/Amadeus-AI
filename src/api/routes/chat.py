@@ -13,7 +13,7 @@ from collections.abc import AsyncGenerator
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
-from src.api.auth.manager import fastapi_users
+from src.api.auth.manager import current_active_user, fastapi_users
 from src.infra.persistence.orm_models import UserORM
 
 
@@ -39,7 +39,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
 # Limit concurrent chat requests to prevent event-loop saturation / DoS.
-# Callers that exceed this receive HTTP 503 rather than queuing indefinitely.
 _MAX_CONCURRENT_CHATS = 5
 _chat_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_CHATS)
 
@@ -63,16 +62,10 @@ async def chat(
     using ML-based tool selection to optimize API usage.
     """
     try:
-        # Guard against too many simultaneous in-flight requests
-        if _chat_semaphore.locked():
-            raise HTTPException(
-                status_code=503, detail="Server busy — too many concurrent requests. Please retry."
-            )
-
         async with _chat_semaphore:
-            # Use provided session_id or create new one from service
-            if request.session_id:
-                amadeus.session_id = request.session_id
+            active_session_id = (
+                str(user.id) if user is not None else request.session_id or amadeus.session_id
+            )
 
             # Extract Permission Profile
             profile = PermissionProfile.SYSTEM_FULL
@@ -84,6 +77,7 @@ async def chat(
                     user_input=request.message,
                     source=request.source,
                     request_id=request.request_id,
+                    session_id=active_session_id,
                     permission_profile=profile,
                 )
             except QueueFullError as e:
@@ -92,20 +86,21 @@ async def chat(
         return ChatResponse(
             response=response,
             source=request.source,
-            session_id=amadeus.session_id,
+            session_id=active_session_id,
             tools_used=[],
         )
 
     except HTTPException:
         raise  # Re-raise known HTTP errors (503 above) unchanged
     except Exception as e:
-        logger.error(f"Chat error: {e}", exc_info=True)
+        logger.error("Chat error: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="An internal error occurred") from e
 
 
 @router.get("/history", response_model=HistoryResponse)
 async def get_history(
     session_id: str = Query(..., description="Session ID to get history for"),
+    user: UserORM = Depends(current_active_user),
 ) -> HistoryResponse:
     """
     Get conversation history for a session.
@@ -113,6 +108,9 @@ async def get_history(
     Returns all messages from the specified session.
     """
     try:
+        if session_id != str(user.id):
+            raise HTTPException(status_code=403, detail="Forbidden")
+
         async for session in get_db_session():
             repo = SQLConversationRepository(session)
             messages = await repo.get_session_history(session_id)
@@ -126,7 +124,7 @@ async def get_history(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"History error: {e}", exc_info=True)
+        logger.error("History error: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
@@ -184,8 +182,7 @@ async def chat_stream(
 
         data: [DONE]
     """
-    if session_id:
-        amadeus.session_id = session_id
+    active_session_id = str(user.id) if user is not None else session_id or amadeus.session_id
 
     async def event_generator() -> AsyncGenerator[str, None]:
         try:
@@ -215,6 +212,7 @@ async def chat_stream(
                     response_text = await amadeus.handle_command(
                         user_input=message,
                         source=source,
+                        session_id=active_session_id,
                         permission_profile=profile,
                     )
                 except QueueFullError as e:

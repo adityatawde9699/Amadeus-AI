@@ -34,8 +34,21 @@ async def _process_and_reply_telegram(chat_id: int, user_text: str) -> None:
     """Background task: send user text through AmadeusService, reply via Telegram."""
     try:
         from src.app.services.amadeus_service import AmadeusService
+        from src.container import global_container
 
-        service = AmadeusService(session_id=str(chat_id), auto_start_orchestrator=False)
+        registry = global_container.tool_registry()
+        cache = global_container.cache_service()
+        repo = global_container.conversation_repo()
+        llm_router = global_container.llm_router()
+
+        service = AmadeusService(
+            session_id=str(chat_id),
+            auto_start_orchestrator=False,
+            tool_registry=registry,
+            cache_service=cache,
+            conversation_repo=repo,
+            llm_router=llm_router,
+        )
         await service.initialize()
 
         response = await service.handle_command(user_text, source="telegram")
@@ -50,8 +63,21 @@ async def _process_and_reply_whatsapp(phone: str, user_text: str, message_id: st
     """Background task: send user text through AmadeusService, reply via WhatsApp."""
     try:
         from src.app.services.amadeus_service import AmadeusService
+        from src.container import global_container
 
-        service = AmadeusService(session_id=phone, auto_start_orchestrator=False)
+        registry = global_container.tool_registry()
+        cache = global_container.cache_service()
+        repo = global_container.conversation_repo()
+        llm_router = global_container.llm_router()
+
+        service = AmadeusService(
+            session_id=phone,
+            auto_start_orchestrator=False,
+            tool_registry=registry,
+            cache_service=cache,
+            conversation_repo=repo,
+            llm_router=llm_router,
+        )
         await service.initialize()
 
         response = await service.handle_command(user_text, source="whatsapp")

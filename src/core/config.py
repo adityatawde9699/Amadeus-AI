@@ -32,6 +32,25 @@ def get_project_root() -> Path:
     return Path(__file__).resolve().parent.parent.parent
 
 
+def load_or_create_ipc_secret() -> str:
+    """Load the stable IPC token, creating it once with restricted permissions."""
+    token_path = get_project_root() / "data" / "ipc_secret.token"
+    token_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if token_path.exists():
+        token = token_path.read_text(encoding="utf-8").strip()
+        if token:
+            return token
+
+    token = secrets.token_hex(32)
+    token_path.write_text(token, encoding="utf-8")
+    try:
+        os.chmod(token_path, 0o600)
+    except OSError:
+        pass
+    return token
+
+
 class Settings(BaseSettings):
     """
     Application settings loaded from environment variables.
@@ -114,8 +133,8 @@ class Settings(BaseSettings):
     # =========================================================================
     SECRET_KEY: str | None = None  # Required for JWT auth in production
 
-    # Generated once per process lifetime if not explicitly provided
-    IPC_SECRET_TOKEN: str = Field(default_factory=lambda: secrets.token_hex(32))
+    # Loaded from env when provided; otherwise generated once and persisted.
+    IPC_SECRET_TOKEN: str = Field(default_factory=load_or_create_ipc_secret)
 
     # =========================================================================
     # OBSERVABILITY
