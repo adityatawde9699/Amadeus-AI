@@ -295,12 +295,12 @@ class QdrantMemoryService:
         try:
             from sentence_transformers import SentenceTransformer
 
-            # all-mpnet-base-v2: ~420MB, 768-dim, best in class for quality (upgraded from MiniLM)
-            self._local_embed_model = SentenceTransformer("sentence-transformers/all-mpnet-base-v2")
-            self._embed_dim = 768
+            # all-MiniLM-L6-v2: ~80MB, 384-dim, fast and memory efficient
+            self._local_embed_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+            self._embed_dim = 384
             self._use_local_embed = True
             logger.info(
-                "Local sentence-transformers embedding model loaded (all-mpnet-base-v2, dim=768)"
+                "Local sentence-transformers embedding model loaded (all-MiniLM-L6-v2, dim=384)"
             )
             return
         except ImportError:

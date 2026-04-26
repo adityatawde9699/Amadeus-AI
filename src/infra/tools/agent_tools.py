@@ -36,13 +36,13 @@ def get_agent_tools() -> list[Any]:
         try:
             from src.api.server import scheduler
         except ImportError as e:
-            logger.exception(f"Cannot import scheduler: {e}")
+            logger.exception("Cannot import scheduler: %s", e)
             return "Failed to access system scheduler."
 
         run_date = datetime.now() + timedelta(minutes=minutes)
 
         async def _execute_proactive_task(task_prompt: str, s_id: str) -> None:
-            logger.info(f"Executing scheduled proactive task: {task_prompt} for session {s_id}")
+            logger.info("Executing scheduled proactive task: %s for session %s", task_prompt, s_id)
             try:
                 # Use the container singleton — NOT a bare AmadeusService() —
                 # so it gets llm_router, tool_registry, and cache_service injected.
@@ -51,7 +51,7 @@ def get_agent_tools() -> list[Any]:
                 svc = get_amadeus_service()
                 await svc.handle_background_event(task_prompt)
             except Exception as e:
-                logger.exception(f"Failed to execute proactive task: {e}")
+                logger.exception("Failed to execute proactive task: %s", e)
 
         try:
             scheduler.add_job(
@@ -59,7 +59,7 @@ def get_agent_tools() -> list[Any]:
             )
             return f"Successfully scheduled task to execute in {minutes} minutes at {run_date.strftime('%H:%M:%S')}."
         except Exception as e:
-            logger.exception(f"Failed to schedule future task: {e}")
+            logger.exception("Failed to schedule future task: %s", e)
             return f"Failed to schedule task: {e}"
 
     return [schedule_future_task._tool_metadata]

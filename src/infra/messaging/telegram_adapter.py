@@ -221,9 +221,23 @@ class TelegramAdapter:
         """Runs the AmadeusService inside a background task to unblock the Telegram event loop."""
         try:
             from src.app.services.amadeus_service import AmadeusService
+            from src.container import global_container
+
+            # Get dependencies from container to ensure the tool registry is populated
+            registry = global_container.tool_registry()
+            cache = global_container.cache_service()
+            repo = global_container.conversation_repo()
+            llm_router = global_container.llm_router()
 
             # Instantiate AmadeusService isolated to this user session (chat_id)
-            service = AmadeusService(session_id=str(chat_id), auto_start_orchestrator=False)
+            service = AmadeusService(
+                session_id=str(chat_id),
+                auto_start_orchestrator=False,
+                tool_registry=registry,
+                cache_service=cache,
+                conversation_repo=repo,
+                llm_router=llm_router,
+            )
             
             # Inject Telegram-specific confirmation handler
             service.tool_executor.confirmation_callback = TelegramConfirmationCallback(self, chat_id)

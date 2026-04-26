@@ -5,7 +5,9 @@ Includes weather, news, Wikipedia search, calculations, and conversions.
 Migrated from general_utils.py to Clean Architecture structure.
 """
 
+import ast
 import logging
+import operator
 import random
 import re
 import urllib.parse
@@ -21,6 +23,30 @@ from src.infra.tools.base import Tool, ToolCategory, tool
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+_http_session: aiohttp.ClientSession | None = None
+
+
+async def initialize_info_tools_http_session() -> None:
+    """Create the shared HTTP session used by information tools."""
+    global _http_session  # noqa: PLW0603
+    if _http_session is None or _http_session.closed:
+        _http_session = aiohttp.ClientSession()
+
+
+async def close_info_tools_http_session() -> None:
+    """Close the shared HTTP session used by information tools."""
+    global _http_session  # noqa: PLW0603
+    if _http_session is not None and not _http_session.closed:
+        await _http_session.close()
+    _http_session = None
+
+
+async def _get_http_session() -> aiohttp.ClientSession:
+    if _http_session is None or _http_session.closed:
+        await initialize_info_tools_http_session()
+    if _http_session is None:
+        raise RuntimeError("info tools HTTP session is unavailable")
+    return _http_session
 
 
 # =============================================================================
@@ -104,12 +130,10 @@ async def get_weather_async(location: str = "India") -> str:
     params = {"q": location, "appid": api_key, "units": "metric"}
 
     try:
-        async with (
-            aiohttp.ClientSession() as session,
-            session.get(
-                base_url, params=params, timeout=aiohttp.ClientTimeout(total=10)
-            ) as response,
-        ):
+        session = await _get_http_session()
+        async with session.get(
+            base_url, params=params, timeout=aiohttp.ClientTimeout(total=10)
+        ) as response:
             if response.status == 404:
                 return f"Sorry, I couldn't find weather data for '{location}'."
             if response.status != 200:
@@ -181,12 +205,10 @@ async def get_news_async(
     }
 
     try:
-        async with (
-            aiohttp.ClientSession() as session,
-            session.get(
-                base_url, params=params, timeout=aiohttp.ClientTimeout(total=10)
-            ) as response,
-        ):
+        session = await _get_http_session()
+        async with session.get(
+            base_url, params=params, timeout=aiohttp.ClientTimeout(total=10)
+        ) as response:
             if response.status != 200:
                 return f"News service error (status {response.status})."
 
@@ -297,12 +319,10 @@ async def wikipedia_search_async(query: str, sentences: int = 3) -> str:
     headers = {"User-Agent": "AmadeusAI/2.0 (https://github.com/adityatawde9699/Amadeus-AI)"}
 
     try:
-        async with (
-            aiohttp.ClientSession() as session,
-            session.get(
-                search_url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)
-            ) as response,
-        ):
+        session = await _get_http_session()
+        async with session.get(
+            search_url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)
+        ) as response:
             if response.status == 404:
                 return await _wikipedia_search_fallback(query, session)
             if response.status != 200:
@@ -377,20 +397,15 @@ async def _wikipedia_search_fallback(query: str, session: aiohttp.ClientSession)
     parameters={"expression": {"type": "string", "description": "Mathematical expression"}},
 )
 def calculate(expression: str) -> str:
-    """Safely evaluates a mathematical expression using a restricted namespace."""
+    """Safely evaluate a mathematical expression with a small AST interpreter."""
     import math
 
     # Normalise common alternate operators
-    expr = expression.replace("x", "*").replace("÷", "/").replace("^", "**")
+    expr = re.sub(r"(?<=\d)\s*x\s*(?=\d)", "*", expression)
+    expr = expr.replace("÷", "/").replace("^", "**")
 
-    # Allowed characters: digits, operators, parentheses, decimal point, whitespace
-    # Note: we now explicitly allow all chars that math expressions need including letters
-    # for function names (sqrt, pi, etc.) — they are validated via the safe namespace below.
-    safe_namespace = {
-        "__builtins__": {},
+    functions = {
         "sqrt": math.sqrt,
-        "pi": math.pi,
-        "e": math.e,
         "abs": abs,
         "round": round,
         "pow": pow,
@@ -402,9 +417,50 @@ def calculate(expression: str) -> str:
         "ceil": math.ceil,
         "floor": math.floor,
     }
+    constants = {"pi": math.pi, "e": math.e}
+    binary_ops = {
+        ast.Add: operator.add,
+        ast.Sub: operator.sub,
+        ast.Mult: operator.mul,
+        ast.Div: operator.truediv,
+        ast.Pow: operator.pow,
+        ast.Mod: operator.mod,
+    }
+    unary_ops = {
+        ast.UAdd: operator.pos,
+        ast.USub: operator.neg,
+    }
+
+    def _eval_node(node: ast.AST) -> float | int:
+        if isinstance(node, ast.Expression):
+            return _eval_node(node.body)
+        if (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, int | float)
+            and not isinstance(node.value, bool)
+        ):
+            return node.value
+        if isinstance(node, ast.BinOp) and type(node.op) in binary_ops:
+            left = _eval_node(node.left)
+            right = _eval_node(node.right)
+            if isinstance(node.op, ast.Pow) and abs(right) > 1000:
+                raise ValueError("exponent is too large")
+            return binary_ops[type(node.op)](left, right)
+        if isinstance(node, ast.UnaryOp) and type(node.op) in unary_ops:
+            return unary_ops[type(node.op)](_eval_node(node.operand))
+        if isinstance(node, ast.Name) and node.id in constants:
+            return constants[node.id]
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            func = functions.get(node.func.id)
+            if func is None:
+                raise NameError(node.func.id)
+            if node.keywords:
+                raise ValueError("keyword arguments are not supported")
+            return func(*[_eval_node(arg) for arg in node.args])
+        raise ValueError("unsupported expression")
 
     try:
-        result = eval(expr, safe_namespace, {})
+        result = _eval_node(ast.parse(expr, mode="eval"))
         return f"{expression} = {result}"
     except ZeroDivisionError:
         return "Error: Division by zero."
@@ -620,8 +676,17 @@ async def web_search_async(query: str, depth: str = "quick") -> str:
 
 def get_info_tools() -> list[Tool]:
     """Get all information tools for manual registration."""
-    tools = []
-    for _name, obj in globals().items():
-        if hasattr(obj, "_tool_metadata"):
-            tools.append(obj._tool_metadata)
-    return tools
+    return [
+        get_greeting._tool_metadata,  # type: ignore[attr-defined]
+        get_datetime_info._tool_metadata,  # type: ignore[attr-defined]
+        get_weather_async._tool_metadata,  # type: ignore[attr-defined]
+        get_news_async._tool_metadata,  # type: ignore[attr-defined]
+        open_website._tool_metadata,  # type: ignore[attr-defined]
+        wikipedia_search_async._tool_metadata,  # type: ignore[attr-defined]
+        calculate._tool_metadata,  # type: ignore[attr-defined]
+        convert_temperature._tool_metadata,  # type: ignore[attr-defined]
+        convert_length._tool_metadata,  # type: ignore[attr-defined]
+        tell_joke._tool_metadata,  # type: ignore[attr-defined]
+        set_timer_async._tool_metadata,  # type: ignore[attr-defined]
+        web_search_async._tool_metadata,  # type: ignore[attr-defined]
+    ]

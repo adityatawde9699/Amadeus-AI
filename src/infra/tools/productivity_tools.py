@@ -411,17 +411,16 @@ async def list_reminders(**kwargs: Any) -> str:
 
 
 # =============================================================================
-# TOOL COLLECTION (legacy auto-discovery)
+# TOOL COLLECTION
 # =============================================================================
 
 
 def get_productivity_tools() -> list[Tool]:
-    """Get legacy (session-injected) productivity tools for auto-discovery."""
-    tools = []
-    _skip = {"func", "select", "update", "delete", "case"}
-    for name, obj in globals().items():
-        if name in _skip:
-            continue
-        if hasattr(obj, "_tool_metadata"):
-            tools.append(obj._tool_metadata)
-    return tools
+    """Get legacy (session-injected) productivity tools."""
+    return [
+        create_note._tool_metadata,  # type: ignore[attr-defined]
+        list_notes._tool_metadata,  # type: ignore[attr-defined]
+        get_note._tool_metadata,  # type: ignore[attr-defined]
+        add_reminder._tool_metadata,  # type: ignore[attr-defined]
+        list_reminders._tool_metadata,  # type: ignore[attr-defined]
+    ]

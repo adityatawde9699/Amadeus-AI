@@ -104,8 +104,6 @@ def execute_python_script(code: str | None = None, **kwargs: Any) -> str:
 
 def get_developer_tools() -> list[Tool]:
     """Get all developer tools for manual registration."""
-    tools = []
-    for _name, obj in globals().items():
-        if hasattr(obj, "_tool_metadata"):
-            tools.append(obj._tool_metadata)
-    return tools
+    return [
+        execute_python_script._tool_metadata,  # type: ignore[attr-defined]
+    ]

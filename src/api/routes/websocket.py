@@ -57,7 +57,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             if not user_input.strip():
                 continue
 
-            logger.info(f"WebSocket received: {user_input} (Session: {session_id})")
+            logger.info("WebSocket received: %s (Session: %s)", user_input, session_id)
 
             # In Phase 4, ideally AmadeusService supports `.handle_command_stream()`
             # For now, we simulate streaming the existing synchronous `handle_command` block
@@ -68,7 +68,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             # `model.generate_content(..., stream=True)` when called from WebSocket.
 
             # Temporary bridge: Call standard handle_command
-            response_text = await amadeus_service.handle_command(user_input, source="websocket")
+            response_text = await amadeus_service.handle_command(
+                user_input, source="websocket", session_id=session_id
+            )
 
             # Simulate streaming words to the client for "typing" effect
             words = response_text.split(" ")
@@ -83,6 +85,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         logger.info("Client disconnected from WebSocket.")
         manager.disconnect(websocket)
     except Exception as e:
-        logger.error(f"WebSocket error: {e}", exc_info=True)
+        logger.error("WebSocket error: %s", e, exc_info=True)
         if websocket in manager.active_connections:
             manager.disconnect(websocket)

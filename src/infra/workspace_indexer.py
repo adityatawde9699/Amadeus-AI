@@ -82,7 +82,7 @@ MAX_FILE_BYTES = 512_000   # 512 KB — skip huge auto-generated files
 CHUNK_CHARS = 1_500        # characters per chunk
 CHUNK_OVERLAP = 200        # character overlap between adjacent chunks
 
-_EMBED_MODEL_NAME = "sentence-transformers/all-mpnet-base-v2"
+_EMBED_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 _DEFAULT_INDEX_DIR = Path("data") / "workspace_index"
 
 # RRF constant (60 is the standard; higher → semantic/lexical ranks matter less)

@@ -30,6 +30,7 @@ from slowapi.util import get_remote_address
 from src.api.auth.manager import auth_backend, fastapi_users
 from src.api.auth.schemas import UserCreate, UserRead
 from src.api.middleware.audit_logger import AuditLoggerMiddleware
+from src.container import global_container
 from src.core.config import get_settings, validate_settings
 from src.core.exceptions import AmadeusError
 from src.infra.persistence.database import close_db, init_db
@@ -65,6 +66,7 @@ structlog.configure(
         structlog.stdlib.filter_by_level,
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,
+        structlog.stdlib.PositionalArgumentsFormatter(),
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.processors.dict_tracebacks,
         structlog.processors.JSONRenderer(),
@@ -105,8 +107,8 @@ if settings.SENTRY_DSN:
     sentry_sdk.init(
         dsn=settings.SENTRY_DSN,
         environment=settings.ENV,
-        traces_sample_rate=1.0,
-        send_default_pii=True,
+        traces_sample_rate=0.1,
+        send_default_pii=False,
     )
 
 
@@ -123,21 +125,22 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     Handles startup and shutdown events for the application.
     """
     # Startup
-    logger.info(f"Starting {settings.ASSISTANT_NAME} API v{settings.ASSISTANT_VERSION}")
+    logger.info("Starting %s API v%s", settings.ASSISTANT_NAME, settings.ASSISTANT_VERSION)
 
     # Validate configuration
     validation = validate_settings()
     if validation["errors"]:
-        logger.error(f"Configuration errors: {validation['errors']}")
+        logger.error("Configuration errors: %s", validation["errors"])
         if settings.is_production:
             raise RuntimeError("Configuration errors in production")
     for warning in validation.get("warnings", []):
-        logger.warning(f"Config warning: {warning}")
+        logger.warning("Config warning: %s", warning)
 
     # Run database migrations automatically
     try:
-        from alembic import command
         from alembic.config import Config
+
+        from alembic import command
 
         logger.info("Running database migrations...")
         alembic_cfg_path = settings.BASE_DIR / "alembic.ini"
@@ -152,15 +155,22 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             logger.info("Database migrations complete")
         else:
             logger.warning(
-                f"Alembic config or scripts missing at {settings.BASE_DIR}. Skipping migrations."
+                "Alembic config or scripts missing at %s. Skipping migrations.",
+                settings.BASE_DIR,
             )
     except Exception as e:
-        logger.error(f"Failed to run migrations: {e}")
+        logger.exception("Failed to run migrations: %s", e)
         if settings.is_production:
             raise
 
     # Initialize database
     await init_db()
+
+    # Initialize singleton services and shared tool resources.
+    from src.infra.tools.info_tools import initialize_info_tools_http_session
+
+    await global_container.amadeus_service().initialize()
+    await initialize_info_tools_http_session()
 
     # Initialize HITL Confirmation callback singleton.
     # Stored on app.state so the /confirm route handler can access it
@@ -207,7 +217,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     )
     await observation_loop.start()
 
-    logger.info(f"API ready at http://{settings.API_HOST}:{settings.API_PORT}")
+    logger.info("API ready at http://%s:%s", settings.API_HOST, settings.API_PORT)
 
     yield
 
@@ -219,6 +229,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await _telegram.stop_polling()
 
     observation_loop.stop()
+
+    from src.infra.tools.info_tools import close_info_tools_http_session
+
+    await close_info_tools_http_session()
 
     # Clean up container resources (AmadeusService orchestrator, Redis, etc.)
     from src.container import shutdown_services
@@ -232,9 +246,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 # =============================================================================
 # FASTAPI APPLICATION
 # =============================================================================
-
-from src.container import global_container
-
 
 app = FastAPI(
     title=f"{settings.ASSISTANT_NAME} AI Assistant API",
@@ -308,7 +319,7 @@ Instrumentator().instrument(app).expose(app, endpoint="/api/v1/metrics", tags=["
 @app.exception_handler(AmadeusError)
 async def amadeus_exception_handler(request: Request, exc: AmadeusError) -> JSONResponse:
     """Handle domain-specific exceptions."""
-    logger.warning(f"Domain error: {exc.message}")
+    logger.warning("Domain error: %s", exc.message)
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
         content=exc.to_dict(),
@@ -318,7 +329,7 @@ async def amadeus_exception_handler(request: Request, exc: AmadeusError) -> JSON
 @app.exception_handler(Exception)
 async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Handle unexpected exceptions."""
-    logger.error(f"Unexpected error: {exc}", exc_info=True)
+    logger.error("Unexpected error: %s", exc, exc_info=True)
 
     if getattr(settings, "ALLOW_DEBUG_RESPONSES", False):
         return JSONResponse(
@@ -362,9 +373,11 @@ async def root() -> dict[str, str]:
     }
 
 
-@app.get("/sentry-debug", tags=["Health"])
-async def trigger_error():
-    division_by_zero = 1 / 0
+if settings.is_development:
+
+    @app.get("/sentry-debug", include_in_schema=False)
+    async def trigger_error() -> None:
+        raise ZeroDivisionError("Sentry test")
 
 
 # =============================================================================
