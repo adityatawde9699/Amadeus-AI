@@ -106,7 +106,7 @@ ENV PYTHONUNBUFFERED=1 \
     WHISPER_MODEL=small \
     WHISPER_DEVICE=cpu \
     WHISPER_COMPUTE_TYPE=int8 \
-    DATABASE_URL=sqlite:///./data/amadeus.db
+    DATABASE_URL=postgresql://postgres:postgres@postgres:5432/amadeus
 
 # Health check using the /health endpoint
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \

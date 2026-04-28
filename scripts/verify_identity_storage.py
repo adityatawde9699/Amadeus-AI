@@ -24,14 +24,14 @@ async def verify_storage():
     await memory_service.initialize()
     
     if memory_service.is_enabled:
-        methods = [m for m in dir(memory_service._client) if not m.startswith('_')][15:45]
-        logger.info(f"Qdrant Client Methods [15:45]: {methods}")
+        methods = [m for m in dir(memory_service._client) if not m.startswith("_")][15:45]
+        logger.info("Qdrant Client Methods [15:45]: %s", methods)
         # Search for the core identity entry
         memories = await memory_service.retrieve("Core Identity & Origin", top_k=1)
         if memories:
             mem = memories[0]
-            logger.info(f"Found semantic memory: Subtype={mem.subtype}, Score={mem.score:.4f}")
-            logger.info(f"Content Snippet: {mem.text[:100]}...")
+            logger.info("Found semantic memory: Subtype=%s, Score=%.4f", mem.subtype, mem.score)
+            logger.info("Content Snippet: %s...", mem.text[:100])
             if mem.subtype == "identity" and "Core Identity & Origin" in mem.text:
                 logger.info("SUCCESS: Semantic Identity stored correctly.")
             else:
@@ -48,15 +48,15 @@ async def verify_storage():
     # Test retrieval of specific facts
     facts = await kg_service.retrieve_triples("Aditya S Tawde", limit=10)
     if facts:
-        logger.info(f"Found {len(facts)} triples related to 'Aditya S Tawde':")
+        logger.info("Found %d triples related to 'Aditya S Tawde':", len(facts))
         for fact in facts:
-            logger.info(f"  {fact}")
+            logger.info("  %s", fact)
         
         expected_fact = "(Aditya S Tawde) —[created]→ (Amadeus)"
         if any(expected_fact in f for f in facts):
             logger.info("SUCCESS: KG triple found correctly.")
         else:
-            logger.warning(f"Expected fact '{expected_fact}' not found in results.")
+            logger.warning("Expected fact '%s' not found in results.", expected_fact)
     else:
         logger.error("FAILURE: No triples found for 'Aditya S Tawde'.")
 

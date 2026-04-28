@@ -54,9 +54,9 @@ class ToolRegistry:
             tool: The Tool instance to register
         """
         if tool.name in self._tools:
-            logger.warning(f"Tool '{tool.name}' already registered, overwriting")
+            logger.warning("Tool '%s' already registered, overwriting", tool.name)
         self._tools[tool.name] = tool
-        logger.debug(f"Registered tool: {tool.name} ({tool.category.value})")
+        logger.debug("Registered tool: %s (%s)", tool.name, tool.category.value)
 
     def register_function(
         self,
@@ -169,7 +169,7 @@ class ToolRegistry:
                 try:
                     declarations.append(FunctionDeclaration(**d))
                 except Exception as e:
-                    logger.warning(f"Failed to create FunctionDeclaration for {t.name}: {e}")
+                    logger.warning("Failed to create FunctionDeclaration for %s: %s", t.name, e)
                     # Fallback to raw dict if wrapper fails
                     declarations.append(d)  # type: ignore[arg-type]
 
@@ -248,12 +248,12 @@ class ToolRegistry:
                             count += 1
 
                 except Exception as e:
-                    logger.exception(f"Error loading module {module_name}: {e}")
+                    logger.exception("Error loading module %s: %s", module_name, e)
 
         except Exception as e:
-            logger.exception(f"Error discovering tools from {package_name}: {e}")
+            logger.exception("Error discovering tools from %s: %s", package_name, e)
 
-        logger.info(f"Discovered {count} tools from {package_name}")
+        logger.info("Discovered %d tools from %s", count, package_name)
         return count
 
     # =========================================================================

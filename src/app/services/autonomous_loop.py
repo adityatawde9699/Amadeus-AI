@@ -23,7 +23,9 @@ class AutonomousObservationLoop:
     async def start(self) -> None:
         """Start the background observation loop."""
         self._running = True
-        logger.info(f"Starting Autonomous Observation Loop (interval: {self.interval_minutes}m)")
+        logger.info(
+            "Starting Autonomous Observation Loop (interval: %sm)", self.interval_minutes
+        )
         asyncio.create_task(self._loop())
 
     def stop(self) -> None:
@@ -45,12 +47,12 @@ class AutonomousObservationLoop:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"Error in autonomous loop: {e}", exc_info=True)
+                logger.error("Error in autonomous loop: %s", e, exc_info=True)
                 await asyncio.sleep(60)  # Backoff on error
 
     async def _trigger_observation(self, session_id: str) -> None:
         """Trigger the agent to observe its state."""
-        logger.info(f"Triggering autonomous observation for session {session_id}")
+        logger.info("Triggering autonomous observation for session %s", session_id)
         try:
             from src.app.services.amadeus_service import AmadeusService
 
@@ -66,4 +68,4 @@ class AutonomousObservationLoop:
             # Submit to service as a background event
             await svc.handle_background_event(prompt)
         except Exception as e:
-            logger.exception(f"Failed to run observation for session {session_id}: {e}")
+            logger.exception("Failed to run observation for session %s: %s", session_id, e)

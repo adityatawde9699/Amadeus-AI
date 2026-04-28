@@ -167,10 +167,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await init_db()
 
     # Initialize singleton services and shared tool resources.
+    from src.container import get_search_router
     from src.infra.tools.info_tools import initialize_info_tools_http_session
 
     await global_container.amadeus_service().initialize()
     await initialize_info_tools_http_session()
+    await get_search_router().initialize()
 
     # Initialize HITL Confirmation callback singleton.
     # Stored on app.state so the /confirm route handler can access it
@@ -233,6 +235,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from src.infra.tools.info_tools import close_info_tools_http_session
 
     await close_info_tools_http_session()
+    await get_search_router().close()
 
     # Clean up container resources (AmadeusService orchestrator, Redis, etc.)
     from src.container import shutdown_services

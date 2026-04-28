@@ -61,11 +61,16 @@ class KnowledgeGraphService:
                     )
                     session.add(rel)
                     await session.commit()
-                    logger.debug(f"KG triple added: ({subject_name}) -[{predicate}]-> ({object_name})")
+                    logger.debug(
+                        "KG triple added: (%s) -[%s]-> (%s)",
+                        subject_name,
+                        predicate,
+                        object_name,
+                    )
                 
                 return True
             except Exception as e:
-                logger.error(f"Failed to add KG triple: {e}")
+                logger.error("Failed to add KG triple: %s", e)
                 await session.rollback()
                 return False
 
@@ -129,5 +134,5 @@ class KnowledgeGraphService:
 
                 return triples
             except Exception as e:
-                logger.error(f"Failed to retrieve KG triples: {e}")
+                logger.error("Failed to retrieve KG triples: %s", e)
                 return []

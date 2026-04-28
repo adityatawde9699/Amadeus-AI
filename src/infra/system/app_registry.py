@@ -39,10 +39,10 @@ class AppRegistry:
             try:
                 with self.cache_file.open(encoding="utf-8") as f:
                     apps: dict[str, str] = json.load(f)
-                    logger.debug(f"Loaded {len(apps)} applications from cache.")
+                    logger.debug("Loaded %d applications from cache.", len(apps))
                     return apps
             except Exception as e:
-                logger.exception(f"Failed to load app cache: {e}. Rebuilding...")
+                logger.exception("Failed to load app cache: %s. Rebuilding...", e)
         return self.scan_and_cache()
 
     def scan_and_cache(self) -> dict[str, str]:
@@ -50,7 +50,7 @@ class AppRegistry:
         discovered = {}
         system = platform.system()
 
-        logger.info(f"Starting application scan for {system}...")
+        logger.info("Starting application scan for %s...", system)
 
         try:
             if system == "Windows":
@@ -60,7 +60,7 @@ class AppRegistry:
             elif system == "Linux":
                 discovered = self._scan_linux()
         except Exception as e:
-            logger.exception(f"Error during system scan: {e}")
+            logger.exception("Error during system scan: %s", e)
 
         # Ensure directory exists before writing
         self.cache_file.parent.mkdir(parents=True, exist_ok=True)
@@ -73,7 +73,7 @@ class AppRegistry:
                     f"Successfully cached {len(discovered)} applications to {self.cache_file}"
                 )
             except Exception as e:
-                logger.exception(f"Failed to write cache file: {e}")
+                logger.exception("Failed to write cache file: %s", e)
 
         self.apps = discovered
         return discovered

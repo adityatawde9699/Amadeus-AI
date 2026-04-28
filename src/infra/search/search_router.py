@@ -44,6 +44,25 @@ class SearchRouter:
     ) -> None:
         self._tavily_key = tavily_api_key
         self._count_date: date = date.today()
+        self._session: aiohttp.ClientSession | None = None
+
+    async def initialize(self) -> None:
+        """Initialize shared HTTP session for search providers."""
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession()
+
+    async def close(self) -> None:
+        """Close shared HTTP session."""
+        if self._session is not None and not self._session.closed:
+            await self._session.close()
+        self._session = None
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        if self._session is None or self._session.closed:
+            await self.initialize()
+        if self._session is None:
+            raise RuntimeError("search router HTTP session is unavailable")
+        return self._session
 
     def _reset_if_new_day(self) -> None:
         today = date.today()
@@ -95,14 +114,14 @@ class SearchRouter:
         """Query Wikipedia REST API for a summary."""
         try:
             url = "https://en.wikipedia.org/api/rest_v1/page/summary/"
+            session = await self._get_session()
             # Extract the main subject from the query for the Wikipedia title
             subject = (
                 query.replace("who is ", "").replace("what is ", "").replace("define ", "").strip()
             )
-            async with (
-                aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session,
-                session.get(url + subject.replace(" ", "_")) as r,
-            ):
+            async with session.get(
+                url + subject.replace(" ", "_"), timeout=aiohttp.ClientTimeout(total=5)
+            ) as r:
                 if r.status == 200:
                     data = await r.json()
                     extract = data.get("extract", "")
@@ -116,16 +135,14 @@ class SearchRouter:
         """Query DuckDuckGo Instant Answer API — no key required."""
         try:
             url = "https://api.duckduckgo.com/"
+            session = await self._get_session()
             params: dict[str, str] = {
                 "q": query,
                 "format": "json",
                 "no_redirect": "1",
                 "no_html": "1",
             }
-            async with (
-                aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session,
-                session.get(url, params=params) as r,
-            ):
+            async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=5)) as r:
                 if r.status == 200:
                     data = await r.json(content_type=None)
                     # Prefer AbstractText, then Answer
@@ -139,16 +156,16 @@ class SearchRouter:
         """Query Tavily API for deep research (1,000 req/month free)."""
         try:
             url = "https://api.tavily.com/search"
+            session = await self._get_session()
             payload = {
                 "api_key": self._tavily_key,
                 "query": query,
                 "search_depth": "advanced",
                 "max_results": 3,
             }
-            async with (
-                aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session,
-                session.post(url, json=payload) as r,
-            ):
+            async with session.post(
+                url, json=payload, timeout=aiohttp.ClientTimeout(total=15)
+            ) as r:
                 if r.status == 200:
                     data = await r.json()
                     results = data.get("results", [])

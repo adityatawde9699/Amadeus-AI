@@ -50,7 +50,7 @@ class SQLKnowledgeGraphRepository(IKnowledgeGraphRepository):
             await self.session.commit()
             return int(new_entity.id)
         except Exception as e:
-            logger.exception(f"Error upserting entity '{name}': {e}")
+            logger.exception("Error upserting entity '%s': %s", name, e)
             await self.session.rollback()
             raise
 
@@ -80,7 +80,7 @@ class SQLKnowledgeGraphRepository(IKnowledgeGraphRepository):
 
             await self.session.commit()
         except Exception as e:
-            logger.exception(f"Error adding relationship: {e}")
+            logger.exception("Error adding relationship: %s", e)
             await self.session.rollback()
             raise
 
@@ -121,7 +121,7 @@ class SQLKnowledgeGraphRepository(IKnowledgeGraphRepository):
 
             return triples
         except Exception as e:
-            logger.exception(f"Error finding relationships for '{entity_name}': {e}")
+            logger.exception("Error finding relationships for '%s': %s", entity_name, e)
             return []
 
     async def get_entity_by_name(self, name: str) -> dict | None:

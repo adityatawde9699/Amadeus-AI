@@ -44,7 +44,7 @@ class RequireRole:
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        logger.debug(f"RBAC passed for User '{user.id}' with Role '{user.role}'.")
+        logger.debug("RBAC passed for User '%s' with Role '%s'.", user.id, user.role)
         return user
 
 

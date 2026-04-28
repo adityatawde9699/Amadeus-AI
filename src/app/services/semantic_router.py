@@ -51,12 +51,30 @@ _GLOBAL_INTENTS = {
         "you're helpful", "bye", "goodbye", "see ya"
     ],
     "cloud_escalation": [
+        "debug my fastapi startup error and stack trace",
+        "analyze this production crash log and identify root cause",
+        "help me design a distributed system with failover and replication",
         "write a complex python script for quantum simulation",
+        "optimize this sql query and explain query plan bottlenecks",
         "explain the mathematical proof of fermat's last theorem",
-        "solve this advanced calculus problem",
-        "architect a distributed system for high availability",
-        "deep dive into the philosophy of mind and consciousness",
-        "write a comprehensive technical research paper"
+        "solve this advanced calculus problem with derivation steps",
+        "architect a microservices platform for high availability",
+        "perform a security review and threat model for this api",
+        "design a scalable event-driven architecture with kafka",
+        "reason about algorithmic complexity and trade-offs",
+        "prepare a comprehensive technical research report",
+        "refactor this codebase with phased migration strategy",
+        "debug race condition in asynchronous worker queue",
+        "compare machine learning models and justify selection",
+        "build an end-to-end data pipeline with validation",
+        "troubleshoot docker deployment and runtime networking failures",
+        "create a robust test strategy for integration and load tests",
+        "investigate memory leak symptoms in a long-running service",
+        "evaluate cloud architecture cost, latency, and resiliency",
+        "review observability gaps and propose sre runbooks",
+        "design database sharding strategy for write-heavy workload",
+        "perform incident postmortem and preventive action planning",
+        "explain advanced concurrency patterns with real examples"
     ]
 }
 

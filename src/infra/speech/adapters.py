@@ -92,7 +92,7 @@ class WhisperVoiceInput(ISpeechToTextService):
             return await loop.run_in_executor(ml_pool, _transcribe_sync)
 
         except Exception as e:
-            logger.exception(f"Transcription error: {e}")
+            logger.exception("Transcription error: %s", e)
             return ""
         finally:
             if Path(temp_path).exists():

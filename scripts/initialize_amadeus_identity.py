@@ -95,7 +95,11 @@ async def initialize_identity():
         if ok:
             success_count += 1
     
-    logger.info(f"KG initialization complete: {success_count}/{len(KG_TRIPLES)} triples stored.")
+    logger.info(
+        "KG initialization complete: %d/%d triples stored.",
+        success_count,
+        len(KG_TRIPLES),
+    )
 
 if __name__ == "__main__":
     asyncio.run(initialize_identity())
