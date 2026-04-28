@@ -37,7 +37,7 @@ async def run_proactive_checks() -> None:
     current_time = datetime.now().strftime("%I:%M %p on %A, %B %d")
 
     for platform_name, user_id in platforms:
-        logger.info(f"Running proactive checks for {platform_name} / {user_id}")
+        logger.info("Running proactive checks for %s / %s", platform_name, user_id)
 
         try:
             # We use the user_id as the session_id to maintain conversation context for that user
@@ -59,4 +59,4 @@ async def run_proactive_checks() -> None:
             await service.handle_background_event(prompt)
 
         except Exception as e:
-            logger.error(f"Error during proactive check for {platform_name}: {e}", exc_info=True)
+            logger.error("Error during proactive check for %s: %s", platform_name, e, exc_info=True)

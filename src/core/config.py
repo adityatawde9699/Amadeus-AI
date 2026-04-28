@@ -181,11 +181,12 @@ class Settings(BaseSettings):
     CHROMA_PERSIST_DIR: str = "./data/chroma_db"
     CHROMA_COLLECTION_NAME: str = "amadeus_memory"
     MEMORY_EMBED_MODEL: str = "models/embedding-001"  # Gemini embedding model
+    SEMANTIC_ROUTER_THRESHOLD: float = Field(default=0.30, ge=0.0, le=1.0)
 
     # =========================================================================
     # DATABASE
     # =========================================================================
-    DATABASE_URL: str = "sqlite:///./data/amadeus.db"
+    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/amadeus"
     REDIS_URL: str = "redis://localhost:6379/0"
 
     # Connection Pool Settings

@@ -94,7 +94,7 @@ def verify_jwt_token(credentials: HTTPAuthorizationCredentials = Depends(securit
 
         return result
     except JWTError as e:
-        logger.warning(f"JWT verification failed: {e}")
+        logger.warning("JWT verification failed: %s", e)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication credentials",

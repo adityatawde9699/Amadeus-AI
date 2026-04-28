@@ -78,7 +78,7 @@ async def toggle_voice_activation() -> VoiceToggleResponse:
     settings.VOICE_ENABLED = not settings.VOICE_ENABLED
 
     action = "unmuted" if settings.VOICE_ENABLED else "muted"
-    logger.info(f"IPC Command: Microphone {action} via system tray")
+    logger.info("IPC Command: Microphone %s via system tray", action)
 
     # Optional: trigger a speech blurb via the actual voice service here so
     # the user hears "Microphone muted" audibly.

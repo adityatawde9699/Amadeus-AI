@@ -9,6 +9,29 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Architecture
+- **AmadeusService**: Decomposed 1,381-line God-Object into five focused sub-services: `ArgumentExtractor`, `ResponseComposer`, `ToolDispatcher`, `ConversationManager`, and `UnifiedSemanticRouter`. Service is now 496 lines and acts as a thin orchestrator.
+- **Tool Registry**: Removed `_register_all_tools()` from `AmadeusService`. Registry is now exclusively built and injected by the DI container — no double-registration.
+- **ConversationMessage**: Eliminated duplicate model. The `@dataclass` in `conversation_manager.py` has been removed; the module now re-exports the canonical `ConversationMessage(BaseModel)` from `src.core.domain.models`. All timestamps migrated to timezone-aware `datetime.now(UTC)`.
+
+### Performance & Stability
+- **Startup**: `UnifiedSemanticRouter.build_index()` moved to `AmadeusService.initialize()` and runs in a thread pool via `run_in_executor` — FastAPI no longer blocks for 5–30s on startup.
+- **Session safety**: `session_id` is now passed explicitly per request through `handle_command()` — mutating the service singleton is no longer possible.
+- **Semaphore**: Removed the non-atomic `if _chat_semaphore.locked()` pre-check from the chat endpoint. `async with _chat_semaphore` alone handles concurrency correctly.
+- **HTTP sessions**: `info_tools.py` and `SearchRouter` now use a single shared `aiohttp.ClientSession` per adapter, initialized at startup and closed on shutdown.
+
+### AI / LLM System
+- **Semantic router**: Threshold recalibrated from `0.38` → `0.30` for `all-MiniLM-L6-v2`. Threshold constant extracted to `_DEFAULT_THRESHOLD` for easy tuning.
+- **Cloud escalation anchors**: Expanded from 6 vague phrases to 24 rich, domain-specific anchors covering debugging, architecture, distributed systems, security review, ML, and incident analysis.
+- **Local embeddings**: `QdrantMemoryService` now prioritizes `sentence-transformers/all-MiniLM-L6-v2` for memory embeddings; Gemini embedding API is a fallback only, so `LOCAL_ONLY_MODE` works fully offline.
+- **Agent cycle guard**: `ReActAgent` now tracks `(action, sorted-args)` signatures per run in `_seen_action_inputs`. Repeated identical tool calls trigger an immediate synthesize-and-exit rather than looping to the iteration limit. Added the missing `_action_signature()` static helper method.
+
+### Code Quality
+- **Logging**: Replaced all eager `logger.*(f"...")` f-string calls with lazy `%s` format-arg style across `src/`. String formatting now only occurs when the log level is active.
+- **Tool discovery**: Removed `globals()` introspection for tool collection. Tools are now registered via an explicit list in `container.py:_build_tool_registry()`.
+- **Type safety**: Broad `Any` annotations in core service signatures replaced with proper domain types.
+- **Docstrings**: `amadeus_service.py` module docstring updated to reflect the current decomposed architecture.
+
 ### Security
 - **info_tools**: Replaced `eval()` with a restricted AST math evaluator for safe tool calculation.
 - **Sentry**: Set `send_default_pii=False` and `traces_sample_rate=0.1` to prevent user PII leakage and reduce overhead.
@@ -17,6 +40,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Chat**: Fixed session_id race condition in chat and SSE endpoints by binding session IDs to the authenticated user ID.
 - **Prompt Injection**: Mitigated injection risks by wrapping user input explicitly inside `<user_input>` tags during LLM argument extraction.
 - **IPC**: Replaced per-process IPC token generation with a persistent fallback token `data/ipc_secret.token` to ensure consistent authentication across worker restarts.
+
+### Infrastructure
+- **Alembic migrations**: Moved from blocking synchronous call to `asyncio.to_thread(command.upgrade, ...)` so migrations run without blocking the FastAPI event loop.
+- **Docker**: Refactored `Dockerfile` into a 3-stage build: `builder` (deps) → `model_cache` (pre-bakes Whisper + Edge TTS) → `runtime` (slim final image). Reduces cold start from 45–90s to <5s.
+- **Database**: Default `DATABASE_URL` changed from SQLite to `postgresql://postgres:postgres@localhost:5432/amadeus` in `config.py` and Docker runtime environment.
 
 ---
 

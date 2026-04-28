@@ -20,6 +20,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+import json
 
 
 class QueueFullError(Exception):
@@ -107,6 +108,15 @@ class ReActAgent:
 
     FINISH_ACTION = "FINISH"
 
+    @staticmethod
+    def _action_signature(action: str, action_input: dict) -> str:
+        """Build a stable signature to detect repeated tool/input cycles."""
+        try:
+            normalized = json.dumps(action_input, sort_keys=True, default=str)
+        except Exception:
+            normalized = str(action_input)
+        return f"{action}|{normalized}"
+
     def __init__(
         self,
         tool_registry: ToolRegistry,
@@ -148,6 +158,7 @@ class ReActAgent:
         self.tools_used: list[str] = []
         self.observations: list[str] = []
         self.iteration = 0
+        self._seen_action_inputs: set[str] = set()
 
         self.queue: asyncio.Queue[AgentState] = asyncio.Queue()
         await self.queue.put(AgentState.START)
@@ -160,7 +171,7 @@ class ReActAgent:
             state = await self.queue.get()
 
             if self.verbose:
-                logger.debug(f"Agent State: {state.value} | Iteration: {self.iteration}")
+                logger.debug("Agent State: %s | Iteration: %d", state.value, self.iteration)
 
             if state == AgentState.START:
                 await self.queue.put(AgentState.THINK)
@@ -189,6 +200,15 @@ class ReActAgent:
                     action_input=action_input,
                 )
                 self.current_step = step
+                if action != self.FINISH_ACTION:
+                    action_signature = self._action_signature(action, action_input)
+                    if action_signature in self._seen_action_inputs:
+                        logger.warning("Cycle guard triggered for action '%s'", action)
+                        final_answer = await self._synthesize_answer(self.task, self.observations)
+                        success = bool(final_answer)
+                        await self.queue.put(AgentState.END)
+                        continue
+                    self._seen_action_inputs.add(action_signature)
 
                 if action == self.FINISH_ACTION:
                     final_answer = action_input.get("answer", thought)
@@ -249,7 +269,7 @@ class ReActAgent:
                     logger.warning("ReAct ACT: tool '%s' timed out after %ds", action, _timeout)
                 except Exception as e:
                     self.current_observation = f"Error executing {action}: {e}"
-                    logger.exception(f"Tool execution error: {e}")
+                    logger.exception("Tool execution error: %s", e)
 
                 await self.queue.put(AgentState.OBSERVE)
 
@@ -395,7 +415,7 @@ class ReActAgent:
                             e.strip(" '\\\"") for e in extracted.split(",") if e.strip()
                         ]
                     except Exception as e:
-                        logger.debug(f"Entity extraction failed, falling back to heuristic: {e}")
+                        logger.debug("Entity extraction failed, falling back to heuristic: %s", e)
 
                 if not potential_entities:
                     words = task.split()
@@ -451,7 +471,7 @@ Your response:"""
             response = await self.llm_generate(prompt)
             return self._parse_llm_response(response)
         except Exception as e:
-            logger.exception(f"LLM reasoning error: {e}")
+            logger.exception("LLM reasoning error: %s", e)
             # Fallback to keywords
             return await self._think_with_keywords(task, observations)
 
@@ -481,6 +501,29 @@ Your response:"""
                 action_input = json.loads(input_match.group(1))
 
         return (thought, action, action_input)
+
+    @staticmethod
+    def _action_signature(action: str, action_input: dict) -> str:
+        """
+        Build a stable, order-independent key for an (action, args) pair.
+
+        Used by the cycle-detection guard to identify when the agent is about
+        to repeat an exact tool call it has already made in this run, which
+        would produce the same observation and lead to an infinite loop.
+
+        Args:
+            action:       Tool name string.
+            action_input: Arbitrary keyword arguments dict.
+
+        Returns:
+            A string of the form ``"tool_name|{...sorted json...}"`` that is
+            identical for semantically equivalent calls regardless of dict
+            insertion order.
+        """
+        import json
+
+        normalized = json.dumps(action_input, sort_keys=True, default=str)
+        return f"{action}|{normalized}"
 
     async def _learn_from_interaction(self, task: str, answer: str) -> None:
         """
@@ -519,7 +562,7 @@ Relationships:"""
                         sub_id = await graph_repo.upsert_entity(sub, entity_type=e_type)
                         obj_id = await graph_repo.upsert_entity(obj)
                         await graph_repo.add_relationship(sub_id, pred, obj_id)
-                        logger.info(f"Learned relationship: {sub} -> {pred} -> {obj}")
+                        logger.info("Learned relationship: %s -> %s -> %s", sub, pred, obj)
         except Exception as e:
             logger.debug("Learning step failed: %s", e)
 
@@ -660,7 +703,7 @@ class AgentOrchestrator:
                     "Agent Orchestrator SVM not found. Falling back to fuzzy keyword routing."
                 )
         except Exception as e:
-            logger.exception(f"Failed to load router classifier: {e}")
+            logger.exception("Failed to load router classifier: %s", e)
 
     def _predict_intent(self, task: str) -> str:
         """Predict which agent should handle this task."""
@@ -675,10 +718,10 @@ class AgentOrchestrator:
                 predicted_agent = classes[best_agent_idx]
 
                 if predicted_agent in self.agents:
-                    logger.info(f"SVM routed '{task[:20]}...' to [{predicted_agent}]")
+                    logger.info("SVM routed '%s...' to [%s]", task[:20], predicted_agent)
                     return predicted_agent
             except Exception as e:
-                logger.exception(f"SVM routing failed: {e}")
+                logger.exception("SVM routing failed: %s", e)
 
         # Fallback Keywords — expanded to match new system control tools
         lower_task = task.lower()
@@ -714,7 +757,7 @@ class AgentOrchestrator:
                 intent = self._predict_intent(task)
                 target_agent = self.agents.get(intent, self.agents["general"])
 
-                logger.debug(f"Orchestrator executing task via {intent} agent...")
+                logger.debug("Orchestrator executing task via %s agent...", intent)
 
                 try:
                     result = await target_agent.run(
@@ -723,7 +766,7 @@ class AgentOrchestrator:
                     if not future.done():
                         future.set_result(result)
                 except Exception as e:
-                    logger.exception(f"Agent execution failed: {e}")
+                    logger.exception("Agent execution failed: %s", e)
                     if not future.done():
                         future.set_exception(e)
                 finally:
@@ -732,7 +775,8 @@ class AgentOrchestrator:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.exception(f"Error in orchestrator loop: {e}")
+                logger.exception("Error in orchestrator loop: %s", e)
+
 
     async def execute(
         self,

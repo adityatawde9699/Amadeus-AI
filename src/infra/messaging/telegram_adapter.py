@@ -212,7 +212,7 @@ class TelegramAdapter:
         chat_id = msg.chat_id
         text = msg.text
 
-        logger.info(f"Received telegram message from chat_id={chat_id}")
+        logger.info("Received telegram message from chat_id=%s", chat_id)
         
         import asyncio
         asyncio.create_task(self._process_and_reply_background(chat_id, text))
@@ -275,7 +275,7 @@ class TelegramAdapter:
                     old_text = query.message.text if query.message else "Confirmation Required"
                     await query.edit_message_text(f"{old_text}\n\n*Status*: {status}", parse_mode="Markdown")
                 except Exception as e:
-                    logger.debug(f"Failed to edit message text: {e}")
+                    logger.debug("Failed to edit message text: %s", e)
 
     async def start_polling(self) -> bool:
         """
@@ -294,7 +294,7 @@ class TelegramAdapter:
             logger.info("Telegram long polling started successfully")
             return True
         except Exception as exc:
-            logger.exception(f"Failed to start telegram polling: {exc}")
+            logger.exception("Failed to start telegram polling: %s", exc)
             return False
 
     async def stop_polling(self) -> bool:
@@ -314,7 +314,7 @@ class TelegramAdapter:
             logger.info("Telegram long polling stopped successfully")
             return True
         except Exception as exc:
-            logger.exception(f"Failed to stop telegram polling: {exc}")
+            logger.exception("Failed to stop telegram polling: %s", exc)
             return False
 
     # -----------------------------------------------------------------------

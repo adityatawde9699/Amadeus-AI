@@ -26,17 +26,17 @@ class UserManager(IntegerIDMixin, BaseUserManager[UserORM, int]):
     verification_token_secret = get_settings().SECRET_KEY or "fallback"
 
     async def on_after_register(self, user: UserORM, request: Request | None = None) -> None:
-        logger.info(f"User {user.id} has registered.")
+        logger.info("User %s has registered.", user.id)
 
     async def on_after_forgot_password(
         self, user: UserORM, token: str, request: Request | None = None
     ) -> None:
-        logger.info(f"User {user.id} has forgot their password. Reset token: {token}")
+        logger.info("User %s has forgot their password. Reset token: %s", user.id, token)
 
     async def on_after_request_verify(
         self, user: UserORM, token: str, request: Request | None = None
     ) -> None:
-        logger.info(f"Verification requested for user {user.id}. Verification token: {token}")
+        logger.info("Verification requested for user %s. Verification token: %s", user.id, token)
 
 
 async def get_user_manager(

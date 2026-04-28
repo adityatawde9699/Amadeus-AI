@@ -82,7 +82,7 @@ Amadeus AI is a FastAPI-based backend service that orchestrates a conversational
 - **Mechanism**: Tool descriptions + intent anchors are embedded once and persisted to `Model/semantic_tool_embeddings.npz`. At query time, the user message is embedded and cosine-compared against the full matrix in a single NumPy `matmul` — **sub-10 ms on any CPU**, zero LLM calls
 - **Hot-pluggable**: New tools registered in `ToolRegistry` are automatically re-embedded on the next startup via MD5 fingerprint cache invalidation — no retraining, no CI step
 - **Routing outcomes**: `tool` (dispatches named tool) · `conversational` (local LLM prose) · `cloud_escalation` (routes to cloud LLM for high-complexity reasoning)
-- **Threshold**: Configurable cosine similarity threshold (default `0.38`); queries below threshold fall back to `conversational`
+- **Threshold**: Configurable cosine similarity threshold (default `0.30`); queries below threshold fall back to `conversational`
 
 ### Omni-Workspace RAG (Hybrid Search)
 - **WorkspaceIndexer** (`src/infra/workspace_indexer.py`) — hybrid BM25 + dense vector retrieval
@@ -185,7 +185,7 @@ cp .env.example .env
 | `GROQ_API_KEY` | Groq API key — [console.groq.com](https://console.groq.com) (free tier: 14,400 req/day) |
 | `GEMINI_API_KEY` | Google Gemini key — [makersuite.google.com](https://makersuite.google.com/app/apikey) |
 | `POSTGRES_PASSWORD` | Production DB password — the default `amadeus_password` is a development placeholder only |
-| `DATABASE_URL` | Database connection string (defaults to SQLite for dev) |
+| `DATABASE_URL` | Database connection string (defaults to PostgreSQL for multi-worker safety) |
 
 **Optional variables:**
 

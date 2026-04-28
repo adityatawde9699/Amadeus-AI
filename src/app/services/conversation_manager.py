@@ -5,35 +5,23 @@ Handles in-memory caching of conversation history synchronized with
 an optional persistent database repository (source of truth).
 
 Separated from AmadeusService to respect Single Responsibility Principle.
+
+Note: ``ConversationMessage`` is the canonical Pydantic model from
+``src.core.domain.models`` — no duplicate dataclass is defined here.
 """
 
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from datetime import UTC, datetime
+from typing import Any
 
-if TYPE_CHECKING:
-    pass
+# Re-export the single canonical model — no local dataclass.
+from src.core.domain.models import ConversationMessage
+
+__all__ = ["ConversationMessage", "ConversationManager", "IConversationRepository"]
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Conversation Message
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class ConversationMessage:
-    """A single turn in the conversation (user or assistant)."""
-
-    role: str  # 'user' | 'assistant'
-    content: str
-    timestamp: datetime = field(default_factory=datetime.now)
-    tool_used: str | None = None
-    metadata: dict = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -98,6 +86,7 @@ class ConversationManager:
             role=role,
             content=content,
             tool_used=tool_used,
+            timestamp=datetime.now(UTC),
             metadata=dict(metadata),
         )
 
@@ -179,7 +168,7 @@ class ConversationManager:
                     timestamp=(
                         datetime.fromisoformat(m["timestamp"])
                         if m.get("timestamp")
-                        else datetime.now()
+                        else datetime.now(UTC)
                     ),
                 )
                 for m in messages

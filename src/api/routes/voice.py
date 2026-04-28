@@ -27,7 +27,7 @@ async def voice_websocket_endpoint(
         while True:
             # 1. Receive Audio Blob from Client
             audio_data = await websocket.receive_bytes()
-            logger.debug(f"Received audio chunk: {len(audio_data)} bytes")
+            logger.debug("Received audio chunk: %d bytes", len(audio_data))
 
             # 2. Process
             voice_input = VoiceInput(audio_data=audio_data)
@@ -49,6 +49,6 @@ async def voice_websocket_endpoint(
     except WebSocketDisconnect:
         logger.info("🔌 Voice WebSocket disconnected")
     except Exception as e:
-        logger.exception(f"WebSocket error: {e}")
+        logger.exception("WebSocket error: %s", e)
         with contextlib.suppress(BaseException):
             await websocket.close()

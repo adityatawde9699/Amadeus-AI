@@ -38,7 +38,7 @@ class SQLConversationRepository(IConversationRepository):
         )
         self.session.add(message)
         await self.session.commit()
-        logger.debug(f"Saved message: session={session_id[:8]}..., role={role}")
+        logger.debug("Saved message: session=%s..., role=%s", session_id[:8], role)
 
     async def get_recent_context(
         self,
@@ -93,7 +93,7 @@ class SQLConversationRepository(IConversationRepository):
         result = await self.session.execute(stmt)
         await self.session.commit()
         count = result.rowcount  # type: ignore[attr-defined]
-        logger.info(f"Cleared {count} messages from session {session_id[:8]}...")
+        logger.info("Cleared %d messages from session %s...", count, session_id[:8])
         return int(count) if count is not None else 0
 
     async def list_sessions(self, limit: int = 20) -> list[str]:

@@ -118,7 +118,7 @@ class AmadeusService:
         self._semantic_router = UnifiedSemanticRouter(
             registry=self.tool_registry,
             model_dir=self.settings.BASE_DIR / "Model",
-            threshold=0.38,
+            threshold=self.settings.SEMANTIC_ROUTER_THRESHOLD,
         )
 
         # ── Sub-services ──────────────────────────────────────────────
