@@ -29,12 +29,12 @@ def upgrade() -> None:
         sa.Column(
             "state",
             sa.Enum(
-                "IDLE",
-                "WORKING",
-                "SHORT_BREAK",
-                "LONG_BREAK",
-                "COMPLETED",
-                "PAUSED",
+                "idle",
+                "working",
+                "short_break",
+                "long_break",
+                "completed",
+                "paused",
                 name="pomodorostatedb",
             ),
             nullable=False,

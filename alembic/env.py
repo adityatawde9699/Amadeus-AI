@@ -5,7 +5,8 @@ import sys
 from logging.config import fileConfig
 from pathlib import Path
 
-from sqlalchemy import pool
+from sqlalchemy import pool, text as _sa_text
+import sqlalchemy as sa
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
@@ -62,10 +63,21 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    # Acquire an advisory lock to prevent concurrent migration runs
+    # (e.g. uvicorn --workers 4 all racing to run alembic upgrade head).
+    # Lock ID 0xAMAD (42925) is arbitrary but unique to Amadeus.
+    dialect_name = connection.dialect.name
+    if dialect_name == "postgresql":
+        connection.execute(sa.text("SELECT pg_advisory_lock(42925)"))
 
-    with context.begin_transaction():
-        context.run_migrations()
+    try:
+        context.configure(connection=connection, target_metadata=target_metadata)
+        with context.begin_transaction():
+            context.run_migrations()
+    finally:
+        if dialect_name == "postgresql":
+            connection.execute(sa.text("SELECT pg_advisory_unlock(42925)"))
+
 
 
 async def run_async_migrations() -> None:
