@@ -162,6 +162,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.exception("Failed to run migrations: %s", e)
         if settings.is_production:
             raise
+        else:
+            # Chaos-04: Make migration failures impossible to miss in dev.
+            logger.error(
+                "\n"
+                "╔══════════════════════════════════════════════════════════╗\n"
+                "║  DATABASE MIGRATION FAILED (development mode)           ║\n"
+                "║  The schema may be stale. Run:                          ║\n"
+                "║    alembic upgrade head                                 ║\n"
+                "║  Error: %-48s ║\n"
+                "╚══════════════════════════════════════════════════════════╝",
+                str(e)[:48],
+            )
 
     # Initialize database
     await init_db()
@@ -226,7 +238,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Shutdown
     logger.info("Shutting down API...")
     if scheduler.running:
-        scheduler.shutdown(wait=False)
+        # DR-03: wait=True lets in-flight APScheduler jobs finish cleanly
+        # before the event loop closes. Without this, long-running jobs
+        # (e.g. proactive_checks) may be interrupted mid-execution.
+        scheduler.shutdown(wait=True)
 
     await _telegram.stop_polling()
 
@@ -295,10 +310,29 @@ app.add_middleware(
 app.add_middleware(AuditLoggerMiddleware)
 
 # Rate limiting — per user (JWT sub) with IP fallback
+# P6-T5: Probe Redis connectivity at startup; fall back to in-memory
+# storage if Redis is unavailable so the server starts cleanly.
+_rate_limit_storage: str | None = None
+_configured_redis_url = settings.REDIS_URL
+if _configured_redis_url:
+    try:
+        import redis as _redis_mod
+        _r = _redis_mod.from_url(_configured_redis_url, socket_connect_timeout=2)
+        _r.ping()
+        _rate_limit_storage = _configured_redis_url
+        logger.info("SlowAPI: using Redis storage (%s)", _configured_redis_url)
+    except Exception as _redis_err:
+        logger.warning(
+            "SlowAPI: Redis unreachable (%s) — falling back to in-memory rate-limit storage. "
+            "Limits will not persist across workers.",
+            _redis_err,
+        )
+        _rate_limit_storage = None
+
 limiter = Limiter(
     key_func=get_rate_limit_key,
     default_limits=[f"{settings.RATE_LIMIT_REQUESTS}/minute"],
-    storage_uri=settings.REDIS_URL if settings.REDIS_URL else None,
+    storage_uri=_rate_limit_storage,
 )
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
@@ -399,6 +433,7 @@ from src.api.routes import (
     ipc,
     llm,
     messaging,
+    readiness,
     system_admin,
     tasks,
     voice,
@@ -410,6 +445,8 @@ from src.api.routes import (
 # Disable auth for health + LLM usage, enable for everything else
 app.include_router(health.router, prefix="/api/v1", tags=["System"])
 app.include_router(llm.router, prefix="/api/v1", tags=["LLM"])  # No auth — informational
+# Phase 12: Liveness + Readiness probes (no auth — used by container orchestrators)
+app.include_router(readiness.router, prefix="/api/v1", tags=["Health"])
 
 # Protected routes (Require basic User role)
 protected_deps = [Depends(RequireUser)]

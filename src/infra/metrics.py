@@ -16,7 +16,7 @@ Usage
     amadeus_llm_calls_total.labels(provider="gemini").inc()
 """
 
-from prometheus_client import Counter, Gauge
+from prometheus_client import Counter, Gauge, Histogram
 
 
 # ---------------------------------------------------------------------------
@@ -83,3 +83,54 @@ except ValueError:
     amadeus_cache_hit_rate = REGISTRY._names_to_collectors.get(  # type: ignore[assignment]
         "amadeus_cache_hit_rate"
     )
+
+
+# ---------------------------------------------------------------------------
+# Memory Metrics
+# ---------------------------------------------------------------------------
+
+try:
+    amadeus_memory_errors_total: Counter = Counter(
+        "amadeus_memory_errors_total",
+        "Total number of Qdrant memory operation failures by operation type",
+        ["operation"],  # 'upsert' | 'search'
+    )
+except ValueError:
+    from prometheus_client import REGISTRY
+
+    amadeus_memory_errors_total = REGISTRY._names_to_collectors.get(  # type: ignore[assignment]
+        "amadeus_memory_errors_total"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tool Execution Metrics  (Phase 12 — audit recommendation)
+# ---------------------------------------------------------------------------
+
+try:
+    amadeus_tool_duration_seconds: Histogram = Histogram(
+        "amadeus_tool_duration_seconds",
+        "Per-tool execution latency in seconds",
+        ["tool_name", "success"],  # labels: tool name + 'true'/'false'
+        buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0),
+    )
+except ValueError:
+    from prometheus_client import REGISTRY
+
+    amadeus_tool_duration_seconds = REGISTRY._names_to_collectors.get(  # type: ignore[assignment]
+        "amadeus_tool_duration_seconds"
+    )
+
+try:
+    amadeus_tool_executions_total: Counter = Counter(
+        "amadeus_tool_executions_total",
+        "Total tool executions by tool name and result",
+        ["tool_name", "result"],  # result: 'success' | 'failure' | 'timeout' | 'denied'
+    )
+except ValueError:
+    from prometheus_client import REGISTRY
+
+    amadeus_tool_executions_total = REGISTRY._names_to_collectors.get(  # type: ignore[assignment]
+        "amadeus_tool_executions_total"
+    )
+

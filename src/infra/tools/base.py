@@ -240,7 +240,9 @@ class ToolExecutor:
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         self.confirmation_callback = confirmation_callback
-        self.execution_history: list[dict] = []
+        # CQ-04: Bounded deque prevents unbounded memory growth in long-running daemons.
+
+        self.execution_history: deque[dict] = deque(maxlen=500)
 
     async def execute(
         self,
@@ -324,6 +326,16 @@ class ToolExecutor:
                     execution_time_ms=(datetime.now() - start_time).total_seconds() * 1000,
                 )
 
+        # CQ-03: Surface validation errors immediately, before any retry attempt.
+        _probe = self._validate_args(tool, args)
+        if "_validation_error" in _probe:
+            return ToolExecutionResult(
+                tool_name=tool.name,
+                success=False,
+                error_message=_probe["_validation_error"],
+                execution_time_ms=0.0,
+            )
+
         for attempt in range(self.max_retries + 1):
             try:
                 logger.info(
@@ -365,6 +377,27 @@ class ToolExecutor:
                     result=result,
                     execution_time_ms=execution_time_ms,
                 )
+                # Phase 12: emit per-tool metrics
+                try:
+                    from src.infra.metrics import (
+                        amadeus_tool_duration_seconds,
+                        amadeus_tool_executions_total,
+                    )
+                    amadeus_tool_duration_seconds.labels(
+                        tool_name=tool.name, success="true"
+                    ).observe(execution_time_ms / 1000)
+                    amadeus_tool_executions_total.labels(
+                        tool_name=tool.name, result="success"
+                    ).inc()
+                except Exception:
+                    pass
+
+                return ToolExecutionResult(
+                    tool_name=tool.name,
+                    success=True,
+                    result=result,
+                    execution_time_ms=execution_time_ms,
+                )
 
             except TypeError as e:
                 logger.warning("Argument error for %s: %s", tool.name, e)
@@ -388,6 +421,20 @@ class ToolExecutor:
                             "timestamp": datetime.now().isoformat(),
                         }
                     )
+                    try:
+                        from src.infra.metrics import (
+                            amadeus_tool_duration_seconds,
+                            amadeus_tool_executions_total,
+                        )
+                        exec_ms = (datetime.now() - start_time).total_seconds() * 1000
+                        amadeus_tool_duration_seconds.labels(
+                            tool_name=tool.name, success="false"
+                        ).observe(exec_ms / 1000)
+                        amadeus_tool_executions_total.labels(
+                            tool_name=tool.name, result="failure"
+                        ).inc()
+                    except Exception:
+                        pass
                     return ToolExecutionResult(
                         tool_name=tool.name,
                         success=False,
@@ -404,7 +451,13 @@ class ToolExecutor:
         )
 
     def _validate_args(self, tool: Tool, args: dict[str, Any]) -> dict[str, Any]:
-        """Validate and clean arguments for a tool."""
+        """Validate and clean arguments for a tool.
+
+        CQ-03: Embeds a '_validation_error' key when required parameters are
+        missing. execute() checks for this sentinel and returns a
+        ToolExecutionResult(success=False) so the caller sees a clear error
+        instead of a cryptic TypeError from inside the tool function.
+        """
         sig = inspect.signature(tool.function)
         valid_params = set(sig.parameters.keys())
 
@@ -412,13 +465,22 @@ class ToolExecutor:
         cleaned = {k: v for k, v in args.items() if k in valid_params}
 
         # Check for required parameters
+        missing = []
         for name, param in sig.parameters.items():
             if (
                 param.default == inspect.Parameter.empty
                 and name not in cleaned
                 and name not in ("self", "cls")
             ):
-                logger.warning("Missing required parameter '%s' for %s", name, tool.name)
+                missing.append(name)
+
+        if missing:
+            logger.warning(
+                "Missing required parameter(s) for %s: %s", tool.name, ", ".join(missing)
+            )
+            cleaned["_validation_error"] = "Missing required parameter(s): {}".format(
+                ", ".join(missing)
+            )
 
         return cleaned
 

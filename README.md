@@ -1,6 +1,6 @@
 <div align="center">
 
-# Amadeus AI v3.2.0
+# Amadeus AI v3.2.1
 
 **A production-grade, modular AI assistant backend built on Clean Architecture — text, voice, and autonomous tool execution unified under a single, fully decomposed service layer.**
 
@@ -11,7 +11,7 @@
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 > **Tech Stack Highlights:**
-> `Python 3.11+` · `FastAPI` · `SQLAlchemy 2.0` · `Ollama` · `Groq (Llama 3.3)` · `Gemini` · `OpenAI (GPT-4o-mini)` · `Redis` · `Qdrant` · `PostgreSQL` · `JWT Auth` · `SSE Streaming` · `faster-whisper` · `Edge TTS` · `Telegram` · `WhatsApp` · `Docker` · `GitHub Actions` · `sentence-transformers (all-mpnet-base-v2)` · `rank-bm25` · `Prometheus`
+> `Python 3.11+` · `FastAPI` · `SQLAlchemy 2.0` · `Ollama` · `Groq (Llama 3.3)` · `Gemini` · `OpenAI (GPT-4o-mini)` · `Redis` · `Qdrant` · `PostgreSQL` · `JWT Auth` · `SSE Streaming` · `faster-whisper` · `Edge TTS` · `Telegram` · `WhatsApp` · `Docker` · `GitHub Actions` · `sentence-transformers (all-MiniLM-L6-v2)` · `rank-bm25` · `Prometheus`
 
 </div>
 
@@ -19,17 +19,88 @@
 
 ## 1. Problem Statement
 
-General-purpose AI assistants are typically coupled to a single LLM provider, lack voice interoperability, and do not compose well with local system tools. When a provider's rate limit exhausts, the system fails entirely. In addition, most open-source assistants expose no structured API, have no authentication boundary, and lack mechanisms for caching repetitive queries — making them unsuitable for any deployment context beyond a single developer's machine.
+Building a personal or team AI assistant that is both capable and safe in production is unsolved by any single off-the-shelf tool:
+
+| Pain Point | Reality |
+|---|---|
+| **Single-provider lock-in** | Most assistants fail completely when a rate limit exhausts. There is no built-in fallback chain across providers. |
+| **No offline / privacy mode** | Cloud-only inference means every message leaves the machine. Local GGUF/Ollama options require manual wiring. |
+| **No authentication boundary** | Open-source chatbot backends expose all endpoints without auth, making them unsafe to run on any networked machine. |
+| **Prompt injection via messaging** | WhatsApp/Telegram bots accept arbitrary text — nothing prevents a user from injecting `Action: delete_file` into the ReAct loop. |
+| **No tool execution safety** | Tool-calling agents can traverse the filesystem, exfiltrate files, or execute arbitrary code without any confirmation gate. |
+| **No production observability** | No structured logging, no per-tool latency metrics, no health probes — impossible to operate or debug in production. |
+| **No messaging channel auth** | Any Telegram user who knows the bot token can control the daemon. WhatsApp webhooks accept forged payloads. |
+| **Memory amnesia** | Assistants lose context between sessions. Semantic search over past conversations requires custom infrastructure that most projects skip. |
 
 ---
 
-## 2. Description / Solution
+## 2. What is Amadeus?
 
-Amadeus AI is a FastAPI-based backend service that orchestrates a conversational AI agent loop across multiple LLM providers (Ollama → Groq → Gemini → OpenAI) with automatic daily quota tracking and fallback routing. It exposes REST and WebSocket endpoints for text and real-time voice interaction, executes a categorized registry of system, productivity, and informational tools, and persists conversation history in PostgreSQL or SQLite. Caching is layered over Redis to reduce redundant LLM and tool calls. All protected routes require JWT-authenticated requests.
+**Amadeus is a self-hosted AI assistant daemon** — a persistent FastAPI backend service that acts as the brain of a fully autonomous personal assistant. It is not a chatbot UI, not a thin API wrapper around a single LLM, and not a prompt-engineering framework.
+
+It is a **production-grade, clean-architecture system** with the following defining properties:
+
+### Autonomous Agent Loop
+Every user request enters a **ReAct (Reason + Act) agent loop** managed by `AgentOrchestrator`. The agent reasons, selects a tool, executes it, observes the result, and iterates — generating natural language prose only when it has enough information. Cycle detection, HITL confirmation gates, and a tool execution timeout guard against runaway loops.
+
+### Multi-LLM Provider Router
+A **priority-ordered fallback chain** routes inference requests across five providers:
+```
+LlamaCpp (local GGUF) → Ollama (local server) → Groq (Llama 3.3 70B) → Gemini 2.5 Flash → OpenAI (GPT-4o-mini)
+```
+Each provider has a **Redis-backed daily quota counter**. When a provider exhausts its quota or fails, the router falls back to the next automatically. No human intervention needed.
+
+### 60+ Sandboxed Tools
+Amadeus executes a categorised registry of tools spanning:
+- **System**: volume, brightness, screenshots, hardware monitoring
+- **Filesystem**: read, write, copy, move, search — all sandboxed to `SEARCH_ALLOWED_DIRS`
+- **Productivity**: tasks, reminders, notes, Pomodoro, calendar
+- **Information**: weather, news, Wikipedia, web search, math, time
+- **Communication**: Telegram, WhatsApp, Email, Slack
+- **Code**: sandboxed Python execution in an ephemeral Docker container (`--network=none`)
+- **Office** *(Windows)*: Word, Excel, Outlook via `pywin32`
+
+### Tiered Semantic Memory
+Conversation context is stored in three tiers:
+1. **Flash Cache (L1)** — in-process NumPy ring buffer, ~1 µs lookup, 100 entries
+2. **Qdrant (L2)** — persistent vector store, cosine similarity search, `all-MiniLM-L6-v2` embeddings
+3. **Knowledge Graph (L3)** — LLM-extracted Subject-Predicate-Object entities in PostgreSQL
+
+### Defence-in-Depth Security
+Every attack surface is covered:
+- **SEC-01**: Prompt injection resistance — `<user_task>` XML boundaries + `[BLOCKED:TOKEN]` neutralisation
+- **SEC-02**: WhatsApp HMAC-SHA256 webhook verification
+- **SEC-03**: Telegram `MASTER_TELEGRAM_CHAT_ID` allowlist
+- **HITL**: All destructive tools require explicit user confirmation (60-second timeout)
+- **Filesystem sandboxing**: All path operations enforce `SEARCH_ALLOWED_DIRS`
+- **JWT RBAC**: Per-route role enforcement (`admin` / `user` / `guest`)
+
+### Production Observability
+- **Prometheus** metrics at `/api/v1/metrics` — per-provider LLM counters, per-tool latency histograms, Qdrant error counters
+- **Liveness** (`/api/v1/health/live`) and **Readiness** (`/api/v1/health/ready`) probes for container orchestrators
+- **Structured JSON logs** via `structlog` with `request_id` tracing
+- **Sentry** error tracking integration
 
 ---
 
-## 3. Features
+## 3. Solution Summary
+
+Amadeus solves each pain point with a concrete, implemented mechanism:
+
+| Pain Point | Amadeus Solution |
+|---|---|
+| Single-provider lock-in | 5-provider fallback chain with Redis daily quota tracking |
+| No offline mode | LlamaCpp + Ollama first in the chain; `LOCAL_ONLY_MODE=true` disables all cloud providers |
+| No authentication | JWT Bearer on all protected routes, RBAC roles, per-user rate limiting |
+| Prompt injection | `<user_task>` XML boundary + `[BLOCKED:TOKEN]` neutralisation in ReAct prompt (SEC-01) |
+| Tool execution safety | HITL confirmation gate + Docker sandbox + `SEARCH_ALLOWED_DIRS` path validation |
+| No observability | Prometheus metrics, health probes, structured JSON logs, Sentry |
+| Messaging channel auth | Telegram allowlist (SEC-03) + WhatsApp HMAC (SEC-02) |
+| Memory amnesia | 3-tier memory (Flash Cache → Qdrant → Knowledge Graph) with idempotent deduplication |
+
+---
+
+## 4. Features
 
 ### Conversational AI
 - Multi-LLM routing: **LlamaCpp (local GGUF)** → **Ollama (local server)** → Groq (Llama 3.3 70B) → Gemini 2.5 Flash → **OpenAI GPT-4o-mini** (emergency fallback)
@@ -96,12 +167,16 @@ Amadeus AI is a FastAPI-based backend service that orchestrates a conversational
 
 ### API & Security
 - **Permission Profiles**: Supports `READ_ONLY` and `SYSTEM_FULL` JWT claims to explicitly block destructive tool executions on unprivileged accounts.
-- **Human-in-the-Loop (HITL) Validation**: Destructive or communicative actions pause agent execution, providing detailed **Action Previews** before waiting for human approval.
-- **Isolated Filesystem Sandbox**: File operations restrict LLM execution strictly to `data/agent_workspace`, preventing path traversal vulnerabilities.
+- **Human-in-the-Loop (HITL) Validation**: Destructive or communicative actions pause agent execution, providing detailed **Action Previews** before waiting for human approval (60-second timeout, auto-deny).
+- **Isolated Filesystem Sandbox**: `copy_file`, `move_file`, and `create_folder` validate all resolved paths against `SEARCH_ALLOWED_DIRS` via `_assert_in_allowed_dirs()`. Path traversal attempts return `"Access denied"` without touching the filesystem.
 - **Agent Queue Backpressure**: The orchestrator enforces strict concurrency limits via `maxsize`, safely shedding excess loads with `HTTP 429` (Too Many Requests).
 - **IPC Authentication**: Background RPC calls require an `X-IPC-Token` to prevent unauthenticated local access loops.
+- **SEC-01 — Prompt Injection Resistance**: User input is wrapped in `<user_task>` XML tags; ReAct control tokens (`Action:`, `Thought:`, etc.) embedded in user text are neutralised with `[BLOCKED:TOKEN]` markers before reaching the LLM.
+- **SEC-02 — WhatsApp HMAC Verification**: Every inbound WhatsApp webhook is verified against `X-Hub-Signature-256` using `HMAC-SHA256` + `WHATSAPP_APP_SECRET`. Forged payloads receive HTTP 403.
+- **SEC-03 — Telegram Authorization**: `MASTER_TELEGRAM_CHAT_ID` allowlist enforced on every incoming message. Unauthorized `chat_id` values receive `"Unauthorized."` and are dropped.
+- **SEC-06 — Secure SECRET_KEY**: Auto-generates a cryptographically-secure ephemeral key at startup if `SECRET_KEY` is not configured. Warns operators loudly. No more `"fallback"` literal.
 - JWT Bearer authentication on all protected routes (`/chat`, `/tasks`, `/voice`, `/messaging`)
-- Per-user JWT rate limiting (`slowapi`) with Redis storage + IP fallback for unauthenticated requests
+- Per-user JWT rate limiting (`slowapi`) with Redis storage + IP fallback; falls back to in-memory storage gracefully if Redis is unreachable.
 - **OWASP-hardened logs** — no API keys, no raw user prompts, no auth tokens in any log statement
 - Request audit logging middleware (unique request IDs, latency headers, client IP)
 - **Bandit security scan**: 0 HIGH severity findings in CI — enforced as gate
@@ -123,9 +198,20 @@ Amadeus AI is a FastAPI-based backend service that orchestrates a conversational
 |--------|------|-------------|
 | `amadeus_llm_calls_total{provider}` | Counter | Total LLM calls per provider |
 | `amadeus_tool_calls_total{tool_name}` | Counter | Per-tool invocation count |
+| `amadeus_tool_duration_seconds{tool_name,success}` | Histogram | Per-tool execution latency (10 buckets, 0.01s–30s) |
+| `amadeus_tool_executions_total{tool_name,result}` | Counter | Per-tool result breakdown (success/failure/timeout/denied) |
+| `amadeus_memory_errors_total{operation}` | Counter | Qdrant upsert/search failure count |
 | `amadeus_cache_hit_rate` | Gauge | Cache hit % (updated on every cache hit) |
 | `amadeus_llm_cost_usd` | Gauge | Estimated LLM spend in USD |
 | HTTP latency histograms | Histogram | P50/P95/P99 per route via `prometheus-fastapi-instrumentator` |
+
+**Health Probes (new in v3.2.1):**
+
+| Endpoint | Auth | Purpose |
+|---|---|---|
+| `GET /health` | None | Basic liveness — always 200 while the process is running |
+| `GET /api/v1/health/live` | None | Liveness probe for container orchestrators (Kubernetes, Docker Compose) |
+| `GET /api/v1/health/ready` | None | Readiness probe — checks DB + Redis + Qdrant + LLM router; returns 503 with per-dependency map if any fail |
 
 ### CI/CD & Deployment
 - GitHub Actions pipeline: lint (ruff — 100% clean), format check, strict type check (mypy), bandit (0 HIGH gate), pip-audit
@@ -136,24 +222,50 @@ Amadeus AI is a FastAPI-based backend service that orchestrates a conversational
 
 ---
 
-## 4. System Requirements
+## 5. System Requirements
 
-| Component | Minimum | Recommended |
-|-----------|---------|-------------|
-| Python | 3.11 | 3.12 |
-| RAM | 1 GB | 2 GB |
-| Disk | 2 GB (with Whisper `small` model ~460 MB) | 4 GB |
-| CPU | Any x86-64 | Multi-core for concurrent requests |
-| GPU | Not required | CUDA-compatible for faster Whisper inference |
-| OS | Linux / macOS / Windows | Linux (production) |
+### Runtime Environment
 
-**External service requirements:**
-- PostgreSQL 15+ (production) or SQLite (development, default)
-- Redis 5+ (caching and rate limiting)
+| Component | Minimum | Recommended | Notes |
+|-----------|---------|-------------|-------|
+| **Python** | 3.11 | 3.12 | 3.10 and below not supported |
+| **RAM** | 2 GB | 8 GB | 2 GB for API-only (no local model); 4–8 GB for local GGUF inference |
+| **Disk** | 3 GB | 10 GB | Includes Whisper `small` (~460 MB), Qdrant data, logs, and optional GGUF models (2–8 GB each) |
+| **CPU** | 4-core x86-64 | 8-core+ | Multi-core required for concurrent LlamaCpp inference; ARM64 (Apple M-series) also supported |
+| **GPU** | Not required | CUDA 11.8+ | Optional: faster Whisper STT; LlamaCpp `n_gpu_layers` offloading |
+| **OS** | Linux / macOS / Windows 10+ | Ubuntu 22.04 LTS | Windows supported; Linux recommended for production Docker deployments |
+
+### External Services
+
+| Service | Version | Mode | Purpose |
+|---|---|---|---|
+| **PostgreSQL** | 15+ | Production | Conversation history, tasks, knowledge graph, user accounts |
+| **SQLite** | 3.35+ | Development only | Zero-config alternative to PostgreSQL (not suitable for multi-worker deployments) |
+| **Redis** | 6+ | Recommended | Rate limiting, LLM daily quota tracking, TTS + tool result caching. Falls back to in-memory if unavailable. |
+| **Qdrant** | 1.7+ | Recommended | Vector memory store for long-term semantic recall. Runs local file-based by default (no server needed). |
+| **Docker** | 24+ | Optional | Required only for the Python code-execution sandbox (`execute_python_script` tool) |
+| **Ollama** | 0.3+ | Optional | Local LLM server for `OLLAMA_ENABLED=true` mode |
+
+### LLM Model Requirements *(if using local inference)*
+
+| Model Format | RAM Required | Example |
+|---|---|---|
+| GGUF Q4_K_M (3B) | ~3 GB | Llama-3.2-3B, Qwen2.5-3B |
+| GGUF Q4_K_M (7B) | ~5 GB | Llama-3.1-7B, Gemma-2-9B |
+| GGUF Q4_K_M (13B) | ~8 GB | Llama-2-13B |
+
+> **Tip:** Set `SLM_MODEL_PATH` to your `.gguf` file path. No GPU required — LlamaCpp runs fully on CPU. Leave `SLM_MODEL_PATH` unset to skip local inference and use cloud providers only.
+
+### Minimum Viable Setup (no local models, cloud APIs only)
+
+```
+Python 3.11 + 1 GB RAM + GROQ_API_KEY (free)
+```
+Redis and Qdrant are optional — the daemon gracefully degrades without them.
 
 ---
 
-## 5. Setup & Installation
+## 6. Setup & Installation
 
 ### Prerequisites
 
@@ -245,7 +357,7 @@ The production profile runs gunicorn with 4 Uvicorn workers (`UvicornWorker`) an
 
 ---
 
-## 6. API Documentation
+## 7. API Documentation
 
 The API base path is `/api/v1`. Interactive docs are available at `http://localhost:8000/docs` when `DEBUG=true`.
 
@@ -352,7 +464,7 @@ curl -N -H "Authorization: Bearer $TOKEN" \
 
 ---
 
-## 7. Full Tech Stack
+## 8. Full Tech Stack
 
 ### Runtime & Language
 - **Python 3.11 / 3.12** — primary language
@@ -416,7 +528,7 @@ curl -N -H "Authorization: Bearer $TOKEN" \
 
 ---
 
-## 8. System Architecture
+## 9. System Architecture
 
 ### Clean Architecture — Layer Overview
 
@@ -828,7 +940,7 @@ Counters are incremented atomically with `INCR` and set to expire at midnight vi
 
 ---
 
-## 9. Usage Examples
+## 10. Usage Examples
 
 ### Text Chat
 
@@ -935,7 +1047,7 @@ asyncio.run(voice_session())
 
 ---
 
-## 10. Project Structure
+## 11. Project Structure
 
 <details>
 <summary><strong>Expand full tree</strong></summary>
@@ -1082,7 +1194,7 @@ Amadeus-AI/
 
 ---
 
-## 11. Testing
+## 12. Testing
 
 ### Run All Tests
 
@@ -1125,7 +1237,7 @@ locust -f locustfile.py --host http://localhost:8000
 
 ---
 
-## 12. Deployment Instructions
+## 13. Deployment Instructions
 
 ### Deploy to Railway (Staging — Automated)
 
@@ -1194,7 +1306,7 @@ alembic upgrade head && uvicorn src.api.server:app --host 0.0.0.0 --port 8000 --
 
 ---
 
-## 13. Known Limitations
+## 14. Known Limitations
 
 - **No user registration or RBAC**: JWT tokens must be generated externally. There is no `/register` or `/login` endpoint. All authenticated users share the same assistant context unless `session_id` is explicitly scoped per request.
 - **Session isolation is caller-scoped**: The `AmadeusService` singleton reads `session_id` from the incoming request at the API layer. Concurrent requests with different session IDs are correctly isolated at the `ConversationManager` level, but share the same singleton service instance — full per-request instance isolation requires the DI container to be refactored to a request-scoped provider.
@@ -1205,7 +1317,7 @@ alembic upgrade head && uvicorn src.api.server:app --host 0.0.0.0 --port 8000 --
 
 ---
 
-## 14. Future Improvements
+## 15. Future Improvements
 
 - **Session-scoped DI container**: Refactor `container.py` to use request-scoped `AmadeusService` providers, eliminating the singleton session-ID assumption and enabling true concurrent multi-user isolation.
 - **User authentication system**: Implement `/auth/register`, `/auth/login`, and `/auth/refresh` endpoints with persistent user-scoped session and memory isolation.
@@ -1218,7 +1330,7 @@ alembic upgrade head && uvicorn src.api.server:app --host 0.0.0.0 --port 8000 --
 
 ---
 
-## 15. License
+## 16. License
 
 This project is licensed under the **Apache License, Version 2.0**.
 
@@ -1236,7 +1348,7 @@ You may obtain a copy of the License at
 
 ---
 
-## 16. Author
+## 17. Author
 
 **Aditya Tawde**
 

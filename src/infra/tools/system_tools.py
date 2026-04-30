@@ -29,6 +29,37 @@ logger = logging.getLogger(__name__)
 # In a fully DI environment, this might be injected into ToolConfig
 app_registry = AppRegistry()
 
+# =============================================================================
+# PATH SANDBOX HELPER (CQ-01, CQ-02)
+# =============================================================================
+
+
+def _assert_in_allowed_dirs(path):
+    """Return an error string if *path* is outside SEARCH_ALLOWED_DIRS, else None.
+
+    CQ-01 / CQ-02: Prevents copy_file / move_file / create_folder from writing
+    to arbitrary filesystem locations when the LLM is tricked via prompt injection.
+    """
+    from src.core.config import get_settings
+    settings = get_settings()
+    allowed_roots = [Path(d).expanduser().resolve() for d in settings.SEARCH_ALLOWED_DIRS]
+    try:
+        resolved = path.resolve()
+    except Exception:
+        return "Access denied: cannot resolve path '{}'.".format(path)
+    for root in allowed_roots:
+        try:
+            resolved.relative_to(root)
+            return None  # inside an allowed directory
+        except ValueError:
+            continue
+    roots_str = ", ".join(str(r) for r in allowed_roots)
+    return (
+        "Access denied: '{}' is outside the allowed directories ({}).".format(resolved, roots_str)
+    )
+
+
+
 
 # =============================================================================
 # APPLICATION TOOLS
@@ -231,6 +262,12 @@ def copy_file(
         src_path = Path(src).resolve()
         dst_path = Path(dst).resolve()
 
+        # CQ-01: Sandbox both source and destination
+        for label, p in (("source", src_path), ("destination", dst_path)):
+            err = _assert_in_allowed_dirs(p)
+            if err:
+                return "copy_file {} - {}".format(label, err)
+
         if not src_path.is_file():
             return f"Source file does not exist: {src}"
 
@@ -267,6 +304,12 @@ def move_file(
     try:
         src_path = Path(src).resolve()
         dst_path = Path(dst).resolve()
+
+        # CQ-01: Sandbox both source and destination
+        for label, p in (("source", src_path), ("destination", dst_path)):
+            err = _assert_in_allowed_dirs(p)
+            if err:
+                return "move_file {} - {}".format(label, err)
 
         if not src_path.is_file():
             return f"Source file does not exist: {src}"
@@ -330,6 +373,11 @@ def create_folder(folder_name: str | None = None, name: str | None = None, **kwa
 
     try:
         folder_path = Path(target).resolve()
+
+        # CQ-02: Sandbox the target directory
+        err = _assert_in_allowed_dirs(folder_path)
+        if err:
+            return "create_folder - {}".format(err)
 
         if folder_path.exists():
             if folder_path.is_dir():

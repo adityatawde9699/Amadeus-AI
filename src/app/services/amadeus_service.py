@@ -284,7 +284,15 @@ class AmadeusService:
                     user_input, actual_tool_name, result.output
                 )
                 return prose, actual_tool_name
-            return result.output, actual_tool_name
+            # P8: Don't return raw error strings directly to the user.
+            # Wrap in a friendly prose response so the answer reads naturally
+            # (e.g. "I tried get_weather but encountered an error: ...").
+            error_prose = await self._composer.compose_tool_response(
+                user_input,
+                actual_tool_name,
+                f"The tool reported an error: {result.output}",
+            )
+            return error_prose, actual_tool_name
 
         # Tool not in registry — Gemini last-resort (blocked in LOCAL_ONLY_MODE)
         if getattr(self, "client", None) and not self.settings.LOCAL_ONLY_MODE:
@@ -374,10 +382,18 @@ class AmadeusService:
             config = types.GenerateContentConfig(
                 tools=tools_config if tools_config else None,
             )
-            gemini_response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=system_prompt + "\n\n" + user_input,
-                config=config,
+            # PC-01: Gemini SDK is synchronous; run it in a thread pool so we
+            # never block the asyncio event loop during inference (1–10 seconds).
+            loop = asyncio.get_running_loop()
+            _client = self.client
+            _model = self.model_name
+            gemini_response = await loop.run_in_executor(
+                None,
+                lambda: _client.models.generate_content(
+                    model=_model,
+                    contents=system_prompt + "\n\n" + user_input,
+                    config=config,
+                ),
             )
 
             if gemini_response.function_calls:
@@ -453,7 +469,12 @@ class AmadeusService:
         if manager is None:
             manager = ConversationManager(session_id=session_id, repo=self._conversation_repo)
             self._conversation_managers[session_id] = manager
-        await manager.load_from_db()
+        # PC-03: Only hydrate from DB once per manager instance.
+        # Subsequent calls reuse the in-memory cache (already up-to-date because
+        # add() writes through). Avoids a DB round-trip on every handle_command().
+        if not getattr(manager, "_db_loaded", False):
+            await manager.load_from_db()
+            manager._db_loaded = True  # type: ignore[attr-defined]
         return manager
 
     def _load_api_keys(self) -> None:

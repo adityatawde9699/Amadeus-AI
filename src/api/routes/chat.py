@@ -125,7 +125,8 @@ async def get_history(
         raise
     except Exception as e:
         logger.error("History error: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        # CQ-07: Never expose raw exception messages to clients (may leak DB schema / paths).
+        raise HTTPException(status_code=500, detail="An internal error occurred") from e
 
 
 @router.get("/tools", response_model=ToolListResponse)
@@ -218,11 +219,30 @@ async def chat_stream(
                 except QueueFullError as e:
                     raise HTTPException(status_code=429, detail=str(e)) from e
 
-            words = response_text.split(" ")
-            for i, word in enumerate(words):
-                chunk = word + (" " if i < len(words) - 1 else "")
-                yield f"data: {json.dumps({'delta': chunk})}\n\n"
-                await asyncio.sleep(0.01)
+            # PC-02: Chunk by sentence boundaries instead of word-by-word.
+            # Reduces asyncio.sleep() calls from ~500 to ~25 per average response,
+            # cutting artificial latency from ~5s to ~1.25s.
+            import re as _re
+            sentences = _re.split(r"(?<=[.!?])\s+", response_text.strip())
+            chunks: list[str] = []
+            current_chunk: list[str] = []
+            current_words = 0
+            for sentence in sentences:
+                words_in_sentence = len(sentence.split())
+                if current_words + words_in_sentence > 15 and current_chunk:
+                    chunks.append(" ".join(current_chunk))
+                    current_chunk = [sentence]
+                    current_words = words_in_sentence
+                else:
+                    current_chunk.append(sentence)
+                    current_words += words_in_sentence
+            if current_chunk:
+                chunks.append(" ".join(current_chunk))
+
+            for i, chunk in enumerate(chunks):
+                text = chunk + (" " if i < len(chunks) - 1 else "")
+                yield f"data: {json.dumps({'delta': text})}\n\n"
+                await asyncio.sleep(0.05)
 
             yield "data: [DONE]\n\n"
 
