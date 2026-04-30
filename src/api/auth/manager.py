@@ -7,7 +7,7 @@ from fastapi_users.authentication import AuthenticationBackend, BearerTransport,
 from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.config import get_settings
+from src.core.config import _get_or_create_secret_key, get_settings
 from src.infra.persistence.database import get_db_session
 from src.infra.persistence.orm_models import UserORM
 
@@ -22,8 +22,8 @@ async def get_user_db(
 
 
 class UserManager(IntegerIDMixin, BaseUserManager[UserORM, int]):
-    reset_password_token_secret = get_settings().SECRET_KEY or "fallback"
-    verification_token_secret = get_settings().SECRET_KEY or "fallback"
+    reset_password_token_secret = _get_or_create_secret_key(get_settings())
+    verification_token_secret = _get_or_create_secret_key(get_settings())
 
     async def on_after_register(self, user: UserORM, request: Request | None = None) -> None:
         logger.info("User %s has registered.", user.id)
@@ -52,7 +52,7 @@ def get_jwt_strategy() -> JWTStrategy:
     settings = get_settings()
     # default lifetime: 24h
     lifetime = getattr(settings, "JWT_EXPIRY_HOURS", 24) * 3600
-    return JWTStrategy(secret=settings.SECRET_KEY or "fallback", lifetime_seconds=lifetime)
+    return JWTStrategy(secret=_get_or_create_secret_key(settings), lifetime_seconds=lifetime)
 
 
 auth_backend = AuthenticationBackend(

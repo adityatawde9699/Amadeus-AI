@@ -1,6 +1,6 @@
 ## Amadeus-AI Wiki
 
-**v3.1.0 — Semantic Router Edition**
+**v3.2.1 — Security Hardening & Observability Edition**
 
 ---
 

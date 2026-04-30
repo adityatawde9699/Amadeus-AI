@@ -192,6 +192,19 @@ class FlashMemoryCache:
 
 # Global cache for the Qdrant client to avoid FileLock collisions
 _global_qdrant_client = None
+# ARCH-04: Lock to prevent concurrent initialization races.
+# Multiple simultaneous calls to initialize() (e.g. during startup under load)
+# could each create an AsyncQdrantClient writing to the same path, causing
+# FileLock collisions. The lock ensures only the first caller initialises.
+_qdrant_init_lock: asyncio.Lock | None = None
+
+
+def _get_qdrant_lock() -> asyncio.Lock:
+    """Lazily create the init lock once an event loop is running."""
+    global _qdrant_init_lock
+    if _qdrant_init_lock is None:
+        _qdrant_init_lock = asyncio.Lock()
+    return _qdrant_init_lock
 
 
 class QdrantMemoryService:
@@ -226,64 +239,67 @@ class QdrantMemoryService:
     async def _setup(self) -> None:
         """Initialize Qdrant async client and Gemini embedding model."""
         global _global_qdrant_client
-        try:
-            # Using the same persist path but handled by Qdrant
-            from qdrant_client import AsyncQdrantClient
-            from qdrant_client.models import Distance, VectorParams
+        # ARCH-04: Acquire init lock so concurrent initialize() calls don't
+        # each spin up a separate AsyncQdrantClient on the same path.
+        async with _get_qdrant_lock():
+            try:
+                # Using the same persist path but handled by Qdrant
+                from qdrant_client import AsyncQdrantClient
+                from qdrant_client.models import Distance, VectorParams
 
-            Path(str(self._settings.CHROMA_PERSIST_DIR)).mkdir(parents=True, exist_ok=True)
+                Path(str(self._settings.CHROMA_PERSIST_DIR)).mkdir(parents=True, exist_ok=True)
 
-            if _global_qdrant_client is None:
-                _global_qdrant_client = AsyncQdrantClient(path=self._settings.CHROMA_PERSIST_DIR)
+                if _global_qdrant_client is None:
+                    _global_qdrant_client = AsyncQdrantClient(path=self._settings.CHROMA_PERSIST_DIR)
 
-            self._client = _global_qdrant_client
+                self._client = _global_qdrant_client
 
-            # Setup embedding model first — must happen before collection creation
-            # so we know the correct vector dimension (384 local vs 768 Gemini)
-            self._setup_embedding_model()
+                # Setup embedding model first — must happen before collection creation
+                # so we know the correct vector dimension (384 local vs 768 Gemini)
+                self._setup_embedding_model()
 
-            if not self._enabled:
-                return
+                if not self._enabled:
+                    return
 
-            collection_name = self._settings.CHROMA_COLLECTION_NAME
-            embed_dim = getattr(self, "_embed_dim", 384)
+                collection_name = self._settings.CHROMA_COLLECTION_NAME
+                embed_dim = getattr(self, "_embed_dim", 384)
 
-            # Check if collection exists with correct dimensions
-            if await self._client.collection_exists(collection_name=collection_name):
-                # Verify dimension matches — recreate if mismatched (e.g. switched embedder)
-                try:
-                    info = await self._client.get_collection(collection_name)
-                    existing_dim = info.config.params.vectors.size  # type: ignore[union-attr]
-                    if existing_dim != embed_dim:
-                        logger.warning(
-                            "Qdrant collection dimension mismatch (%d vs %d). "
-                            "Dropping and recreating collection.",
-                            existing_dim,
-                            embed_dim,
-                        )
-                        await self._client.delete_collection(collection_name)
-                        await self._client.create_collection(
-                            collection_name=collection_name,
-                            vectors_config=VectorParams(size=embed_dim, distance=Distance.COSINE),
-                        )
-                except Exception:
-                    pass  # Collection info check failed — leave it as-is
-            else:
-                await self._client.create_collection(
-                    collection_name=collection_name,
-                    vectors_config=VectorParams(size=embed_dim, distance=Distance.COSINE),
+                # Check if collection exists with correct dimensions
+                if await self._client.collection_exists(collection_name=collection_name):
+                    # Verify dimension matches — recreate if mismatched (e.g. switched embedder)
+                    try:
+                        info = await self._client.get_collection(collection_name)
+                        existing_dim = info.config.params.vectors.size  # type: ignore[union-attr]
+                        if existing_dim != embed_dim:
+                            logger.warning(
+                                "Qdrant collection dimension mismatch (%d vs %d). "
+                                "Dropping and recreating collection.",
+                                existing_dim,
+                                embed_dim,
+                            )
+                            await self._client.delete_collection(collection_name)
+                            await self._client.create_collection(
+                                collection_name=collection_name,
+                                vectors_config=VectorParams(size=embed_dim, distance=Distance.COSINE),
+                            )
+                    except Exception:
+                        pass  # Collection info check failed — leave it as-is
+                else:
+                    await self._client.create_collection(
+                        collection_name=collection_name,
+                        vectors_config=VectorParams(size=embed_dim, distance=Distance.COSINE),
+                    )
+
+                logger.info(
+                    "Qdrant memory initialized — collection=%s, dim=%d, persist_dir=%s",
+                    collection_name,
+                    embed_dim,
+                    self._settings.CHROMA_PERSIST_DIR,
                 )
-
-            logger.info(
-                "Qdrant memory initialized — collection=%s, dim=%d, persist_dir=%s",
-                collection_name,
-                embed_dim,
-                self._settings.CHROMA_PERSIST_DIR,
-            )
-            self._initialized = True
-        except Exception as exc:
-            logger.exception("Qdrant setup failed — memory disabled: %s", exc)
-            self._enabled = False
+                self._initialized = True
+            except Exception as exc:
+                logger.exception("Qdrant setup failed — memory disabled: %s", exc)
+                self._enabled = False
 
     def _setup_embedding_model(self) -> None:
         """
@@ -411,10 +427,13 @@ class QdrantMemoryService:
         if embedding is None:
             return False
 
-        # Build a stable, unique document ID — Qdrant requires a valid UUID
-        timestamp_str = datetime.now(UTC).isoformat()
-        raw_key = f"{session_id}:{role}:{text}:{timestamp_str}"
+        # P6-T7: Build a stable, CONTENT-BASED point ID so that identical
+        # (session, role, text) tuples always map to the same Qdrant slot.
+        # This makes upsert idempotent — flooding the same text n times
+        # only overwrites the same vector entry instead of creating n copies.
+        raw_key = f"{session_id}:{role}:{text}"
         id_str = str(uuid.uuid5(uuid.NAMESPACE_OID, raw_key))
+        timestamp_str = datetime.now(UTC).isoformat()
 
         try:
             from qdrant_client.models import PointStruct
@@ -459,6 +478,12 @@ class QdrantMemoryService:
             return True
         except Exception as exc:
             logger.warning("Qdrant upsert failed: %s", exc)
+            # P7-Chaos01: Increment memory error counter for Prometheus alerting
+            try:
+                from src.infra.metrics import amadeus_memory_errors_total
+                amadeus_memory_errors_total.labels(operation="upsert").inc()
+            except Exception:
+                pass
             return False
 
     async def retrieve(self, query: str, top_k: int = 5) -> list[MemoryResult]:
@@ -554,6 +579,12 @@ class QdrantMemoryService:
 
         except Exception as exc:
             logger.warning("Qdrant search failed (client type=%s): %s", type(self._client), exc)
+            # P7-Chaos01: Increment memory error counter for Prometheus alerting
+            try:
+                from src.infra.metrics import amadeus_memory_errors_total
+                amadeus_memory_errors_total.labels(operation="search").inc()
+            except Exception:
+                pass
             return []
 
     async def clear_session(self, session_id: str) -> int:

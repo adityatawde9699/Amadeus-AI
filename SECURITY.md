@@ -4,8 +4,10 @@
 
 | Version | Supported |
 |---------|-----------|
-| 3.x     | ✅ Active support |
-| 2.x     | ⚠️ Security patches only — please upgrade |
+| 3.2.x   | ✅ Active support |
+| 3.1.x   | ⚠️ Security patches only — upgrade recommended |
+| 3.0.x   | ⚠️ Security patches only — please upgrade |
+| 2.x     | ❌ End of life |
 | 1.x     | ❌ End of life |
 
 ---
@@ -44,14 +46,17 @@ Disclosing security issues publicly before a fix is available puts all users at 
 ### API Keys & Secrets
 - All API keys are loaded from environment variables — never hardcoded
 - `.env.prod`, `.env.staging` are gitignored — never commit real secrets
-- `SECRET_KEY` is required for JWT authentication in production (`ENV=production`)
-- `IPC_SECRET_TOKEN` is generated fresh each process startup (not persisted)
+- `SECRET_KEY` auto-generates a cryptographically-secure 32-byte ephemeral key at startup if not configured — a `WARNING` is logged urging operators to set a persistent value for production (v3.2.1+)
+- `IPC_SECRET_TOKEN` is a persistent stable token stored at `data/ipc_secret.token` with `chmod 600`. If the file is missing, empty, corrupt (non-UTF-8), or unreadable, a `CRITICAL` log entry is emitted before regenerating (v3.2.1+)
+- `WHATSAPP_APP_SECRET` is required for HMAC-SHA256 verification of WhatsApp webhooks (v3.2.1+)
 - `POSTGRES_PASSWORD` must be set in `.env` before production deployment — the default `amadeus_password` is a development placeholder only
 
 ### Authentication
 - JWT via `fastapi-users` with bcrypt password hashing
-- Rate limiting per user (JWT `sub` claim) with IP fallback via `slowapi`
+- Rate limiting per user (JWT `sub` claim) with IP fallback via `slowapi`; falls back to in-memory storage if Redis is unreachable (v3.2.1+)
 - RBAC middleware: `RequireUser` role required for chat/voice/task endpoints
+- **SEC-03**: `MASTER_TELEGRAM_CHAT_ID` allowlist — messages from any other Telegram `chat_id` receive `"Unauthorized."` and are dropped before any processing (v3.2.1+)
+- **SEC-02**: `X-Hub-Signature-256` HMAC verification on every inbound WhatsApp webhook payload (v3.2.1+)
 
 ### Network Isolation (Docker)
 - Redis (`6379`) and Postgres (`5432`) ports are **not exposed to the host** — both services are internal to the `amadeus-network` Docker bridge
@@ -60,12 +65,16 @@ Disclosing security issues publicly before a fix is available puts all users at 
 ### Tool Execution (HITL)
 - Destructive tool operations (file deletion, app launch) require user confirmation
 - Confirmation has a 60-second timeout before auto-deny
-- Filesystem tools are sandboxed to `SEARCH_ALLOWED_DIRS` (default: Documents, Desktop, Downloads)
+- **Filesystem sandboxing (v3.2.1+)**: `copy_file`, `move_file`, and `create_folder` all resolve canonical paths and validate against `SEARCH_ALLOWED_DIRS` via `_assert_in_allowed_dirs()`. Path traversal (e.g. `../../etc/passwd`) returns `"Access denied"` without touching the filesystem.
 - Python sandbox execution runs in an ephemeral Docker container with `--network=none`, `--memory=256m`, `--cpus=0.5`
+
+### Prompt Injection (v3.2.1+)
+- **SEC-01**: All user task text is wrapped in `<user_task>` XML boundary tags before being inserted into the ReAct prompt. ReAct control tokens (`Action:`, `Thought:`, `Action Input:`, `Observation:`, `FINISH`) found in user input are replaced with `[BLOCKED:TOKEN]` neutralisation markers, preventing LLM-assisted privilege escalation via messaging channels.
 
 ### Memory & RAG
 - The Flash Memory Cache (L1) is in-process RAM only — never written to disk
-- Qdrant stores vector embeddings only — raw message text is stored in the payload, encrypted at rest if you configure Qdrant with encryption
+- Qdrant stores vector embeddings only — raw message text is stored in the payload
+- **Memory deduplication (v3.2.1+)**: Point IDs are content-based `uuid5(session_id:role:text)` — flooding identical messages now occupies one slot instead of N
 - Workspace index (`data/workspace_index/`) contains file path metadata and chunk content — gitignored by default
 
 ### Local Model Privacy
@@ -85,3 +94,4 @@ Disclosing security issues publicly before a fix is available puts all users at 
 - The `S307` (eval) and `S603/S607` (subprocess) bandit/ruff rules are suppressed for the tool execution layer — these usages are intentional, sandboxed, and HITL-gated
 - `mktemp()` is used in the Whisper STT pipeline (tracked as tech debt — will be replaced with `NamedTemporaryFile`)
 - `assert` statements are used in some production code paths as guards — these are disabled under Python `-O` optimization flag and are tracked for replacement
+- The `/api/v1/metrics` Prometheus endpoint is unauthenticated (tracked as SEC-07) — restrict access at the network/proxy layer in production deployments

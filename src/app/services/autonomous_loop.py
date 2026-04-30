@@ -23,15 +23,32 @@ class AutonomousObservationLoop:
     async def start(self) -> None:
         """Start the background observation loop."""
         self._running = True
+        self._task: asyncio.Task | None = None  # type: ignore[type-arg]
         logger.info(
             "Starting Autonomous Observation Loop (interval: %sm)", self.interval_minutes
         )
-        asyncio.create_task(self._loop())
+        # DR-01: Store task reference so exceptions are never silently swallowed.
+        self._task = asyncio.create_task(self._loop())
+        self._task.add_done_callback(self._on_task_done)
 
     def stop(self) -> None:
         """Stop the background observation loop."""
         logger.info("Stopping Autonomous Observation Loop.")
         self._running = False
+        if hasattr(self, "_task") and self._task and not self._task.done():
+            self._task.cancel()
+
+    def _on_task_done(self, task: asyncio.Task) -> None:  # type: ignore[type-arg]
+        """DR-01: Log any unhandled exception from the background loop task."""
+        try:
+            exc = task.exception()
+            if exc is not None:
+                logger.error(
+                    "AutonomousObservationLoop task raised an unhandled exception: %s",
+                    exc, exc_info=exc,
+                )
+        except asyncio.CancelledError:
+            logger.info("AutonomousObservationLoop task was cancelled cleanly.")
 
     async def _loop(self) -> None:
         """Main background loop."""
@@ -54,10 +71,11 @@ class AutonomousObservationLoop:
         """Trigger the agent to observe its state."""
         logger.info("Triggering autonomous observation for session %s", session_id)
         try:
-            from src.app.services.amadeus_service import AmadeusService
+            # ARCH-02: Use the DI container singleton so the observation loop gets the
+            # full tool registry, LLM router, and cache — not a lobotomised bare instance.
+            from src.container import global_container
 
-            svc = AmadeusService(session_id=session_id, auto_start_orchestrator=False)
-            await svc.initialize()
+            svc = global_container.amadeus_service()
 
             prompt = (
                 f"SYSTEM BACKGROUND EVENT: It is currently {datetime.now().strftime('%H:%M')}. "

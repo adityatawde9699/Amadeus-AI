@@ -1,6 +1,6 @@
 # Observability
 
-Amadeus exposes structured logs, Prometheus metrics, and optional Sentry error tracking.
+Amadeus exposes structured logs, Prometheus metrics, health probes, and optional Sentry error tracking.
 
 ---
 
@@ -12,6 +12,9 @@ Amadeus exposes structured logs, Prometheus metrics, and optional Sentry error t
 |---|---|---|---|
 | `amadeus_llm_calls_total` | Counter | `provider` | LLM calls per provider |
 | `amadeus_tool_calls_total` | Counter | `tool_name` | Tool invocations |
+| `amadeus_tool_duration_seconds` | Histogram | `tool_name`, `success` | Per-tool execution latency (10 buckets: 0.01s–30s) |
+| `amadeus_tool_executions_total` | Counter | `tool_name`, `result` | Per-tool result breakdown (`success`/`failure`/`timeout`/`denied`) |
+| `amadeus_memory_errors_total` | Counter | `operation` | Qdrant upsert/search failures (`upsert`/`search`) |
 | `amadeus_cache_hit_rate` | Gauge | — | Cache hit % (updated on every hit) |
 | `amadeus_llm_cost_usd` | Gauge | — | Estimated cumulative LLM spend |
 | HTTP latency histograms | Histogram | `path`, `method`, `status` | P50/P95/P99 per route |
@@ -26,6 +29,43 @@ scrape_configs:
     static_configs:
       - targets: ["localhost:8000"]
     metrics_path: /api/v1/metrics
+```
+
+---
+
+## Health Endpoints
+
+### Liveness Probe
+
+```bash
+GET /api/v1/health/live
+# → 200 {"status": "alive"}
+```
+
+Always returns 200 while the process is running. Used by container orchestrators (Kubernetes, Docker Compose) to detect process crashes.
+
+### Readiness Probe (v3.2.1+)
+
+```bash
+GET /api/v1/health/ready
+# → 200 {"status": "ready", "checks": {"database": true, "redis": true, "qdrant": true, "llm_provider": true}}
+# → 503 {"detail": {"checks": {"database": false, ...}, "details": {"database": "..."}}}
+```
+
+Checks all critical dependencies before accepting traffic. Returns **503** with a per-dependency map if any dependency is unhealthy.
+
+| Dependency | Check Method |
+|---|---|
+| `database` | `SELECT 1` via SQLAlchemy async session |
+| `redis` | `await r.ping()` with 2-second timeout |
+| `qdrant` | `get_collections()` via `AsyncQdrantClient` |
+| `llm_provider` | `global_container.llm_router()` accessible |
+
+### Legacy Health Check
+
+```bash
+GET /health
+# → {"status": "healthy", "service": "Amadeus", "version": "3.2.1", "environment": "production"}
 ```
 
 ---
@@ -59,26 +99,6 @@ Per OWASP guidelines:
 
 ---
 
-## Health Endpoints
-
-```bash
-# Liveness probe (load balancer / Railway)
-GET /health
-# {"status": "ok"}
-
-# Detailed status (DB + Redis + classifier)
-GET /api/v1/health/detailed
-# {
-#   "status": "healthy",
-#   "database": "connected",
-#   "redis": "connected",
-#   "classifier_enabled": true,
-#   "llm_providers": ["groq", "gemini"]
-# }
-```
-
----
-
 ## Sentry
 
 Set `SENTRY_DSN` in `.env` to enable automatic error capture:
@@ -90,6 +110,7 @@ SENTRY_DSN=https://xxx@sentry.io/xxx
 The integration captures:
 - Unhandled exceptions with FastAPI request context
 - Configurable `traces_sample_rate` for performance monitoring
+- `send_default_pii=False` — no user PII leaked to Sentry
 
 ---
 

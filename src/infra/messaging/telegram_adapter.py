@@ -204,6 +204,9 @@ class TelegramAdapter:
         """
         Callback for python-telegram-bot to process incoming text messages.
         Passes the extracted information directly to the AmadeusService.
+
+        SEC-03: Only MASTER_TELEGRAM_CHAT_ID is authorised to send commands.
+        Any other Telegram user receives a polite rejection and the task is dropped.
         """
         if not update.message or not update.message.text:
             return
@@ -212,45 +215,68 @@ class TelegramAdapter:
         chat_id = msg.chat_id
         text = msg.text
 
+        # ── Authorization guard (SEC-03) ─────────────────────────────────────
+        settings = get_settings()
+        master_id_raw = settings.MASTER_TELEGRAM_CHAT_ID
+        if master_id_raw:
+            try:
+                allowed_ids: set[int] = {int(mid.strip()) for mid in master_id_raw.split(",") if mid.strip()}
+            except ValueError:
+                allowed_ids = set()
+            if allowed_ids and chat_id not in allowed_ids:
+                logger.warning("Unauthorized Telegram access attempt from chat_id=%s", chat_id)
+                await self.send_message(chat_id, "Unauthorized.")
+                return
+        # ─────────────────────────────────────────────────────────────────────
+
         logger.info("Received telegram message from chat_id=%s", chat_id)
-        
+
         import asyncio
         asyncio.create_task(self._process_and_reply_background(chat_id, text))
 
     async def _process_and_reply_background(self, chat_id: int, text: str) -> None:
-        """Runs the AmadeusService inside a background task to unblock the Telegram event loop."""
+        """Runs the singleton AmadeusService inside a background task.
+
+        ARCH-01: Reuses the DI-container singleton instead of constructing a
+        new AmadeusService per message (avoids O(messages) Qdrant client leaks).
+        The per-chat session_id is passed at call-time so concurrent chats
+        remain fully isolated.
+        """
         try:
-            from src.app.services.amadeus_service import AmadeusService
             from src.container import global_container
 
-            # Get dependencies from container to ensure the tool registry is populated
-            registry = global_container.tool_registry()
-            cache = global_container.cache_service()
-            repo = global_container.conversation_repo()
-            llm_router = global_container.llm_router()
+            # ARCH-01: reuse the DI singleton — no per-message construction
+            service = global_container.amadeus_service()
 
-            # Instantiate AmadeusService isolated to this user session (chat_id)
-            service = AmadeusService(
-                session_id=str(chat_id),
-                auto_start_orchestrator=False,
-                tool_registry=registry,
-                cache_service=cache,
-                conversation_repo=repo,
-                llm_router=llm_router,
-            )
-            
-            # Inject Telegram-specific confirmation handler
+            # Temporarily inject a Telegram-specific HITL confirmation callback
+            # for this message's processing window.
+            previous_callback = service.tool_executor.confirmation_callback
             service.tool_executor.confirmation_callback = TelegramConfirmationCallback(self, chat_id)
-            
-            await service.initialize()
 
-            # Handle command
-            response = await service.handle_command(text, source="telegram")
+            try:
+                # Pass session_id per-call so the singleton remains stateless across chats
+                response = await service.handle_command(
+                    text, source="telegram", session_id=str(chat_id)
+                )
+            finally:
+                # Always restore the previous callback, even if an exception occurs
+                service.tool_executor.confirmation_callback = previous_callback
+
             reply_text = response if isinstance(response, str) else str(response)
-
-            # Send the reply back
             await self.send_message(chat_id, reply_text)
-        except Exception:
+        except Exception as exc:
+            # Chaos-03: Surface QueueFullError as a user-readable "busy" message
+            # instead of a generic error so the user knows to retry later.
+            from src.app.services.agent_loop import QueueFullError
+            if isinstance(exc, QueueFullError):
+                logger.warning(
+                    "AgentOrchestrator queue full for chat_id=%s — sending busy message", chat_id
+                )
+                await self.send_message(
+                    chat_id,
+                    "⏳ I'm processing several requests right now. Please try again in a moment.",
+                )
+                return
             logger.exception("telegram_polling_processing_failed")
             await self.send_message(
                 chat_id, "⚠️ Sorry, something went wrong processing your request."

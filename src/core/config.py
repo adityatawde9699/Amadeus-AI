@@ -33,21 +33,51 @@ def get_project_root() -> Path:
 
 
 def load_or_create_ipc_secret() -> str:
-    """Load the stable IPC token, creating it once with restricted permissions."""
+    """Load the stable IPC token, creating it once with restricted permissions.
+
+    DR-05: Handles corrupt/unreadable token files gracefully by logging a
+    CRITICAL warning before regenerating so operators know that any connected
+    IPC clients (system tray, GUI) will need to re-authenticate.
+    """
+    import logging as _logging
+    _ipc_logger = _logging.getLogger(__name__)
+
     token_path = get_project_root() / "data" / "ipc_secret.token"
     token_path.parent.mkdir(parents=True, exist_ok=True)
 
     if token_path.exists():
-        token = token_path.read_text(encoding="utf-8").strip()
-        if token:
-            return token
+        try:
+            token = token_path.read_text(encoding="utf-8").strip()
+            if token:
+                return token
+            # File exists but is empty
+            _ipc_logger.critical(
+                "IPC secret token file is empty (%s). "
+                "Regenerating — connected IPC clients will need to re-authenticate.",
+                token_path,
+            )
+        except UnicodeDecodeError:
+            _ipc_logger.critical(
+                "IPC secret token file is corrupt / not UTF-8 (%s). "
+                "Regenerating — connected IPC clients will need to re-authenticate.",
+                token_path,
+            )
+        except OSError as exc:
+            _ipc_logger.critical(
+                "Cannot read IPC secret token file (%s): %s. "
+                "Regenerating — connected IPC clients will need to re-authenticate.",
+                token_path, exc,
+            )
 
     token = secrets.token_hex(32)
-    token_path.write_text(token, encoding="utf-8")
     try:
-        os.chmod(token_path, 0o600)
-    except OSError:
-        pass
+        token_path.write_text(token, encoding="utf-8")
+        try:
+            os.chmod(token_path, 0o600)
+        except OSError:
+            pass
+    except OSError as exc:
+        _ipc_logger.error("Could not persist IPC secret token to %s: %s", token_path, exc)
     return token
 
 
@@ -135,6 +165,10 @@ class Settings(BaseSettings):
 
     # Loaded from env when provided; otherwise generated once and persisted.
     IPC_SECRET_TOKEN: str = Field(default_factory=load_or_create_ipc_secret)
+
+    # WhatsApp webhook signature secret (Meta App Secret for HMAC-SHA256 verification)
+    # SEC-02: Required to verify X-Hub-Signature-256 on incoming WhatsApp webhooks.
+    WHATSAPP_APP_SECRET: str | None = None
 
     # =========================================================================
     # OBSERVABILITY
@@ -392,6 +426,24 @@ def get_settings() -> Settings:
         Settings: The application settings instance.
     """
     return Settings()
+
+
+def _get_or_create_secret_key(settings: "Settings") -> str:
+    """SEC-06: Return SECRET_KEY, auto-generating an ephemeral one if not configured.
+
+    An ephemeral key means all JWTs are invalidated on restart, which is
+    acceptable for development but must be replaced with a persistent key
+    in production (set SECRET_KEY in .env or the environment).
+    """
+    if settings.SECRET_KEY:
+        return settings.SECRET_KEY
+    import logging as _logging
+    _logging.getLogger(__name__).warning(
+        "SECRET_KEY is not set — generating an ephemeral key. "
+        "All JWT sessions will be invalidated on restart. "
+        "Set SECRET_KEY in your .env file for production."
+    )
+    return secrets.token_hex(32)
 
 
 def validate_settings(settings: Settings | None = None) -> dict:
