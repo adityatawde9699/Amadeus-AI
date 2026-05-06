@@ -28,9 +28,10 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-
 if TYPE_CHECKING:
     from src.app.services.tool_registry import ToolRegistry
+
+from src.app.services.category_classifier import CategoryClassifier
 
 
 logger = logging.getLogger(__name__)
@@ -41,7 +42,9 @@ logger = logging.getLogger(__name__)
 
 _EMBED_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 _CACHE_FILENAME = "unified_semantic_cache.npz"
-_DEFAULT_THRESHOLD = 0.30  # Tuned for MiniLM-L6-v2
+_DEFAULT_THRESHOLD = 0.30        # base threshold for full-pool search
+_NARROW_THRESHOLD = 0.42         # raised threshold when candidate pool is narrowed
+_SVM_CONFIDENCE_CUTOFF = 0.35    # minimum LinearSVC score to trust SVM category
 
 # Anchor phrases for global intents to guide the vector space
 _GLOBAL_INTENTS = {
@@ -131,9 +134,14 @@ class UnifiedSemanticRouter:
         # Populated by build_index()
         self._labels: list[str] = []  # Names of tools or intents
         self._types: list[str] = []   # 'tool' or 'intent'
-        self._matrix: Any = None      # np.ndarray shape (N, 768)
+        self._matrix: Any = None      # np.ndarray shape (N, D)
         self._embed_model: Any = None  # SentenceTransformer instance
         self._ready = False
+
+        # Stage-1 SVM pre-filter
+        self._category_clf = CategoryClassifier(model_dir=self._model_dir)
+        # Build a fast lookup: label (tool name) → category string
+        self._tool_category_map: dict[str, str] = {}
 
     def build_index(self) -> None:
         """Load the model and build the unified embedding matrix."""
@@ -168,11 +176,12 @@ class UnifiedSemanticRouter:
         labels = []
         types = []
 
-        # 1. Tools
+        # 1. Tools — store category for SVM cross-reference
         for t in all_tools:
             texts.append(_tool_text(t.name, t.description, t.category.value))
             labels.append(t.name)
             types.append("tool")
+            self._tool_category_map[t.name] = t.category.value
 
         # 2. Intents
         for intent, anchors in _GLOBAL_INTENTS.items():
@@ -202,36 +211,102 @@ class UnifiedSemanticRouter:
             )
             self._ready = True
             logger.info("UnifiedSemanticRouter: index built with %d vectors.", len(labels))
+
+            # Stage-1: train/load category classifier
+            if not self._category_clf.load():
+                logger.info("UnifiedSemanticRouter: training category classifier...")
+                self._category_clf.train()
         except Exception as exc:
             logger.error("UnifiedSemanticRouter: index build failed: %s", exc)
 
     def route(self, query: str) -> tuple[str, str | None]:
         """
-        Route query to (intent_type, tool_name_or_none).
-        
-        Types: 'tool', 'conversational', 'cloud_escalation'.
+        Two-stage route: query → (intent_type, tool_name_or_none).
+
+        Stage 1 — SVM category pre-filter:
+            Predicts the tool category in ~1ms and narrows the candidate
+            pool from N tools to the K tools in that category.
+
+        Stage 2 — Sentence Transformer cosine similarity:
+            Runs only against the narrowed candidate pool, giving higher
+            precision than searching across all tools.
+
+        Returns one of:
+            ('tool', tool_name)          — a specific tool was matched
+            ('conversational', None)     — no confident match; use LLM
+            ('cloud_escalation', None)   — complex query; use cloud LLM
         """
         if not self._ready or self._matrix is None:
             return "conversational", None
 
         try:
             import numpy as np
-            q_vec = self._embed_model.encode(query, normalize_embeddings=True, show_progress_bar=False)
-            scores = self._matrix @ q_vec
-            
-            best_idx = int(np.argmax(scores))
-            score = float(scores[best_idx])
+
+            q_vec = self._embed_model.encode(
+                query, normalize_embeddings=True, show_progress_bar=False
+            )
+
+            # ----------------------------------------------------------
+            # Stage 1: SVM category pre-filter
+            # ----------------------------------------------------------
+            candidate_indices: list[int] | None = None
+            svm_used = False
+
+            if self._category_clf.is_ready:
+                top2_categories = self._category_clf.predict_top2(query)
+                primary_cat, confidence = self._category_clf.predict(query)
+
+                if confidence >= _SVM_CONFIDENCE_CUTOFF and top2_categories:
+                    # Build a set of allowed categories (top-2 for safety)
+                    allowed_cats = set(top2_categories)
+
+                    # Also always keep intent rows (no category = always included)
+                    candidate_indices = [
+                        i for i, (lbl, typ) in enumerate(zip(self._labels, self._types))
+                        if typ == "intent"
+                        or self._tool_category_map.get(lbl, "") in allowed_cats
+                    ]
+
+                    if len(candidate_indices) >= 2:
+                        svm_used = True
+                        logger.debug(
+                            "UnifiedRouter SVM: '%s' → cats=%s (conf=%.2f), %d candidates",
+                            query[:40], top2_categories, confidence, len(candidate_indices),
+                        )
+                    else:
+                        # Too few candidates — fall back to full search
+                        candidate_indices = None
+
+            # ----------------------------------------------------------
+            # Stage 2: Sentence Transformer cosine similarity
+            # ----------------------------------------------------------
+            if candidate_indices is not None:
+                sub_matrix = self._matrix[candidate_indices]
+                scores = sub_matrix @ q_vec
+                best_local = int(np.argmax(scores))
+                best_idx = candidate_indices[best_local]
+                score = float(scores[best_local])
+                effective_threshold = _NARROW_THRESHOLD  # tighter — smaller pool
+            else:
+                scores = self._matrix @ q_vec
+                best_idx = int(np.argmax(scores))
+                score = float(scores[best_idx])
+                effective_threshold = self._threshold
+
             label = self._labels[best_idx]
             kind = self._types[best_idx]
 
-            logger.debug("UnifiedRouter: '%s' -> %s:%s (score=%.4f)", query[:40], kind, label, score)
+            logger.debug(
+                "UnifiedRouter: '%s' → %s:%s (score=%.4f, threshold=%.2f, svm=%s)",
+                query[:40], kind, label, score, effective_threshold, svm_used,
+            )
 
-            if score < self._threshold:
+            if score < effective_threshold:
                 return "conversational", None
 
             if kind == "tool":
                 return "tool", label
-            
+
             return label, None  # 'conversational' or 'cloud_escalation'
 
         except Exception as exc:

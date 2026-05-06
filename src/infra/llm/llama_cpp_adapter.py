@@ -44,6 +44,7 @@ class LlamaCppAdapter(LLMAdapter):
         self.threads = threads
         self.context_length = context_length
         self._llm: Any | None = None
+        self._lock = asyncio.Lock()
         logger.info(
             "LlamaCppAdapter configured with model: %s (threads=%d, ctx=%d)",
             self.model_path,
@@ -53,7 +54,14 @@ class LlamaCppAdapter(LLMAdapter):
 
     async def _get_llm(self) -> Any:
         """Lazily initialize the model to prevent massive blocking on startup."""
-        if self._llm is None:
+        if self._llm is not None:
+            return self._llm
+
+        async with self._lock:
+            # Double-checked locking to prevent concurrent instantiation
+            if self._llm is not None:
+                return self._llm
+
             try:
                 from llama_cpp import Llama
 
@@ -74,14 +82,18 @@ class LlamaCppAdapter(LLMAdapter):
                 # flash_attn / type_k / type_v are only available in llama_cpp >= 0.2.56
                 # and only on some hardware builds. Guard them to stay version-safe.
                 import inspect
-
-                llama_sig = inspect.signature(Llama.__init__)
-                if "flash_attn" in llama_sig.parameters:
-                    init_kwargs["flash_attn"] = True
-                if "type_k" in llama_sig.parameters:
-                    init_kwargs["type_k"] = 8  # q8_0 kv cache — less RAM
-                if "type_v" in llama_sig.parameters:
-                    init_kwargs["type_v"] = 8
+                try:
+                    # Inspect the class directly to avoid MagicMock __init__ issues in tests
+                    llama_sig = inspect.signature(Llama)
+                    if "flash_attn" in llama_sig.parameters:
+                        init_kwargs["flash_attn"] = True
+                    if "type_k" in llama_sig.parameters:
+                        init_kwargs["type_k"] = 8  # q8_0 kv cache — less RAM
+                    if "type_v" in llama_sig.parameters:
+                        init_kwargs["type_v"] = 8
+                except ValueError:
+                    # If Llama is a compiled C-extension without a signature, fallback safely
+                    logger.debug("Could not inspect Llama signature; using basic kwargs")
 
                 # Load model in a separate thread to avoid blocking event loop
                 self._llm = await asyncio.to_thread(Llama, **init_kwargs)
@@ -96,6 +108,7 @@ class LlamaCppAdapter(LLMAdapter):
             except Exception as e:
                 logger.exception("Failed to load LlamaCpp model: %s", type(e).__name__)
                 raise LLMConnectionError("LlamaCpp", f"Model load failed: {e}") from e
+
         return self._llm
 
     # =========================================================================

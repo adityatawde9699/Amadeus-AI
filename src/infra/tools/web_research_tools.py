@@ -76,7 +76,7 @@ def build_web_research_tools() -> list[dict[str, Any]]:
     return [
         {
             "name": "fetch_webpage_content",
-            "description": "Fetch a webpage URL and extract its text content for analysis. Strips HTML tags.",
+            "description": "Fetches a webpage by URL and extracts clean, readable text (strips HTML, scripts, styles). Returns up to 4000 chars of content. Use this when you need to read a specific webpage. Trigger: 'read this webpage', 'get content from URL', 'scrape this page', 'extract text from'",
             "function": fetch_webpage_content,
             "parameters": {
                 "url": {"type": "string", "description": "The URL to fetch and parse"},

@@ -62,7 +62,7 @@ class TestReActAgentMemoryInjection:
 
         captured_prompts: list[str] = []
 
-        def fake_llm(prompt: str) -> str:
+        async def fake_llm(prompt: str) -> str:
             captured_prompts.append(prompt)
             return 'Thought: done\nAction: FINISH\nAction Input: {"answer": "Memory test done"}'
 
@@ -80,7 +80,7 @@ class TestReActAgentMemoryInjection:
         assert result.success
         # The prompt should contain the memory block
         assert len(captured_prompts) > 0
-        assert "Relevant past context:" in captured_prompts[0]
+        assert "[RETRIEVED MEMORIES]" in captured_prompts[0]
         assert "dark mode" in captured_prompts[0]
 
     @pytest.mark.asyncio
@@ -90,7 +90,7 @@ class TestReActAgentMemoryInjection:
 
         captured_prompts: list[str] = []
 
-        def fake_llm(prompt: str) -> str:
+        async def fake_llm(prompt: str) -> str:
             captured_prompts.append(prompt)
             return 'Thought: done\nAction: FINISH\nAction Input: {"answer": "No memory"}'
 
@@ -105,14 +105,14 @@ class TestReActAgentMemoryInjection:
 
         assert result.success
         assert len(captured_prompts) > 0
-        assert "Relevant past context:" not in captured_prompts[0]
+        assert "[RETRIEVED MEMORIES]" not in captured_prompts[0]
 
     @pytest.mark.asyncio
     async def test_memory_service_error_does_not_crash_agent(self):
         """If memory retrieval fails, the agent should continue normally."""
         from src.app.services.agent_loop import ReActAgent
 
-        def fake_llm(prompt: str) -> str:
+        async def fake_llm(prompt: str) -> str:
             return 'Thought: done\nAction: FINISH\nAction Input: {"answer": "Resilient"}'
 
         error_svc = MagicMock()

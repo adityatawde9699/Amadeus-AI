@@ -194,9 +194,10 @@ class ResponseComposer:
             f"You ran the tool '{tool_name}' and got this result:\n{tool_output}\n\n"
             "Compose a brief, natural, conversational response to the user based on this result. "
             "Be concise — 1-2 sentences max. "
-            "If the result says 'not found' or contains an error, apologise briefly and suggest "
-            "the user try rephrasing with just the topic name. "
-            "Do NOT repeat the raw error message verbatim."
+            "CRITICAL: If the tool output indicates an error, failure, or says 'not found', "
+            "you MUST accurately report this failure to the user. Do NOT pretend the action succeeded. "
+            "If it failed, apologise briefly and suggest the user try rephrasing or checking inputs. "
+            "Do NOT repeat the raw error message verbatim, synthesize it simply."
         )
         try:
             if self._llm_router:

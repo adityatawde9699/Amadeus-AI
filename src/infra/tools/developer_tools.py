@@ -13,6 +13,7 @@ Usage:
 """
 
 import logging
+import subprocess
 from typing import Any
 
 from src.infra.tools.base import Tool, ToolCategory, tool
@@ -42,10 +43,11 @@ def _get_sandbox():  # noqa: ANN202
 @tool(
     name="execute_python_script",
     description=(
-        "Executes a Python script in a secure, sandboxed Docker environment "
-        "without internet access. The script must be self-contained (stdlib only). "
-        "Returns stdout on success or error details on failure. "
-        "Trigger: 'run this code', 'calculate', 'analyze data', 'execute python'"
+        "Executes a Python script in a secure, sandboxed Docker container with NO internet access. "
+        "The script must be self-contained (Python standard library ONLY — no pip packages). "
+        "Returns stdout on success or detailed error output on failure. Requires Docker Desktop running. "
+        "Use this for data analysis, complex calculations, file processing, or any task needing code. "
+        "Trigger: 'run this python code', 'execute script', 'analyze this data', 'write and run code'"
     ),
     category=ToolCategory.SYSTEM,
     parameters={
@@ -97,6 +99,50 @@ def execute_python_script(code: str | None = None, **kwargs: Any) -> str:
         )
 
 
+@tool(
+    name="terminal_cmd",
+    description=(
+        "Executes a raw shell command directly on the host OS (PowerShell on Windows, bash on Linux/Mac). "
+        "Has a 15-second timeout. Useful for network diagnostics (ping, ipconfig, nslookup), "
+        "system info (systeminfo, hostname), or quick file operations. Requires confirmation. "
+        "Trigger: 'run command', 'ping google.com', 'what is my IP', 'show network info'"
+    ),
+    category=ToolCategory.SYSTEM,
+    parameters={
+        "command": {
+            "type": "string",
+            "description": "The exact shell command to execute.",
+        },
+    },
+    requires_confirmation=True,
+)
+def terminal_cmd(command: str | None = None, **kwargs: Any) -> str:
+    """Execute a shell command on the host OS."""
+    cmd = command or kwargs.get("cmd", "")
+    if not cmd or not cmd.strip():
+        return "Error: No command provided."
+    
+    try:
+        result = subprocess.run(
+            cmd,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if result.returncode == 0:
+            out = result.stdout.strip()
+            return f"Command succeeded:\n{out}" if out else "Command succeeded with no output."
+        else:
+            err = result.stderr.strip() or result.stdout.strip()
+            return f"Command failed (exit {result.returncode}):\n{err}"
+    except subprocess.TimeoutExpired:
+        return f"Error: Command '{cmd}' timed out after 15 seconds."
+    except Exception as e:
+        logger.exception("terminal_cmd failed: %s", e)
+        return f"Error executing command: {e}"
+
+
 # =============================================================================
 # TOOL COLLECTION
 # =============================================================================
@@ -106,4 +152,5 @@ def get_developer_tools() -> list[Tool]:
     """Get all developer tools for manual registration."""
     return [
         execute_python_script._tool_metadata,  # type: ignore[attr-defined]
+        terminal_cmd._tool_metadata,  # type: ignore[attr-defined]
     ]

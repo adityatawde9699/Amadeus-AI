@@ -3,12 +3,13 @@ Tiered Search Router for Amadeus AI.
 
 Routes search queries across free/paid providers in priority order:
 1. Wikipedia API     — factual/encyclopedic queries (free, unlimited)
-2. DuckDuckGo IA     — general instant answers (free, no key)
+2. DuckDuckGo       — general web search via duckduckgo-search lib (free, no key)
 3. Tavily            — deep research (1,000 req/month free, paid after)
 
 All HTTP calls use aiohttp for async, non-blocking I/O.
 """
 
+import asyncio
 import logging
 from datetime import date
 
@@ -22,7 +23,9 @@ class SearchRouter:
     """
     Routes search queries to the best available free or paid provider.
 
-    Tavily is only used for depth="deep" queries when explicitly needed.
+    Tier 1: Wikipedia (factual/encyclopedic queries — free, unlimited)
+    Tier 2: DuckDuckGo text search (general queries — free, no API key)
+    Tier 3: Tavily (deep research — 1,000 req/month free, API key required)
     """
 
     _FACTUAL_PATTERNS: tuple[str, ...] = (
@@ -94,20 +97,20 @@ class SearchRouter:
                 logger.debug("Search: Wikipedia hit for '%s...'", query[:30])
                 return result
 
-        # Tier 2: DuckDuckGo Instant Answer (free, no key)
+        # Tier 2: DuckDuckGo text search (free, no key required)
         ddg_result = await self._ddg_search(query)
-        if ddg_result and len(ddg_result) > 100:
+        if ddg_result and len(ddg_result) > 60:
             logger.debug("Search: DuckDuckGo hit for '%s...'", query[:30])
             return ddg_result
 
-        # Tier 3: Tavily for deep research (use sparingly)
-        if self._tavily_key and depth == "deep":
+        # Tier 3: Tavily for deep research OR as fallback when DDG fails
+        if self._tavily_key:
             result = await self._tavily_search(query)
             if result:
-                logger.debug("Search: Tavily deep hit for '%s...'", query[:30])
+                logger.debug("Search: Tavily hit for '%s...'", query[:30])
                 return result
 
-        # Fallback: return DuckDuckGo result even if short
+        # Fallback: return whatever DDG returned, even if short
         return ddg_result or "Search results unavailable at this time."
 
     async def _wikipedia_search(self, query: str) -> str:
@@ -132,7 +135,49 @@ class SearchRouter:
             return ""
 
     async def _ddg_search(self, query: str) -> str:
-        """Query DuckDuckGo Instant Answer API — no key required."""
+        """Search DuckDuckGo using the duckduckgo-search library.
+
+        Returns a formatted string of the top 3-5 results with titles,
+        snippets, and source URLs.
+        """
+        try:
+            from duckduckgo_search import DDGS
+
+            # Run the synchronous DDGS in a thread to avoid blocking the event loop
+            def _do_search() -> list[dict]:
+                with DDGS() as ddgs:
+                    return list(ddgs.text(query, max_results=5))
+
+            results = await asyncio.to_thread(_do_search)
+
+            if not results:
+                return ""
+
+            lines: list[str] = []
+            for i, r in enumerate(results[:5], 1):
+                title = r.get("title", "")
+                body = r.get("body", "")
+                href = r.get("href", "")
+                if title and body:
+                    lines.append(f"{i}. **{title}**\n   {body}\n   Source: {href}")
+
+            if not lines:
+                return ""
+
+            return "🔍 Search results:\n\n" + "\n\n".join(lines)
+
+        except ImportError:
+            logger.warning(
+                "duckduckgo-search not installed. Install with: pip install duckduckgo-search"
+            )
+            # Fall back to the legacy Instant Answer API
+            return await self._ddg_instant_answer(query)
+        except Exception as e:
+            logger.debug("DuckDuckGo search failed: %s — %s", type(e).__name__, e)
+            return ""
+
+    async def _ddg_instant_answer(self, query: str) -> str:
+        """Legacy fallback: DuckDuckGo Instant Answer API (limited coverage)."""
         try:
             url = "https://api.duckduckgo.com/"
             session = await self._get_session()
@@ -145,11 +190,10 @@ class SearchRouter:
             async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=5)) as r:
                 if r.status == 200:
                     data = await r.json(content_type=None)
-                    # Prefer AbstractText, then Answer
                     return data.get("AbstractText") or data.get("Answer") or ""
             return ""
         except Exception as e:
-            logger.debug("DuckDuckGo search failed: %s", type(e).__name__)
+            logger.debug("DuckDuckGo IA fallback failed: %s", type(e).__name__)
             return ""
 
     async def _tavily_search(self, query: str) -> str:
@@ -171,9 +215,14 @@ class SearchRouter:
                     results = data.get("results", [])
                     snippets = []
                     for result in results[:3]:
+                        title = result.get("title", "")
                         content = result.get("content", "")
+                        url_str = result.get("url", "")
                         if content:
-                            snippets.append(content[:300])
+                            snippet = f"**{title}**\n{content[:300]}"
+                            if url_str:
+                                snippet += f"\nSource: {url_str}"
+                            snippets.append(snippet)
                     return "\n\n".join(snippets)
             return ""
         except Exception as e:

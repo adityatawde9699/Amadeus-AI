@@ -118,6 +118,7 @@ class TelegramAdapter:
         self._application: Any = None
         self._bot: Any = None
         self._pending_confirmations: dict[str, asyncio.Future[bool]] = {}
+        self._active_tasks: set[asyncio.Task] = set()
 
         if not self._token:
             logger.warning("TELEGRAM_BOT_TOKEN is not configured — Telegram adapter disabled")
@@ -232,7 +233,9 @@ class TelegramAdapter:
         logger.info("Received telegram message from chat_id=%s", chat_id)
 
         import asyncio
-        asyncio.create_task(self._process_and_reply_background(chat_id, text))
+        task = asyncio.create_task(self._process_and_reply_background(chat_id, text))
+        self._active_tasks.add(task)
+        task.add_done_callback(self._active_tasks.discard)
 
     async def _process_and_reply_background(self, chat_id: int, text: str) -> None:
         """Runs the singleton AmadeusService inside a background task.
@@ -258,6 +261,7 @@ class TelegramAdapter:
                 response = await service.handle_command(
                     text, source="telegram", session_id=str(chat_id)
                 )
+                logger.info("Telegram response for chat_id=%s: %s", chat_id, str(response)[:100])
             finally:
                 # Always restore the previous callback, even if an exception occurs
                 service.tool_executor.confirmation_callback = previous_callback

@@ -166,6 +166,10 @@ class AmadeusService:
         if not self._semantic_router.is_ready:
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, self._semantic_router.build_index)
+            logger.info(
+                "SemanticRouter ready=%s after build attempt",
+                self._semantic_router.is_ready
+            )
 
     # ------------------------------------------------------------------
     # Public API
@@ -488,14 +492,18 @@ class AmadeusService:
         logger.info("Gemini API configured with model: %s", self.model_name)
 
     def _make_llm_generate(self) -> Callable[[str], Awaitable[str]] | None:
-        """Build an async Gemini generate closure for the AgentOrchestrator."""
-        if not (hasattr(self, "client") and self.client):
+        """Build an async LLM generate closure for the AgentOrchestrator."""
+        if getattr(self, "llm_router", None) is None and not (hasattr(self, "client") and self.client):
             return None
 
         async def _generate(prompt: str) -> str:
+            if getattr(self, "llm_router", None) is not None:
+                response, _ = await self.llm_router.generate(prompt, complexity="high")
+                return response
+
             loop = asyncio.get_running_loop()
             if self.client is None or self.settings.LOCAL_ONLY_MODE:
-                raise ValueError("Gemini client unavailable")
+                raise ValueError("Gemini client unavailable and no LLMRouter configured.")
             response = await loop.run_in_executor(
                 None,
                 lambda: self.client.models.generate_content(  # type: ignore[union-attr]

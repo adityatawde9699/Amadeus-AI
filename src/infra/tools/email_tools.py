@@ -54,7 +54,7 @@ def build_email_tools() -> list[dict]:
     return [
         {
             "name": "read_unread_emails",
-            "description": "Read unread emails from the inbox. Returns sender, subject, date, and preview.",
+            "description": "Reads unread emails from the configured Gmail inbox via IMAP. Returns sender, subject, date, and a 200-char body preview for each email. Trigger: 'check my email', 'unread emails', 'any new emails', 'read inbox'",
             "function": read_unread_emails,
             "parameters": {
                 "limit": {"type": "integer", "description": "Max emails to fetch", "default": 5}
@@ -62,7 +62,7 @@ def build_email_tools() -> list[dict]:
         },
         {
             "name": "send_email",
-            "description": "Send an email. Requires to, subject, and body.",
+            "description": "Sends an email via SMTP through the configured Gmail account. Requires recipient address, subject line, and body text. Requires confirmation. Trigger: 'send email to X', 'email John about Y', 'compose email'",
             "function": send_email,
             "parameters": {
                 "to": {"type": "string", "description": "Recipient email address"},

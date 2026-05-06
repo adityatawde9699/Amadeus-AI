@@ -176,7 +176,11 @@ class ReActAgent:
                     continue
 
                 self.iteration += 1
-                scratchpad = "\n\n".join(s.to_prompt() for s in self.steps)
+                # Working memory truncation (prevent context bloat)
+                if len(self.steps) > 5:
+                    scratchpad = "[EARLIER STEPS SUMMARIZED/TRUNCATED FOR BREVITY]\n\n" + "\n\n".join(s.to_prompt() for s in self.steps[-5:])
+                else:
+                    scratchpad = "\n\n".join(s.to_prompt() for s in self.steps)
 
                 thought, action, action_input = await self._think(
                     task=self.task,
@@ -281,6 +285,11 @@ class ReActAgent:
                 await self.queue.put(AgentState.OBSERVE)
 
             elif state == AgentState.OBSERVE:
+                # Self-Correction Meta-Cognition: Inject strict reflection if tool failed
+                obs_lower = self.current_observation.lower()
+                if "error" in obs_lower or "failed" in obs_lower or "not found" in obs_lower:
+                    self.current_observation += "\n[SYSTEM: Previous action failed. You MUST reflect on the error and try a different approach or tool. Do not repeat the exact same action.]"
+
                 self.current_step.observation = self.current_observation
                 self.observations.append(f"{self.current_step.action}: {self.current_observation}")
                 self.steps.append(self.current_step)
@@ -358,6 +367,14 @@ class ReActAgent:
             (["reminder", "reminders"], "list_reminders", {}),
             (["battery"], "get_battery_info", {}),
             (["news", "headlines"], "get_news", {}),
+            (["email", "emails", "inbox"], "read_unread_emails", {}),
+            (["calculate", "math", "solve"], "calculate", {"expression": task}),
+            (["terminal", "command", "ping", "ipconfig"], "terminal_cmd", {"command": task}),
+            (["excel", "spreadsheet"], "create_excel_spreadsheet", {"file_name": "data.xlsx", "columns": ["A", "B"], "data": [["1", "2"]]}),
+            (["word", "document"], "create_word_document", {"file_name": "doc.docx", "title": "Document", "content": task}),
+            (["open", "launch"], "open_program", {"app_name": task.replace("open ", "").replace("launch ", "").strip()}),
+            (["close", "terminate", "kill"], "terminate_program", {"process_name": task.replace("close ", "").replace("terminate ", "").replace("kill ", "").strip()}),
+            (["search file", "find file"], "search_file", {"filename": task.replace("search file ", "").replace("find file ", "").strip()}),
         ]
 
         # Find next action
@@ -393,12 +410,16 @@ class ReActAgent:
         Use LLM for sophisticated reasoning.
         Injects top-k semantic memories AND Knowledge Graph facts into the prompt.
         """
-        # Get available tools
+        # Get available tools grouped by category
         tool_descriptions = []
-        for name in self.tool_registry.list_names():
-            tool = self.tool_registry.get(name)
-            if tool:
-                tool_descriptions.append(f"- {name}: {tool.description}")
+        summary = self.tool_registry.get_summary()
+        for category, tool_names in summary.get("categories", {}).items():
+            tool_descriptions.append(f"[{category.upper()}]")
+            for name in tool_names:
+                tool = self.tool_registry.get(name)
+                if tool:
+                    tool_descriptions.append(f"  - {name}: {tool.description}")
+            tool_descriptions.append("")
 
         # 1. Retrieve semantic memories (Qdrant)
         memory_block = ""
@@ -470,7 +491,7 @@ tools to complete complex goals. ALWAYS prefer using a tool over guessing.
 {f"Context: {context}" if context else ""}
 
 Available Tools:
-{chr(10).join(tool_descriptions[:20])}
+{chr(10).join(tool_descriptions)}
 - FINISH: Use when task is complete. Input: {{"answer": "your final response"}}
 
 Key rules:
@@ -485,7 +506,8 @@ Previous Steps:
 {scratchpad if scratchpad else "(none yet)"}
 
 Decide the next action. Respond in this EXACT format:
-Thought: [your reasoning]
+Thought: [your reasoning about what needs to be done next]
+Plan: [briefly state the remaining steps to achieve the user's goal]
 Action: [tool_name or FINISH]
 Action Input: {{"param": "value"}}
 
@@ -511,9 +533,15 @@ Your response:"""
         action_input = {}
 
         # Extract thought
-        thought_match = re.search(r"Thought:\s*(.+?)(?=Action:|$)", response, re.DOTALL)
+        thought_match = re.search(r"Thought:\s*(.+?)(?=Plan:|Action:|$)", response, re.DOTALL)
         if thought_match:
             thought = thought_match.group(1).strip()
+
+        # Extract plan
+        plan_match = re.search(r"Plan:\s*(.+?)(?=Action:|$)", response, re.DOTALL)
+        if plan_match:
+            plan = plan_match.group(1).strip()
+            thought += f"\nPlan: {plan}"
 
         # Extract action
         action_match = re.search(r"Action:\s*(\w+)", response)
@@ -712,7 +740,14 @@ class AgentOrchestrator:
 
     def _load_classifier(self) -> None:
         """Load TF-IDF vectorizer and SVM classifier tailored for intent routing."""
-        import joblib
+        try:
+            import joblib as _joblib
+            if not hasattr(_joblib, "load"):
+                logger.warning("Agent Orchestrator SVM: joblib stub detected — skipping load.")
+                return
+        except ImportError:
+            return
+
         from src.core.config import get_settings
 
         try:
@@ -721,8 +756,8 @@ class AgentOrchestrator:
             classifier_path = str(settings.BASE_DIR / "Model" / "router_classifier.joblib")
 
             if Path(vectorizer_path).exists() and Path(classifier_path).exists():
-                self.vectorizer = joblib.load(vectorizer_path)
-                self.classifier = joblib.load(classifier_path)
+                self.vectorizer = _joblib.load(vectorizer_path)
+                self.classifier = _joblib.load(classifier_path)
                 logger.info("Agent Orchestrator SVM loaded. Dynamic routing enabled.")
             else:
                 logger.warning(
@@ -730,6 +765,7 @@ class AgentOrchestrator:
                 )
         except Exception as e:
             logger.exception("Failed to load router classifier: %s", e)
+
 
     def _predict_intent(self, task: str) -> str:
         """Predict which agent should handle this task."""

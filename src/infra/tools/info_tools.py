@@ -20,18 +20,15 @@ import aiohttp
 from src.core.config import get_settings
 from src.infra.tools.base import Tool, ToolCategory, tool
 
-
 logger = logging.getLogger(__name__)
 settings = get_settings()
 _http_session: aiohttp.ClientSession | None = None
-
 
 async def initialize_info_tools_http_session() -> None:
     """Create the shared HTTP session used by information tools."""
     global _http_session  # noqa: PLW0603
     if _http_session is None or _http_session.closed:
         _http_session = aiohttp.ClientSession()
-
 
 async def close_info_tools_http_session() -> None:
     """Close the shared HTTP session used by information tools."""
@@ -40,7 +37,6 @@ async def close_info_tools_http_session() -> None:
         await _http_session.close()
     _http_session = None
 
-
 async def _get_http_session() -> aiohttp.ClientSession:
     if _http_session is None or _http_session.closed:
         await initialize_info_tools_http_session()
@@ -48,16 +44,18 @@ async def _get_http_session() -> aiohttp.ClientSession:
         raise RuntimeError("info tools HTTP session is unavailable")
     return _http_session
 
-
 # =============================================================================
 # GREETING & TIME TOOLS
 # =============================================================================
 
-
 @tool(
     name="get_greeting",
-    description="Get an appropriate greeting based on time of day",
-    category=ToolCategory.INFORMATION,
+    description=(
+        "Returns a context-aware greeting based on the current time of day "
+        "(e.g., 'Good morning', 'Good evening'). No parameters needed. "
+        "Trigger: 'hello', 'hi', 'good morning', 'greet me'"
+    ),
+    category=ToolCategory.DATETIME,
 )
 def get_greeting() -> str:
     """Returns an appropriate greeting based on the time of day."""
@@ -74,15 +72,19 @@ def get_greeting() -> str:
 
     return random.choice(greetings)
 
-
 @tool(
     name="get_datetime_info",
-    description="Return current time/date/day. Trigger: 'what time', 'current date', 'what day is it'",
-    category=ToolCategory.INFORMATION,
+    description=(
+        "Returns the current time, date, day of week, week number, month, or year. "
+        "Pass query param: 'time', 'date', 'day', 'week', 'month', 'year', 'full'. "
+        "Defaults to 'time' if not specified. "
+        "Trigger: 'what time is it', 'current date', 'what day is today', 'what month is it'"
+    ),
+    category=ToolCategory.DATETIME,
     parameters={
         "query": {
             "type": "string",
-            "description": "What to retrieve: time, date, day, week, month, year",
+            "description": "What to retrieve: time, date, day, week, month, year, or full (date+time)",
         }
     },
 )
@@ -108,17 +110,20 @@ def get_datetime_info(query: str = "time") -> str:
         return f"It is {now.strftime('%I:%M %p')} on {now.strftime('%A, %B %d, %Y')}"
     return f"It's {now.strftime('%I:%M %p')} on {now.strftime('%A, %B %d, %Y')}"
 
-
 # =============================================================================
 # WEATHER TOOLS
 # =============================================================================
 
-
 @tool(
     name="get_weather",
-    description="Get current weather + forecast. Trigger: 'weather in ___', 'is it raining', 'temperature'",
-    category=ToolCategory.INFORMATION,
-    parameters={"location": {"type": "string", "description": "City name or location"}},
+    description=(
+        "Fetches current weather conditions for any city via OpenWeatherMap. "
+        "Returns temperature (C), feels-like, humidity, wind speed, and sky description. "
+        "Defaults to India if no location specified. "
+        "Trigger: 'weather in Mumbai', 'is it raining', 'temperature today', 'how hot is it'"
+    ),
+    category=ToolCategory.WEATHER,
+    parameters={"location": {"type": "string", "description": "City name or location (e.g., 'Mumbai', 'New York')"}},
 )
 async def get_weather_async(location: str = "India") -> str:
     """Fetches current weather for a location using OpenWeatherMap API."""
@@ -165,23 +170,26 @@ async def get_weather_async(location: str = "India") -> str:
     except Exception as e:
         return f"Sorry, I couldn't fetch the weather: {e}"
 
-
 # =============================================================================
 # NEWS TOOLS
 # =============================================================================
 
-
 @tool(
     name="get_news",
-    description="Fetch current news headlines. Trigger: 'news today', 'latest headlines', 'tech news'",
-    category=ToolCategory.INFORMATION,
+    description=(
+        "Fetches top news headlines from NewsAPI. Categories: general, business, technology, "
+        "sports, health, entertainment, science. Country codes: in, us, gb. "
+        "Returns up to N headlines with source names. Defaults to 5 general headlines from India. "
+        "Trigger: 'latest news', 'tech news today', 'sports headlines', 'news in India'"
+    ),
+    category=ToolCategory.WEB_RESEARCH,
     parameters={
         "category": {
             "type": "string",
-            "description": "Category: general, business, technology, sports, health",
+            "description": "News category: general, business, technology, sports, health, entertainment, science",
         },
-        "country": {"type": "string", "description": "Country code: in, us, gb"},
-        "count": {"type": "integer", "description": "Number of headlines"},
+        "country": {"type": "string", "description": "ISO country code: in, us, gb, au, ca"},
+        "count": {"type": "integer", "description": "Number of headlines to fetch (default: 5, max: 20)"},
     },
 )
 async def get_news_async(
@@ -237,17 +245,20 @@ async def get_news_async(
     except Exception as e:
         return f"Sorry, I couldn't fetch the news: {e}"
 
-
 # =============================================================================
 # WEB BROWSING TOOLS
 # =============================================================================
 
-
 @tool(
     name="open_website",
-    description="Open URL/Search Google. Trigger: 'open website', 'google ___', 'search for ___'",
-    category=ToolCategory.INFORMATION,
-    parameters={"query": {"type": "string", "description": "URL to open or search term"}},
+    description=(
+        "Opens a URL in the default browser OR performs a Google search. "
+        "If input looks like a URL (contains http, .com, .org etc.), opens it directly. "
+        "Otherwise, performs a Google search for the given text. "
+        "Trigger: 'open youtube.com', 'google python tutorials', 'browse reddit'"
+    ),
+    category=ToolCategory.WEB_RESEARCH,
+    parameters={"query": {"type": "string", "description": "A URL to open or a search query for Google"}},
 )
 def open_website(query: str | None = None, url: str | None = None, **kwargs: Any) -> str:
     """Opens a website or performs a Google search."""
@@ -275,11 +286,9 @@ def open_website(query: str | None = None, url: str | None = None, **kwargs: Any
     except Exception as e:
         return f"Failed to open browser: {e}"
 
-
 # =============================================================================
 # WIKIPEDIA TOOLS
 # =============================================================================
-
 
 @tool(
     name="wikipedia_search",
@@ -294,7 +303,7 @@ def open_website(query: str | None = None, url: str | None = None, **kwargs: Any
         "Trigger phrases: 'who is ___', 'what is ___', 'explain ___', 'tell me about ___', "
         "'search ___ on Wikipedia', 'Wikipedia: ___'."
     ),
-    category=ToolCategory.INFORMATION,
+    category=ToolCategory.WEB_RESEARCH,
     parameters={
         "query": {
             "type": "string",
@@ -348,7 +357,6 @@ async def wikipedia_search_async(query: str, sentences: int = 3) -> str:
     except Exception as e:
         return f"Error searching Wikipedia: {e}"
 
-
 async def _wikipedia_search_fallback(query: str, session: aiohttp.ClientSession) -> str:
     """Fallback search using Wikipedia's search API."""
     search_api = "https://en.wikipedia.org/w/api.php"
@@ -384,16 +392,20 @@ async def _wikipedia_search_fallback(query: str, session: aiohttp.ClientSession)
     except Exception as e:
         return f"Wikipedia search failed: {e}"
 
-
 # =============================================================================
 # CALCULATION TOOLS
 # =============================================================================
 
-
 @tool(
     name="calculate",
-    description="Evaluate math expressions. Supports: +, -, *, /, **, %, sqrt(). Trigger: '5+5', 'solve ___'",
-    category=ToolCategory.INFORMATION,
+    description=(
+        "Safely evaluates a mathematical expression using Python AST. "
+        "Supports: +, -, *, /, ** (power), % (modulo), sqrt(), abs(), log(), sin(), cos(), tan(). "
+        "You MUST translate natural language into Python math syntax before calling. "
+        "Example: '15% of 5000' -> '5000 * 0.15'. Do NOT pass English words. "
+        "Trigger: '5+5', 'what is 15% of 500', 'solve 500/4', 'square root of 144'"
+    ),
+    category=ToolCategory.CALCULATION,
     parameters={"expression": {"type": "string", "description": "Mathematical expression"}},
 )
 def calculate(expression: str) -> str:
@@ -471,16 +483,17 @@ def calculate(expression: str) -> str:
     except Exception as e:
         return f"Calculation error: {e}"
 
-
 # =============================================================================
 # CONVERSION TOOLS
 # =============================================================================
 
-
 @tool(
     name="convert_temperature",
-    description="Convert temperature units. Trigger: 'convert C to F'",
-    category=ToolCategory.INFORMATION,
+    description=(
+        "Converts temperature between Celsius (C), Fahrenheit (F), and Kelvin (K). "
+        "Trigger: 'convert 100 C to F', '32 fahrenheit to celsius'"
+    ),
+    category=ToolCategory.CALCULATION,
     parameters={
         "value": {"type": "number", "description": "Temperature value"},
         "from_unit": {"type": "string", "description": "Source unit: C, F, K"},
@@ -511,11 +524,13 @@ def convert_temperature(value: float, from_unit: str, to_unit: str) -> str:
 
     return f"{value}° = {result:.2f}° {unit_name}"
 
-
 @tool(
     name="convert_length",
-    description="Convert length units. Trigger: 'mm to cm', 'm to ft', 'km to miles'",
-    category=ToolCategory.INFORMATION,
+    description=(
+        "Converts length between units: mm, cm, m, km, in (inches), ft (feet), yd (yards), mi (miles). "
+        "Trigger: '5 km to miles', '100 cm to inches', 'convert 3 feet to meters'"
+    ),
+    category=ToolCategory.CALCULATION,
     parameters={
         "value": {"type": "number", "description": "Length value"},
         "from_unit": {"type": "string", "description": "Source unit"},
@@ -546,7 +561,6 @@ def convert_length(value: float, from_unit: str, to_unit: str) -> str:
 
     return f"{value} {from_unit} = {result:.4f} {to_unit}"
 
-
 # =============================================================================
 # ENTERTAINMENT TOOLS
 # =============================================================================
@@ -564,29 +578,33 @@ JOKES = [
     ("Why do programmers hate nature?", "It has too many bugs!"),
 ]
 
-
 @tool(
     name="tell_joke",
-    description="Tell a random programming joke. Trigger: 'tell me a joke', 'make me laugh'",
-    category=ToolCategory.INFORMATION,
+    description=(
+        "Returns a random programming/tech joke with setup and punchline. "
+        "Trigger: 'tell me a joke', 'make me laugh', 'something funny'"
+    ),
+    category=ToolCategory.DATETIME,
 )
 def tell_joke() -> str:
     """Returns a random programming joke."""
     setup, punchline = random.choice(JOKES)
     return f"{setup}\n\n{punchline}"
 
-
 # =============================================================================
 # TIMER TOOLS
 # =============================================================================
 
-
 @tool(
     name="set_timer",
-    description="Set a timer. Trigger: 'set timer for 5 minutes'",
-    category=ToolCategory.INFORMATION,
+    description=(
+        "Sets a timer for a specified duration in seconds (max 24 hours). "
+        "Displays a confirmation with formatted duration. "
+        "Trigger: 'set timer for 5 minutes', 'timer 30 seconds', 'remind me in 1 hour'"
+    ),
+    category=ToolCategory.TASK_MANAGER,
     parameters={
-        "duration_seconds": {"type": "integer", "description": "Duration in seconds"},
+        "duration_seconds": {"type": "integer", "description": "Timer duration in seconds (e.g., 300 for 5 minutes)"},
         "message": {"type": "string", "description": "Message when timer completes"},
     },
 )
@@ -610,7 +628,6 @@ async def set_timer_async(duration_seconds: int, message: str = "Timer finished!
         duration_str = f"{duration_seconds}s"
 
     return f"Timer set for {duration_str}. I'll remind you when it's done."
-
 
 def parse_duration(duration_str: str) -> int:
     """Parses a duration string into seconds."""
@@ -639,19 +656,22 @@ def parse_duration(duration_str: str) -> int:
 
     return total_seconds
 
-
 # =============================================================================
 # WEB SEARCH TOOL (via SearchRouter)
 # =============================================================================
 
-
 @tool(
     name="web_search",
-    description="Search the web for current information. Trigger: 'search for', 'look up', 'find information about', 'what happened'",
-    category=ToolCategory.INFORMATION,
+    description=(
+        "Searches the web for current, real-time information using DuckDuckGo with Tavily fallback. "
+        "Returns titles, snippets, and source URLs from top results. "
+        "Use for ANY question about current events, recent news, or topics not in training data. "
+        "Trigger: 'search for python 3.13', 'look up latest iPhone', 'what happened in the news'"
+    ),
+    category=ToolCategory.WEB_RESEARCH,
     parameters={
-        "query": {"type": "string", "description": "Search query"},
-        "depth": {"type": "string", "description": "Search depth: 'quick' (default) or 'deep'"},
+        "query": {"type": "string", "description": "The search query - be specific for better results"},
+        "depth": {"type": "string", "description": "'quick' (default, fast DuckDuckGo) or 'deep' (Tavily deep research)"},
     },
 )
 async def web_search_async(query: str, depth: str = "quick") -> str:
@@ -668,11 +688,9 @@ async def web_search_async(query: str, depth: str = "quick") -> str:
         logger.exception("web_search failed: %s", type(e).__name__)
         return f"Search failed: {e}"
 
-
 # =============================================================================
 # TOOL COLLECTION
 # =============================================================================
-
 
 def get_info_tools() -> list[Tool]:
     """Get all information tools for manual registration."""
