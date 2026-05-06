@@ -114,15 +114,30 @@ class ArgumentExtractor:
             logger.debug("LLM arg extracted by %s for %s", provider, tool_name)
 
             clean = raw_text.strip()
+            # More robust markdown fence stripping
             if clean.startswith("```"):
-                clean = clean.split("\n", 1)[1] if "\n" in clean else clean[3:]
-            if clean.endswith("```"):
-                clean = clean[:-3]
+                lines = clean.split("\n")
+                if len(lines) > 1:
+                    clean = "\n".join(lines[1:])
+                if clean.endswith("```"):
+                    clean = clean[:-3]
             clean = clean.strip()
+            # If the model still returned some conversational text before the JSON
+            if not clean.startswith("{"):
+                start_idx = clean.find("{")
+                if start_idx != -1:
+                    clean = clean[start_idx:]
+            if not clean.endswith("}"):
+                end_idx = clean.rfind("}")
+                if end_idx != -1:
+                    clean = clean[: end_idx + 1]
+
             parsed: dict = json.loads(clean)
 
-            # Keep only keys that match the schema; coerce values to strings
-            valid_keys = list(schema.keys())
+            # Keep only keys that match the schema's properties
+            properties_dict = schema.get("properties", schema)
+            valid_keys = list(properties_dict.keys())
+            
             filtered = {
                 k: str(v).strip()
                 for k, v in parsed.items()
@@ -130,6 +145,9 @@ class ArgumentExtractor:
             }
             return filtered if filtered else None
 
+        except json.JSONDecodeError as exc:
+            logger.warning("JSON decode failed in LLM extraction for '%s': %s. Raw: %s", tool_name, exc, raw_text)
+            return None
         except Exception as exc:
             logger.warning("LLM arg extraction failed for '%s': %s", tool_name, exc)
             return None
