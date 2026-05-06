@@ -116,8 +116,16 @@ class Tool:
         return f"Execute {self.name}({params})"
 
     def __post_init__(self) -> None:
-        """Auto-detect if function is async."""
+        """Auto-detect if function is async and standardize parameter schemas."""
         self.is_async = asyncio.iscoroutinefunction(self.function)
+
+        # Ensure parameters are always wrapped in a standard JSON Schema root
+        # If the tool author just provided a properties dict, wrap it.
+        if self.parameters and self.parameters.get("type") != "object":
+            self.parameters = {
+                "type": "object",
+                "properties": self.parameters
+            }
 
     def to_definition(self) -> ToolDefinition:
         """Convert to domain ToolDefinition model."""
@@ -141,7 +149,9 @@ class Tool:
         properties = {}
         required = []
 
-        for param_name, param_info in self.parameters.items():
+        raw_props = self.parameters.get("properties", {}) if self.parameters else {}
+
+        for param_name, param_info in raw_props.items():
             if isinstance(param_info, dict):
                 # FIXED: Capitalize type for Gemini SDK (string -> STRING)
                 p_type = param_info.get("type", "string").upper()
