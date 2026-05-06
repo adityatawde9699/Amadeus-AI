@@ -59,7 +59,12 @@ def _check_windows_office() -> tuple[bool, str | None]:
 
 @tool(
     name="create_excel_spreadsheet",
-    description="Create a new Excel spreadsheet with specified data. Trigger: 'create excel', 'make spreadsheet'",
+    description=(
+        "Creates a new Excel spreadsheet (.xlsx) with specified column headers and row data using "
+        "the local Microsoft Excel application (Windows only, requires pywin32). "
+        "Saves to the agent workspace directory. "
+        "Trigger: 'create excel', 'make spreadsheet', 'new excel file with data'"
+    ),
     category=ToolCategory.PRODUCTIVITY,
     parameters={
         "file_name": {"type": "string", "description": "Name of the Excel file to create"},
@@ -134,7 +139,12 @@ create_excel_spreadsheet._tool_metadata.get_preview = create_excel_preview  # ty
 
 @tool(
     name="create_word_document",
-    description="Create a new Word document. Trigger: 'create word doc', 'make doc'",
+    description=(
+        "Creates a new Word document (.docx) with a title and content using "
+        "the local Microsoft Word application (Windows only, requires pywin32). "
+        "Saves to the agent workspace directory. "
+        "Trigger: 'create word doc', 'make a document', 'write a report', 'new word file'"
+    ),
     category=ToolCategory.PRODUCTIVITY,
     parameters={
         "file_name": {"type": "string", "description": "Name of the document"},
@@ -197,7 +207,11 @@ create_word_document._tool_metadata.get_preview = create_word_preview  # type: i
 
 @tool(
     name="send_outlook_email",
-    description="Send an email via the local Outlook desktop application. Trigger: 'send outlook email'",
+    description=(
+        "Sends an email using the locally installed Microsoft Outlook desktop application "
+        "(Windows only, requires pywin32). Use this when the user specifically wants to send via Outlook. "
+        "Trigger: 'send outlook email', 'email via outlook', 'use outlook to send mail'"
+    ),
     category=ToolCategory.COMMUNICATION,
     parameters={
         "to": {"type": "string", "description": "Recipient email address"},
@@ -236,7 +250,11 @@ send_outlook_email._tool_metadata.get_preview = send_email_preview  # type: igno
 
 @tool(
     name="read_outlook_emails",
-    description="Read the most recent emails from the local Outlook inbox. Trigger: 'read emails', 'latest emails'",
+    description=(
+        "Reads the most recent emails from the local Outlook desktop inbox (Windows only, requires pywin32). "
+        "Returns sender, subject, date, and a 200-character body preview for each email. "
+        "Trigger: 'read outlook emails', 'latest emails from outlook', 'check outlook inbox'"
+    ),
     category=ToolCategory.COMMUNICATION,
     parameters={
         "count": {"type": "integer", "description": "Number of recent emails to read (default 5)"},
@@ -292,7 +310,12 @@ read_outlook_emails._tool_metadata.get_preview = read_outlook_emails_preview  # 
 
 @tool(
     name="read_excel_spreadsheet",
-    description="Read data from an Excel spreadsheet. Trigger: 'read excel', 'get data from spreadsheet'",
+    description=(
+        "Reads data from an existing Excel spreadsheet (.xlsx) using the local Excel application "
+        "(Windows only, requires pywin32). Returns up to 20 rows of data formatted as text. "
+        "Supports specifying a sheet name and row limit. "
+        "Trigger: 'read excel file', 'get data from spreadsheet', 'open and read this excel'"
+    ),
     category=ToolCategory.PRODUCTIVITY,
     parameters={
         "file_path": {

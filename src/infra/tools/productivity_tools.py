@@ -123,15 +123,22 @@ def build_task_tools(task_repo: ITaskRepository) -> list[Tool]:
     return [
         Tool(
             name="add_task",
-            description="Create a new task. Trigger: 'add task', 'create task', 'new todo'",
-            category=ToolCategory.PRODUCTIVITY,
+            description=(
+                "Creates a new task/todo item and saves it to the database. "
+                "Trigger: 'add task buy groceries', 'create todo', 'new task', 'remind me to'"
+            ),
+            category=ToolCategory.TASK_MANAGER,
             function=add_task,
             parameters={"task_content": {"type": "string", "description": "Task description"}},
         ),
         Tool(
             name="list_tasks",
-            description="List all tasks. Trigger: 'show tasks', 'my todos', 'list tasks'",
-            category=ToolCategory.PRODUCTIVITY,
+            description=(
+                "Lists all tasks from the database. Can filter by status: 'pending', 'completed', or 'all'. "
+                "Defaults to showing all tasks. "
+                "Trigger: 'show my tasks', 'list todos', 'pending tasks', 'what do I need to do'"
+            ),
+            category=ToolCategory.TASK_MANAGER,
             function=list_tasks,
             parameters={
                 "status_filter": {
@@ -142,8 +149,11 @@ def build_task_tools(task_repo: ITaskRepository) -> list[Tool]:
         ),
         Tool(
             name="complete_task",
-            description="Mark a task as complete. Trigger: 'complete task', 'finish task', 'done with'",
-            category=ToolCategory.PRODUCTIVITY,
+            description=(
+                "Marks a task as completed by ID or partial content match. "
+                "Trigger: 'complete task buy groceries', 'mark task done', 'finish task 3', 'I did the laundry'"
+            ),
+            category=ToolCategory.TASK_MANAGER,
             function=complete_task,
             parameters={
                 "identifier": {"type": "string", "description": "Task ID or partial content"}
@@ -151,8 +161,11 @@ def build_task_tools(task_repo: ITaskRepository) -> list[Tool]:
         ),
         Tool(
             name="get_task_summary",
-            description="Get task statistics. Trigger: 'task summary', 'how many tasks'",
-            category=ToolCategory.PRODUCTIVITY,
+            description=(
+                "Returns a summary of task statistics: total count, pending count, and completed count. "
+                "Trigger: 'task summary', 'how many tasks', 'task stats', 'productivity report'"
+            ),
+            category=ToolCategory.TASK_MANAGER,
             function=get_task_summary,
         ),
     ]
@@ -227,7 +240,7 @@ def build_pomodoro_tools(pomodoro_repo: IPomodoroRepository) -> list[Tool]:
         Tool(
             name="start_pomodoro",
             description="Start a Pomodoro timer (25 min focus). Trigger: 'start pomodoro', 'pomodoro', 'focus timer'",
-            category=ToolCategory.PRODUCTIVITY,
+            category=ToolCategory.TASK_MANAGER,
             function=start_pomodoro,
             parameters={
                 "task": {"type": "string", "description": "What you're working on"},
@@ -240,13 +253,13 @@ def build_pomodoro_tools(pomodoro_repo: IPomodoroRepository) -> list[Tool]:
         Tool(
             name="stop_pomodoro",
             description="Stop the current Pomodoro session. Trigger: 'stop pomodoro', 'cancel timer'",
-            category=ToolCategory.PRODUCTIVITY,
+            category=ToolCategory.TASK_MANAGER,
             function=stop_pomodoro,
         ),
         Tool(
             name="pomodoro_status",
             description="Check Pomodoro session status. Trigger: 'pomodoro status', 'how much time left'",
-            category=ToolCategory.PRODUCTIVITY,
+            category=ToolCategory.TASK_MANAGER,
             function=pomodoro_status,
         ),
     ]
@@ -263,7 +276,7 @@ from sqlalchemy import select
 @tool(
     name="create_note",
     description="Create a new note. Trigger: 'create note', 'take note', 'new note'",
-    category=ToolCategory.PRODUCTIVITY,
+    category=ToolCategory.TASK_MANAGER,
     parameters={
         "title": {"type": "string", "description": "Note title"},
         "content": {"type": "string", "description": "Note content"},
@@ -289,7 +302,7 @@ async def create_note(title: str | None = None, content: str | None = None, **kw
 @tool(
     name="list_notes",
     description="List all notes. Trigger: 'show notes', 'my notes'",
-    category=ToolCategory.PRODUCTIVITY,
+    category=ToolCategory.TASK_MANAGER,
 )
 async def list_notes(**kwargs: Any) -> str:
     try:
@@ -318,7 +331,7 @@ async def list_notes(**kwargs: Any) -> str:
 @tool(
     name="get_note",
     description="Get a specific note by ID or title. Trigger: 'read note', 'show note'",
-    category=ToolCategory.PRODUCTIVITY,
+    category=ToolCategory.TASK_MANAGER,
     parameters={"identifier": {"type": "string", "description": "Note ID or title"}},
 )
 async def get_note(identifier: str | None = None, **kwargs: Any) -> str:
@@ -347,7 +360,7 @@ async def get_note(identifier: str | None = None, **kwargs: Any) -> str:
 @tool(
     name="add_reminder",
     description="Create a reminder. Trigger: 'remind me', 'set reminder'",
-    category=ToolCategory.PRODUCTIVITY,
+    category=ToolCategory.TASK_MANAGER,
     parameters={
         "title": {"type": "string", "description": "Reminder title"},
         "time": {"type": "string", "description": "When (e.g. 'in 1 hour', 'tomorrow 9am')"},
@@ -384,7 +397,7 @@ async def add_reminder(title: str | None = None, time: str | None = None, **kwar
 @tool(
     name="list_reminders",
     description="List all reminders. Trigger: 'show reminders', 'my reminders'",
-    category=ToolCategory.PRODUCTIVITY,
+    category=ToolCategory.TASK_MANAGER,
 )
 async def list_reminders(**kwargs: Any) -> str:
     try:

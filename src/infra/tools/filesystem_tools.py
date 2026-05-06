@@ -41,10 +41,15 @@ def _safe_resolve(user_path: str) -> Path | None:
 
 @tool(
     name="fs_list_directory",
-    description="List files and directories in the thoroughly sandboxed agent workspace.",
-    category=ToolCategory.SYSTEM,
+    description=(
+        "Lists all files and subdirectories in the sandboxed agent workspace (max 50 entries). "
+        "Shows file sizes and directory indicators. Only works within the agent workspace — "
+        "cannot access files outside this sandbox. "
+        "Trigger: 'list workspace files', 'show agent directory', 'what files do you have'"
+    ),
+    category=ToolCategory.FILE_SYSTEM,
     parameters={
-        "path": {"type": "string", "description": "Relative path within workspace", "default": "."}
+        "path": {"type": "string", "description": "Relative path within workspace (use '.' for root)", "default": "."}
     },
     requires_confirmation=False,
 )
@@ -70,8 +75,12 @@ async def fs_list_directory(path: str = ".") -> str:
 
 @tool(
     name="fs_read_file",
-    description="Read the contents of a text file in the sandboxed agent workspace.",
-    category=ToolCategory.SYSTEM,
+    description=(
+        "Reads and returns the text content of a file in the sandboxed agent workspace "
+        "(truncated at 5000 characters for large files). Cannot access files outside the workspace. "
+        "Trigger: 'read file X', 'show me the contents of', 'cat this file'"
+    ),
+    category=ToolCategory.FILE_SYSTEM,
     parameters={"path": {"type": "string", "description": "Relative path to file"}},
     requires_confirmation=False,
 )
@@ -94,8 +103,12 @@ async def fs_read_file(path: str) -> str:
 
 @tool(
     name="fs_write_file",
-    description="Write content to a file in the sandboxed agent workspace.",
-    category=ToolCategory.SYSTEM,
+    description=(
+        "Writes text content to a file in the sandboxed agent workspace. Creates parent "
+        "directories if they don't exist. Requires confirmation before writing (destructive). "
+        "Trigger: 'write to file', 'save this to a file', 'create a text file'"
+    ),
+    category=ToolCategory.FILE_SYSTEM,
     parameters={
         "path": {"type": "string", "description": "Relative path to file"},
         "content": {"type": "string", "description": "Content to write"},
@@ -118,8 +131,12 @@ async def fs_write_file(path: str, content: str) -> str:
 
 @tool(
     name="fs_search_files",
-    description="Search for files by name pattern in the sandboxed agent workspace.",
-    category=ToolCategory.SYSTEM,
+    description=(
+        "Searches for files by name pattern within the sandboxed agent workspace. "
+        "Returns up to 20 matching file paths. Uses glob-style matching. "
+        "Trigger: 'search workspace for', 'find file in workspace', 'locate workspace file'"
+    ),
+    category=ToolCategory.FILE_SYSTEM,
     parameters={
         "query": {"type": "string", "description": "Search pattern"},
         "path": {"type": "string", "description": "Relative directory to search", "default": "."},

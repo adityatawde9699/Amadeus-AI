@@ -68,8 +68,13 @@ def _assert_in_allowed_dirs(path):
 
 @tool(
     name="open_program",
-    description="Launch desktop apps (Chrome/VSCode/Word). Trigger: 'open app', 'start ___'",
-    category=ToolCategory.SYSTEM,
+    description=(
+        "Launches any installed desktop application by name using fuzzy matching. "
+        "Works with all installed programs (Chrome, VSCode, Word, VLC, Spotify, etc.). "
+        "Uses the AppRegistry to find the closest match for the given name. "
+        "Trigger: 'open chrome', 'launch vscode', 'start spotify', 'open vlc'"
+    ),
+    category=ToolCategory.APP_CONTROL,
     parameters={"app_name": {"type": "string", "description": "Application name to open"}},
 )
 def open_program(
@@ -80,7 +85,26 @@ def open_program(
     if not target_app:
         return "Error: No application name provided."
 
-    app_exec = app_registry.get_executable(target_app)
+    # Direct path fallback for common apps
+    _COMMON_APPS = {
+        "vlc": r"C:\Program Files\VideoLAN\VLC\vlc.exe",
+        "notepad": "notepad.exe",
+        "calculator": "calc.exe",
+    }
+    lower = target_app.lower()
+    if lower in _COMMON_APPS:
+        path = _COMMON_APPS[lower]
+        try:
+            if platform.system() == "Windows":
+                try:
+                    os.startfile(path)
+                except (FileNotFoundError, OSError):
+                    subprocess.Popen([path], shell=False)
+                return f"Opening {target_app}..."
+        except Exception:
+            pass  # fall through to registry
+
+    app_exec = app_registry.get_executable(target_app, score_cutoff=65)
     if not app_exec:
         return (
             f"Cannot find '{target_app}' on this system. "
@@ -116,10 +140,12 @@ def open_program(
 @tool(
     name="scan_system_applications",
     description=(
-        "Forces a deep scan of the local OS to find newly installed applications "
-        "and rebuild the app cache. Trigger: 'scan apps', 'find new apps'"
+        "Forces a deep scan of the local OS to discover all installed applications "
+        "and rebuilds the internal app cache. Run this after installing new software "
+        "so Amadeus can find and launch it. "
+        "Trigger: 'scan apps', 'refresh app list', 'find new programs', 'update app registry'"
     ),
-    category=ToolCategory.SYSTEM,
+    category=ToolCategory.APP_CONTROL,
     parameters={},
 )
 def scan_system_applications(**kwargs: Any) -> str:
@@ -134,8 +160,12 @@ def scan_system_applications(**kwargs: Any) -> str:
 
 @tool(
     name="terminate_program",
-    description="Kill/stop app. Trigger: 'close app', 'kill process'",
-    category=ToolCategory.SYSTEM,
+    description=(
+        "Terminates all running processes matching the given name. WARNING: kills ALL matches "
+        "(e.g., 'chrome' will close every Chrome window). Requires confirmation before executing. "
+        "Trigger: 'close chrome', 'kill notepad', 'stop vlc', 'terminate firefox'"
+    ),
+    category=ToolCategory.APP_CONTROL,
     parameters={"process_name": {"type": "string", "description": "Process name to terminate"}},
     requires_confirmation=True,
 )
@@ -176,8 +206,13 @@ def terminate_program(
 
 @tool(
     name="search_file",
-    description="Find files by name (returns path). Trigger: 'find file', 'where is file', 'locate ___'",
-    category=ToolCategory.SYSTEM,
+    description=(
+        "Searches for files by name or pattern across user directories (Documents, Desktop, Downloads). "
+        "Returns file paths for matches. Supports glob patterns (e.g., '*.pdf'). "
+        "Does NOT search hidden directories or system folders for security. "
+        "Trigger: 'find file report.pdf', 'where is my resume', 'locate *.xlsx', 'search for notes'"
+    ),
+    category=ToolCategory.FILE_SYSTEM,
     parameters={"file_name": {"type": "string", "description": "File name or pattern to search"}},
 )
 def search_file(file_name: str | None = None, name: str | None = None, **kwargs: Any) -> str:
@@ -241,8 +276,12 @@ def search_file(file_name: str | None = None, name: str | None = None, **kwargs:
 
 @tool(
     name="copy_file",
-    description="Duplicate file. Trigger: 'copy file'",
-    category=ToolCategory.SYSTEM,
+    description=(
+        "Copies a file from source path to destination path. Both paths must be within "
+        "allowed directories (Documents, Desktop, Downloads). Creates parent directories if needed. "
+        "Trigger: 'copy file X to Y', 'duplicate this file', 'make a copy of'"
+    ),
+    category=ToolCategory.FILE_SYSTEM,
     parameters={
         "source_path": {"type": "string", "description": "Source file path"},
         "destination_path": {"type": "string", "description": "Destination file path"},
@@ -284,8 +323,12 @@ def copy_file(
 
 @tool(
     name="move_file",
-    description="Move file. Trigger: 'move file'",
-    category=ToolCategory.SYSTEM,
+    description=(
+        "Moves a file from source path to destination path (cut + paste). Both paths must be "
+        "within allowed directories. Creates parent directories if needed. "
+        "Trigger: 'move file X to Y', 'relocate this file', 'transfer file to Downloads'"
+    ),
+    category=ToolCategory.FILE_SYSTEM,
     parameters={
         "source_path": {"type": "string", "description": "Source file path"},
         "destination_path": {"type": "string", "description": "Destination file path"},
@@ -327,7 +370,11 @@ def move_file(
 
 @tool(
     name="delete_file",
-    description="Delete file permanently. Trigger: 'delete file'",
+    description=(
+        "Deletes a file permanently (a backup copy is saved to the temp folder for recovery). "
+        "Requires confirmation before executing. "
+        "Trigger: 'delete file X', 'remove this file', 'trash report.pdf'"
+    ),
     category=ToolCategory.SYSTEM,
     parameters={"file_path": {"type": "string", "description": "Path to file to delete"}},
     requires_confirmation=True,
@@ -361,8 +408,12 @@ def delete_file(file_path: str | None = None, path: str | None = None, **kwargs:
 
 @tool(
     name="create_folder",
-    description="Create folder. Trigger: 'make folder'",
-    category=ToolCategory.SYSTEM,
+    description=(
+        "Creates a new folder at the specified path. Path must be within allowed directories "
+        "(Documents, Desktop, Downloads). Creates nested directories if needed. "
+        "Trigger: 'create folder Projects', 'make new directory', 'mkdir notes'"
+    ),
+    category=ToolCategory.FILE_SYSTEM,
     parameters={"folder_name": {"type": "string", "description": "Folder name or path"}},
 )
 def create_folder(folder_name: str | None = None, name: str | None = None, **kwargs: Any) -> str:

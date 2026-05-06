@@ -23,10 +23,12 @@ logger = logging.getLogger(__name__)
 @tool(
     name="set_volume",
     description=(
-        "Set system volume to a percentage (0-100). "
-        "Trigger: 'set volume to 50', 'volume 70%', 'increase volume', 'mute'"
+        "Sets the system audio volume to a percentage (0-100). "
+        "Special values: -1 to mute, -2 to unmute. "
+        "Works on Windows (via pycaw), Linux (amixer), and macOS. "
+        "Trigger: 'set volume to 50', 'volume 70%', 'mute', 'unmute', 'make it louder'"
     ),
-    category=ToolCategory.SYSTEM,
+    category=ToolCategory.OS_CONTROL,
     parameters={
         "level": {
             "type": "integer",
@@ -74,46 +76,70 @@ def set_volume(level: int = 50, **kwargs: Any) -> str:
         except Exception as e:
             logger.warning("pycaw volume control failed: %s", e)
 
-        # Fallback: PowerShell nircmd-style
+        # Final fallback: PowerShell with Audio API
         try:
             clamped = max(0, min(100, level))
-            # Use Windows built-in audio API via PowerShell
-            ps_script = (
-                f"$obj = New-Object -ComObject WScript.Shell; "
-                f"$vol = {clamped}; "
-                f"Add-Type -TypeDefinition '"
-                f"using System.Runtime.InteropServices; "
-                f"public class AudioHelper {{ "
-                f"[DllImport(\"user32.dll\")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, int dwExtraInfo); "
-                f"}}'; "
-            )
-            # Simpler approach: nircmd or SoundVolumeView if available
-            nircmd_result = subprocess.run(
-                ["nircmd.exe", "setsysvolume", str(int(clamped * 655.35))],
-                capture_output=True,
-                timeout=5,
-            )
-            if nircmd_result.returncode == 0:
-                return f"Volume set to {clamped}%."
+            ps_script = f"""
+$code = @"
+using System.Runtime.InteropServices;
+[Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface IAudioEndpointVolume {{
+    int f(); int g(); int h(); int i();
+    int SetMasterVolumeLevelScalar(float fLevel, System.Guid pEventContext);
+    int j();
+    int GetMasterVolumeLevelScalar(out float pfLevel);
+    int k(); int l(); int m(); int n();
+    int SetMute([MarshalAs(UnmanagedType.Bool)] bool bMute, System.Guid pEventContext);
+    int GetMute(out bool pbMute);
+}}
+[Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface IMMDevice {{
+    int Activate(ref System.Guid id, int clsCtx, int activationParams, out IAudioEndpointVolume aev);
+}}
+[Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface IMMDeviceEnumerator {{
+    int f();
+    int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice endpoint);
+}}
+[ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] public class MMDeviceEnumeratorComObject {{ }}
+public class Audio {{
+    static IAudioEndpointVolume Vol() {{
+        var enumerator = new MMDeviceEnumeratorComObject() as IMMDeviceEnumerator;
+        IMMDevice dev = null;
+        enumerator.GetDefaultAudioEndpoint(0, 1, out dev);
+        IAudioEndpointVolume epv = null;
+        var epvid = typeof(IAudioEndpointVolume).GUID;
+        dev.Activate(ref epvid, 23, 0, out epv);
+        return epv;
+    }}
+    public static float Volume {{
+        get {{ float v = -1; Vol().GetMasterVolumeLevelScalar(out v); return v; }}
+        set {{ Vol().SetMasterVolumeLevelScalar(value, System.Guid.Empty); }}
+    }}
+    public static bool Mute {{
+        get {{ bool m = false; Vol().GetMute(out m); return m; }}
+        set {{ Vol().SetMute(value, System.Guid.Empty); }}
+    }}
+}}
+"@
+Add-Type -TypeDefinition $code
+"""
+            if level == -1:
+                ps_script += "\n[Audio]::Mute = $true"
+            elif level == -2:
+                ps_script += "\n[Audio]::Mute = $false"
+            else:
+                ps_script += f"\n[Audio]::Volume = {clamped / 100.0}"
 
-            # Final fallback: PowerShell with WshShell (limited but works)
-            ps = (
-                f"[System.Media.SystemSounds]::Asterisk.Play(); "
-                f"$wsh = New-Object -ComObject WScript.Shell; "
-            )
-            subprocess.run(
-                [
-                    "powershell",
-                    "-Command",
-                    f"$Volume = {clamped}; "
-                    "[void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms'); "
-                    "for($i=0;$i -lt 50;$i++){[System.Windows.Forms.SendKeys]::SendWait([char]174)}; "
-                    f"for($i=0;$i -lt ($Volume/2);$i++){{[System.Windows.Forms.SendKeys]::SendWait([char]175)}}",
-                ],
+            result = subprocess.run(
+                ["powershell", "-Command", ps_script],
                 timeout=10,
                 capture_output=True,
+                text=True,
             )
-            return f"Volume adjusted to approximately {clamped}%."
+            if result.returncode == 0:
+                return f"Volume adjusted to {clamped}%." if level >= 0 else "Mute state toggled."
+            return f"Failed to set volume via PowerShell. Output: {result.stderr.strip() or result.stdout.strip()}"
         except Exception as e:
             return f"Failed to set volume: {e}"
 
@@ -138,8 +164,11 @@ def set_volume(level: int = 50, **kwargs: Any) -> str:
 
 @tool(
     name="get_volume",
-    description="Get current system volume level. Trigger: 'what is the volume', 'current volume'",
-    category=ToolCategory.SYSTEM,
+    description=(
+        "Returns the current system volume level as a percentage (0-100) and muted state. "
+        "Trigger: 'what is the volume', 'current volume', 'how loud is it', 'am I muted'"
+    ),
+    category=ToolCategory.OS_CONTROL,
 )
 def get_volume(**kwargs: Any) -> str:
     """Get current system volume."""
@@ -175,10 +204,11 @@ def get_volume(**kwargs: Any) -> str:
 @tool(
     name="set_brightness",
     description=(
-        "Set screen brightness to a percentage (0-100). "
-        "Trigger: 'set brightness to 70', 'brightness 50%', 'dim screen', 'increase brightness'"
+        "Sets screen brightness to a percentage (0-100). "
+        "Works on Windows (WMI), Linux (xrandr), and macOS. May require admin rights on some systems. "
+        "Trigger: 'set brightness to 70', 'brightness 50%', 'dim screen', 'make screen brighter'"
     ),
-    category=ToolCategory.SYSTEM,
+    category=ToolCategory.OS_CONTROL,
     parameters={
         "level": {
             "type": "integer",
@@ -266,10 +296,11 @@ def set_brightness(level: int = 70, **kwargs: Any) -> str:
 @tool(
     name="take_screenshot",
     description=(
-        "Capture a screenshot of the current screen. "
-        "Trigger: 'take screenshot', 'screenshot', 'capture screen', 'what is on my screen'"
+        "Captures a screenshot of the entire screen and saves it as a PNG file to the Downloads folder. "
+        "Optionally accepts a custom filename (without extension). "
+        "Trigger: 'take screenshot', 'capture my screen', 'screenshot', 'what is on my screen'"
     ),
-    category=ToolCategory.SYSTEM,
+    category=ToolCategory.OS_CONTROL,
     parameters={
         "filename": {
             "type": "string",
@@ -383,10 +414,11 @@ def take_screenshot(filename: str | None = None, **kwargs: Any) -> str:
 @tool(
     name="list_open_apps",
     description=(
-        "List currently running/open applications and windows. "
-        "Trigger: \"what's open\", 'show open apps', 'what programs are running', 'list windows'"
+        "Lists all currently running user-facing applications (excludes system processes). "
+        "Shows up to 20 app names. Works on Windows, macOS, and Linux. "
+        "Trigger: 'what apps are open', 'show running programs', 'list open windows'"
     ),
-    category=ToolCategory.SYSTEM,
+    category=ToolCategory.OS_CONTROL,
 )
 def list_open_apps(**kwargs: Any) -> str:
     """List all currently open/visible application windows."""

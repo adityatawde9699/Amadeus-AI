@@ -144,7 +144,7 @@ def _build_tool_registry() -> ToolRegistry:
                     func=td["function"],
                     name=td["name"],
                     description=td["description"],
-                    category=ToolCategory.INFORMATION,
+                    category=ToolCategory.WEB_RESEARCH,
                     parameters=td.get("parameters", {}),
                 )
         except Exception as e:

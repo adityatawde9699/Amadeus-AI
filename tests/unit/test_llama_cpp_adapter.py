@@ -302,23 +302,17 @@ async def test_get_llm_skips_flash_attn_when_not_supported(
         "use_mlock",
         "verbose",
     ]
-    mock_llama_cls.__init__ = MagicMock()
-    mock_llama_cls.__init__.__func__ = MagicMock()
 
     mock_module = MagicMock()
     mock_module.Llama = mock_llama_cls
 
     import inspect as _inspect
-
-    def patched_signature(obj: Any) -> Any:
-        # Return a signature that only includes basic params
-        sig = _inspect.signature(
-            lambda model_path, n_threads, n_ctx, n_batch, use_mmap, use_mlock, verbose: None
-        )
-        return sig
+    fake_sig = _inspect.signature(
+        lambda model_path, n_threads, n_ctx, n_batch, use_mmap, use_mlock, verbose: None
+    )
 
     with patch.dict("sys.modules", {"llama_cpp": mock_module}):
-        with patch("inspect.signature", side_effect=patched_signature):
+        with patch("inspect.signature", return_value=fake_sig):
             await adapter._get_llm()
 
     # flash_attn / type_k / type_v must NOT be in the call

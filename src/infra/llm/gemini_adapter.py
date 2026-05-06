@@ -300,13 +300,14 @@ Guidelines:
             for param_name, param_info in tool.parameters.items():
                 if isinstance(param_info, dict):
                     properties[param_name] = {
-                        "type": param_info.get("type", "string"),
+                        "type": str(param_info.get("type", "string")).upper(),
                         "description": param_info.get("description", ""),
                     }
-                    if param_info.get("required", False):
+                    # By default assume parameters are required unless specified False
+                    if param_info.get("required", True):
                         required.append(param_name)
                 else:
-                    properties[param_name] = {"type": "string"}
+                    properties[param_name] = {"type": "STRING"}
 
             gemini_tools.append(
                 {
@@ -315,7 +316,7 @@ Guidelines:
                             "name": tool.name,
                             "description": tool.description,
                             "parameters": {
-                                "type": "object",
+                                "type": "OBJECT",
                                 "properties": properties,
                                 "required": required,
                             },

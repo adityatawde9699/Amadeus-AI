@@ -30,7 +30,7 @@ class TestCycleDetection:
 
     def _make_registry_executor(self):
         from src.app.services.tool_registry import ToolRegistry
-        from src.infra.tools.base import ToolExecutor, Tool
+        from src.infra.tools.base import ToolExecutor, Tool, ToolCategory
 
         registry = ToolRegistry()
         executor = ToolExecutor()
@@ -43,6 +43,7 @@ class TestCycleDetection:
             name="web_search",
             description="search",
             function=web_search,
+            category=ToolCategory.RESEARCH,
             parameters={"query": {"type": "string"}},
         )
         registry.register(t)
@@ -114,7 +115,7 @@ class TestSynthesizeSuccessFlag:
         """When every observation starts with 'Error', result.success must be False."""
         from src.app.services.agent_loop import ReActAgent
         from src.app.services.tool_registry import ToolRegistry
-        from src.infra.tools.base import ToolExecutor, Tool
+        from src.infra.tools.base import ToolExecutor, Tool, ToolCategory
 
         registry = ToolRegistry()
         executor = ToolExecutor()
@@ -126,6 +127,7 @@ class TestSynthesizeSuccessFlag:
             name="broken_tool",
             description="always errors",
             function=broken_tool,
+            category=ToolCategory.SYSTEM,
             parameters={"q": {"type": "string"}},
         ))
 
@@ -252,6 +254,8 @@ class TestOrchestratorShutdown:
 
         # Shutdown must cancel it cleanly
         await orchestrator.shutdown()
+        # Yield to the event loop so the cancellation can be finalized
+        await asyncio.sleep(0)
 
         assert orchestrator._worker_task.done(), "Worker task must be done after shutdown"
         assert orchestrator._worker_task.cancelled(), "Worker task must be cancelled"
@@ -285,7 +289,7 @@ class TestHITLDenyByDefault:
     @pytest.mark.asyncio
     async def test_destructive_tool_denied_without_callback(self):
         """execute() must return success=False for requires_confirmation tools when callback=None."""
-        from src.infra.tools.base import Tool, ToolExecutor
+        from src.infra.tools.base import Tool, ToolExecutor, ToolCategory
 
         def delete_file(file_path: str) -> str:
             return f"deleted {file_path}"
@@ -294,6 +298,7 @@ class TestHITLDenyByDefault:
             name="delete_file",
             description="delete a file",
             function=delete_file,
+            category=ToolCategory.SYSTEM,
             parameters={"file_path": {"type": "string"}},
             requires_confirmation=True,
         )

@@ -621,6 +621,36 @@ class QdrantMemoryService:
             logger.warning("Qdrant session clear failed: %s", exc)
             return 0
 
+    async def delete_by_text(self, text: str) -> int:
+        """
+        Remove memories that exactly match the given text.
+        Useful for the agent's 'forget_core_memory' tool.
+        """
+        if not self._enabled or not self._initialized:
+            return 0
+        try:
+            from qdrant_client.models import FieldCondition, Filter, MatchValue
+            count_result = await self._client.count(
+                collection_name=self._settings.CHROMA_COLLECTION_NAME,
+                count_filter=Filter(
+                    must=[FieldCondition(key="text", match=MatchValue(value=text))]
+                ),
+            )
+            count = count_result.count
+            if count > 0:
+                await self._client.delete(
+                    collection_name=self._settings.CHROMA_COLLECTION_NAME,
+                    points_selector=Filter(
+                        must=[FieldCondition(key="text", match=MatchValue(value=text))]
+                    ),
+                )
+                logger.info("Deleted %d memories matching text='%s'", count, text[:20])
+                self._flash_cache.invalidate()
+            return int(count)
+        except Exception as exc:
+            logger.warning("Qdrant delete_by_text failed: %s", exc)
+            return 0
+
 
     @property
     def is_enabled(self) -> bool:

@@ -20,6 +20,7 @@ Usage:
 import asyncio
 import inspect
 import logging
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -45,12 +46,37 @@ F = TypeVar("F", bound=Callable[..., Any])
 
 
 class ToolCategory(StrEnum):
-    """Categories for organizing tools."""
+    """Fine-grained categories for tool routing precision.
 
-    SYSTEM = "system"  # Hardware, OS, files
-    INFORMATION = "information"  # Web, search, calculations
-    PRODUCTIVITY = "productivity"  # Tasks, notes, reminders, calendar
-    COMMUNICATION = "communication"  # Future: email, messaging
+    These are used by both the SVM category pre-filter and the sentence
+    transformer cosine-similarity stage to narrow the candidate tool pool.
+    """
+
+    # --- OS / Hardware ---
+    APP_CONTROL = "app_control"    # open_program, terminate_program, list_open_apps
+    FILE_SYSTEM = "file_system"    # search_file, copy_file, move_file, delete_file, create_folder
+    OS_CONTROL  = "os_control"     # set_volume, get_volume, set_brightness, take_screenshot
+
+    # --- Information ---
+    WEB_RESEARCH = "web_research"  # wikipedia_search, open_website, get_news, web_search
+    WEATHER      = "weather"       # get_weather
+    CALCULATION  = "calculation"   # calculate
+    DATETIME     = "datetime"      # get_datetime_info, get_greeting
+
+    # --- Productivity / Personal ---
+    TASK_MANAGER  = "task_manager"  # add/list/complete_task, notes, reminders, pomodoro
+    COMMUNICATION = "communication" # email, slack
+
+    # --- Agent Internal ---
+    PRODUCTIVITY = "productivity"   # store_core_memory, forget_core_memory, schedule_future_task
+
+    # -----------------------------------------------------------------------
+    # LEGACY ALIASES — kept so existing code that references the old broad
+    # names (SYSTEM, INFORMATION) does not crash before it is migrated.
+    # -----------------------------------------------------------------------
+    SYSTEM      = "os_control"     # noqa: PIE796  (duplicate value intentional)
+    INFORMATION = "web_research"   # noqa: PIE796
+    RESEARCH    = "web_research"   # noqa: PIE796
 
 
 # =============================================================================
