@@ -108,12 +108,31 @@ if settings.SENTRY_DSN:
         send_default_pii=False,
     )
 
-# Setup OpenTelemetry
+# Setup OpenTelemetry — only wire the OTLP exporter if the collector is reachable.
+# Without this guard, the gRPC exporter retries every ~1s and floods the logs.
+def _otlp_collector_reachable(host: str = "localhost", port: int = 4317) -> bool:
+    """Quick TCP probe to see if the OTLP collector is listening."""
+    import socket
+    try:
+        with socket.create_connection((host, port), timeout=0.5):
+            return True
+    except OSError:
+        return False
+
 resource = Resource.create({SERVICE_NAME: settings.ASSISTANT_NAME})
 provider = TracerProvider(resource=resource)
-# Note: Ensure OTLP endpoint is configurable via environment, defaulting to local Jaeger
-otlp_exporter = OTLPSpanExporter(endpoint="http://localhost:4317", insecure=True)
-provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
+
+if _otlp_collector_reachable():
+    otlp_exporter = OTLPSpanExporter(endpoint="http://localhost:4317", insecure=True)
+    provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
+    logging.getLogger(__name__).info(
+        "OpenTelemetry: OTLP collector found at localhost:4317 — tracing enabled."
+    )
+else:
+    logging.getLogger(__name__).info(
+        "OpenTelemetry: No OTLP collector at localhost:4317 — using NoOp tracer (silent)."
+    )
+
 trace.set_tracer_provider(provider)
 
 
@@ -143,21 +162,33 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Run database migrations automatically
     try:
-        from alembic.config import Config
-
-        from alembic import command
+        import subprocess
 
         logger.info("Running database migrations...")
         alembic_cfg_path = settings.BASE_DIR / "alembic.ini"
         alembic_script_location = settings.BASE_DIR / "alembic"
 
         if alembic_cfg_path.exists() and alembic_script_location.exists():
+            # Run alembic as a subprocess to avoid event-loop conflicts.
+            # alembic/env.py calls asyncio.run() which deadlocks inside
+            # asyncio.to_thread() under uvicorn's already-running loop.
             import asyncio
+            import sys
 
-            alembic_cfg = Config(str(alembic_cfg_path))
-            alembic_cfg.set_main_option("script_location", str(alembic_script_location))
-            await asyncio.to_thread(command.upgrade, alembic_cfg, "head")
-            logger.info("Database migrations complete")
+            result = await asyncio.to_thread(
+                subprocess.run,
+                [sys.executable, "-m", "alembic", "upgrade", "head"],
+                cwd=str(settings.BASE_DIR),
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode == 0:
+                logger.info("Database migrations complete")
+            else:
+                logger.error("Alembic migration failed: %s", result.stderr)
+                if settings.is_production:
+                    raise RuntimeError(f"Migration failed: {result.stderr}")
         else:
             logger.warning(
                 "Alembic config or scripts missing at %s. Skipping migrations.",
@@ -209,6 +240,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Initializing Telegram Long Polling...")
     from src.api.routes.webhooks import _telegram
 
+    _telegram.runtime = runtime  # Inject runtime so messages are processed
     await _telegram.start_polling()
 
     # Initialize and start APScheduler
@@ -481,6 +513,7 @@ def main() -> None:
         host=settings.API_HOST,
         port=settings.API_PORT,
         reload=settings.DEBUG,
+        reload_dirs=["src"] if settings.DEBUG else None,
         log_level=settings.LOG_LEVEL.lower(),
     )
 

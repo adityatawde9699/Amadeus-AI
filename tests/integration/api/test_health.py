@@ -43,7 +43,6 @@ class TestHealthEndpoints:
 
         assert data["status"] == "healthy"
         assert "database" in data
-        assert "voice_enabled" in data
 
     def test_system_status_endpoint(self, client):
         """Test the system status endpoint."""

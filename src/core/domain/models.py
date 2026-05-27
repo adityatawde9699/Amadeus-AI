@@ -8,7 +8,7 @@ Usage:
     from src.core.domain.models import InteractionLog, RequestSource
 
     log = InteractionLog(
-        source=RequestSource.VOICE,
+        source=RequestSource.TEXT,
         input_text="What time is it?"
     )
 """
@@ -36,7 +36,6 @@ class PermissionProfile(StrEnum):
 class RequestSource(StrEnum):
     """Source of the user's request."""
 
-    VOICE = "voice"
     TEXT = "text"
     API = "api"
     DASHBOARD = "dashboard"
@@ -127,7 +126,7 @@ class InteractionLog(BaseModel):
     Represents a single exchange with Amadeus.
 
     This is the primary record of all interactions, whether from
-    voice, text, or API. Used for logging, analytics, and context.
+    text or API. Used for logging, analytics, and context.
     """
 
     id: UUID = Field(default_factory=uuid4)
@@ -386,7 +385,7 @@ class ChatRequest(BaseModel):
     """Request model for chat endpoint."""
 
     message: str = Field(..., min_length=1, max_length=10000, description="User message")
-    source: str = Field(default="api", description="Source: api, text, voice")
+    source: str = Field(default="api", description="Source: api, text")
     session_id: str | None = Field(
         default=None, description="Session ID for conversation continuity"
     )
@@ -455,7 +454,6 @@ class HealthResponse(BaseModel):
     version: str
     environment: str
     database: str
-    voice_enabled: bool
     classifier_enabled: bool
     cache_stats: dict | None = None
 
@@ -467,7 +465,6 @@ class HealthResponse(BaseModel):
                 "version": "2.0.0",
                 "environment": "production",
                 "database": "connected",
-                "voice_enabled": True,
                 "classifier_enabled": True,
             }
         }

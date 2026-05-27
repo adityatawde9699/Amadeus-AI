@@ -30,7 +30,6 @@ def get_test_settings() -> Settings:
         DATABASE_URL="sqlite:///./test_amadeus.db",
         GEMINI_API_KEY="test_key",
         SECRET_KEY="test-secret-key-32-chars-minimum-xx",  # Required for JWT
-        VOICE_ENABLED=False,
         SKIP_CONFIG_VALIDATION=True,
     )
 

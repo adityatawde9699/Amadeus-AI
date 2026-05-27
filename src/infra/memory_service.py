@@ -368,25 +368,25 @@ class QdrantMemoryService:
         # Contradiction Resolution: If this is an identity fact, check for existing contradictory/duplicate facts.
         if subtype == "identity":
             try:
-                from qdrant_client.models import Filter, FieldCondition, MatchValue
-                existing_hits = await self._circuit_breaker.call(
-                    self._client.search,
+                from qdrant_client.models import Filter, FieldCondition, MatchValue, QueryRequest
+                qr = await self._circuit_breaker.call(
+                    self._client.query_points,
                     collection_name=self._settings.CHROMA_COLLECTION_NAME,
-                    query_vector=embedding,
+                    query=embedding,
                     limit=3,
                     query_filter=Filter(
                         must=[
                             FieldCondition(key="subtype", match=MatchValue(value="identity")),
                             FieldCondition(key="session_id", match=MatchValue(value=session_id)),
                         ]
-                    )
+                    ),
+                    with_payload=True,
                 )
+                existing_hits = qr.points
                 to_delete = []
                 for hit in existing_hits:
-                    # If similarity is > 0.90, we consider it a duplicate/contradiction of the same topic.
-                    if hit.score > 0.90 and hit.id != id_str:
+                    if hit.score > 0.90 and str(hit.id) != id_str:
                         to_delete.append(hit.id)
-                
                 if to_delete:
                     await self._circuit_breaker.call(
                         self._client.delete,
@@ -459,17 +459,18 @@ class QdrantMemoryService:
             if embedding is None:
                 return []
     
-            # --- Qdrant search ---
+            # --- Qdrant query_points (qdrant-client >= 1.8 API) ---
         try:
             import math
 
-            results = await self._circuit_breaker.call(
-                self._client.search,
+            qr = await self._circuit_breaker.call(
+                self._client.query_points,
                 collection_name=self._settings.CHROMA_COLLECTION_NAME,
-                query_vector=embedding,
+                query=embedding,
                 limit=top_k * 2,  # Fetch more to allow for re-ranking
                 with_payload=True,
             )
+            results = qr.points
 
             memories: list[MemoryResult] = []
             now = datetime.now(UTC)
@@ -665,16 +666,15 @@ class QdrantMemoryService:
         try:
             from qdrant_client.models import FieldCondition, Filter, MatchValue
             for text in texts:
-                # Need to find the point by text and update its payload
-                results = await self._client.search(
+                qr = await self._client.query_points(
                     collection_name=self._settings.CHROMA_COLLECTION_NAME,
-                    query_vector=[0.0]*getattr(self, "_embed_dim", 384), # Dummy vector if using text filter
+                    query=[0.0] * getattr(self, "_embed_dim", 384),
                     query_filter=Filter(must=[FieldCondition(key="text", match=MatchValue(value=text))]),
                     limit=1,
-                    with_payload=True
+                    with_payload=True,
                 )
-                if results:
-                    hit = results[0]
+                if qr.points:
+                    hit = qr.points[0]
                     current_count = hit.payload.get("access_count", 0) if hit.payload else 0
                     await self._client.set_payload(
                         collection_name=self._settings.CHROMA_COLLECTION_NAME,

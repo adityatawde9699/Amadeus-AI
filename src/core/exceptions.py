@@ -135,41 +135,6 @@ class DatabaseConnectionError(PersistenceError):
     def __init__(self, message: str = "Failed to connect to database"):
         super().__init__(message)
 
-
-# =============================================================================
-# VOICE/SPEECH ERRORS
-# =============================================================================
-
-
-class VoiceError(AmadeusError):
-    """Base exception for voice-related errors."""
-
-
-class SpeechRecognitionError(VoiceError):
-    """Raised when speech recognition fails."""
-
-    def __init__(self, reason: str, timeout: bool = False):
-        super().__init__(f"Speech recognition failed: {reason}", details={"timeout": timeout})
-        self.timeout = timeout
-
-
-class TextToSpeechError(VoiceError):
-    """Raised when text-to-speech fails."""
-
-    def __init__(self, reason: str):
-        super().__init__(f"Text-to-speech failed: {reason}")
-
-
-class VoiceServiceUnavailableError(VoiceError):
-    """Raised when voice services are not available."""
-
-    def __init__(self, missing_dependency: str | None = None):
-        message = "Voice service is not available"
-        if missing_dependency:
-            message += f" (missing: {missing_dependency})"
-        super().__init__(message, details={"missing_dependency": missing_dependency})
-
-
 # =============================================================================
 # LLM/AI ERRORS
 # =============================================================================

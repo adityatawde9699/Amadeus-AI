@@ -24,8 +24,6 @@ for _mod in (
     "google.generativeai",
     "openai",
     "groq",
-    "faster_whisper",
-    "edge_tts",
     "qdrant_client",
 ):
     if _mod not in sys.modules:

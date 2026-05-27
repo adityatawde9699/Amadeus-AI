@@ -36,10 +36,17 @@ class AmadeusRuntime:
         # We can wire the container here
         from src.container import get_amadeus_service, get_llm_router
         self.amadeus_service = get_amadeus_service()
+        await self.amadeus_service.initialize()  # Initialize semantic router and memory
         self.llm = get_llm_router()
         self.memory = self.amadeus_service.memory_service
         self.tools = self.amadeus_service.tool_registry
-        
+
+        # Eagerly warm up the local LlamaCpp model in the background so the
+        # first user message isn't blocked by 3-4s of model loading.
+        # We fire-and-forget — failure is logged but doesn't block startup.
+        if self.llm is not None:
+            asyncio.create_task(self.llm.warmup())
+
         # Start watchdog
         self._watchdog_task = asyncio.create_task(self.watchdog.run())
         

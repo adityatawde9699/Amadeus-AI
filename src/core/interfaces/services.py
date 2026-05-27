@@ -6,11 +6,11 @@ Infrastructure implementations must adhere to these interfaces,
 enabling dependency injection and easy swapping of implementations.
 
 Usage:
-    from src.core.interfaces.services import IVoiceInput, IVoiceOutput
+    from src.core.interfaces.services import IIntentClassifier, ILLMService
 
-    class WhisperVoiceInput(IVoiceInput):
-        def listen(self) -> str:
-            # Implementation using Whisper
+    class MyClassifier(IIntentClassifier):
+        def predict_intent(self, text: str) -> str:
+            # Implementation
             ...
 """
 
@@ -24,58 +24,6 @@ from src.core.domain.models import (
     ToolDefinition,
     ToolExecutionResult,
 )
-
-
-# =============================================================================
-# VOICE INTERFACES
-# =============================================================================
-
-
-class IVoiceInput(ABC):
-    """Interface for speech-to-text services."""
-
-    @abstractmethod
-    def listen(self, timeout: int | None = None, phrase_time_limit: int | None = None) -> str:
-        """
-        Listen to microphone and return transcribed text.
-
-        Args:
-            timeout: Maximum seconds to wait for speech to begin.
-            phrase_time_limit: Maximum seconds for a single phrase.
-
-        Returns:
-            Transcribed text from speech, empty string if nothing heard.
-        """
-
-    @abstractmethod
-    def is_available(self) -> bool:
-        """Check if the voice input service is available."""
-
-
-class IVoiceOutput(ABC):
-    """Interface for text-to-speech services."""
-
-    @abstractmethod
-    def speak(self, text: str) -> None:
-        """
-        Synthesize text to speech.
-
-        Args:
-            text: The text to speak.
-        """
-
-    @abstractmethod
-    def speak_async(self, text: str) -> None:
-        """
-        Synthesize text to speech asynchronously (non-blocking).
-
-        Args:
-            text: The text to speak.
-        """
-
-    @abstractmethod
-    def is_available(self) -> bool:
-        """Check if the voice output service is available."""
 
 
 # =============================================================================

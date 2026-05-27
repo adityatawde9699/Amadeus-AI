@@ -5,7 +5,6 @@ Responsibilities:
   - Run a long-polling loop in the background (no webhooks).
   - Parse incoming Updates and pass them to AmadeusService.
   - Send text replies with optional inline keyboards.
-  - Send voice/audio replies.
 
 Why python-telegram-bot v20+?
   - Fully async (asyncio-native) — perfect for FastAPI.
@@ -381,6 +380,22 @@ class TelegramTransport:
             logger.info("telegram_message_sent chat_id=%s", chat_id)
             return True
         except Exception as exc:
+            if "parse entities" in str(exc).lower() or "bad request" in str(exc).lower():
+                logger.warning(
+                    "Telegram markdown parsing failed, falling back to raw text. Error: %s", exc
+                )
+                try:
+                    await self._bot.send_message(
+                        chat_id=chat_id,
+                        text=text,
+                        parse_mode=None,
+                    )
+                    logger.info("telegram_message_sent (raw text fallback) chat_id=%s", chat_id)
+                    return True
+                except Exception as fallback_exc:
+                    logger.exception("telegram_send_failed (fallback) chat_id=%s error=%s", chat_id, fallback_exc)
+                    return False
+
             logger.exception("telegram_send_failed chat_id=%s error=%s", chat_id, exc)
             return False
 
@@ -438,41 +453,6 @@ class TelegramTransport:
             return True
         except Exception as exc:
             logger.exception("telegram_buttons_send_failed chat_id=%s error=%s", chat_id, exc)
-            return False
-
-    async def send_voice(
-        self,
-        chat_id: int,
-        audio_bytes: bytes,
-        filename: str = "reply.ogg",
-    ) -> bool:
-        """
-        Send a voice message to a Telegram chat.
-
-        Args:
-            chat_id: Telegram chat or user ID.
-            audio_bytes: OGG/Opus audio content.
-            filename: Filename hint for Telegram (usually .ogg).
-
-        Returns:
-            True on success, False on failure.
-        """
-        if self._bot is None:
-            logger.error("Cannot send voice — Telegram bot not initialized")
-            return False
-
-        try:
-            import io
-
-            await self._bot.send_voice(
-                chat_id=chat_id,
-                voice=io.BytesIO(audio_bytes),
-                filename=filename,
-            )
-            logger.info("telegram_voice_sent chat_id=%s", chat_id)
-            return True
-        except Exception as exc:
-            logger.exception("telegram_voice_send_failed chat_id=%s error=%s", chat_id, exc)
             return False
 
     @property

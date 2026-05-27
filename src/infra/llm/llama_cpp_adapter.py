@@ -45,6 +45,8 @@ class LlamaCppAdapter(LLMAdapter):
         self.context_length = context_length
         self._llm: Any | None = None
         self._lock = asyncio.Lock()
+        # Set to True after a fatal decode failure so we stop trying until restart
+        self._failed: bool = False
         logger.info(
             "LlamaCppAdapter configured with model: %s (threads=%d, ctx=%d)",
             self.model_path,
@@ -128,22 +130,49 @@ class LlamaCppAdapter(LLMAdapter):
     # HELPERS
     # =========================================================================
 
+    # System prompt kept SHORT for a 1B model's limited context window.
+    # The full identity template is used by cloud providers; this is the local-only version.
+    _LOCAL_SYSTEM_PROMPT = (
+        "You are Amadeus, an advanced AI assistant. "
+        "You are helpful, direct, and concise. "
+        "Always respond as Amadeus — never address the user as Amadeus. "
+        "Keep responses plain text — no markdown formatting (no *, **, _, `, etc). "
+        "Use numbered lists for structured output. "
+        "If you don't know something, say so honestly."
+    )
+
     @staticmethod
     def _build_messages(
         prompt: str,
         context: "ConversationContext | None",
+        max_history_turns: int = 4,
     ) -> list[dict[str, str]]:
         """
         Build a chat-completion messages list from a prompt and optional context.
 
-        If *context* carries conversation history we inject it so the local model
-        has the same multi-turn awareness as the cloud providers.
+        To avoid overflowing the local model's limited context window (2048 tokens),
+        we keep only the most recent `max_history_turns` exchanges (user+assistant pairs).
+        A system message is always prepended so the model knows its identity.
         """
-        messages: list[dict[str, str]] = []
+        messages: list[dict[str, str]] = [
+            {"role": "system", "content": LlamaCppAdapter._LOCAL_SYSTEM_PROMPT}
+        ]
 
         if context is not None:
-            # Inject conversation history from ConversationContext.messages
-            for msg in getattr(context, "messages", []):
+            history = [
+                msg for msg in getattr(context, "messages", [])
+                if getattr(msg, "role", None) in ("user", "assistant")
+            ]
+            # Keep only the tail — last N turns to respect the 2048 ctx limit
+            max_msgs = max_history_turns * 2  # each turn = user + assistant
+            if len(history) > max_msgs:
+                history = history[-max_msgs:]
+                logger.debug(
+                    "LlamaCpp: trimmed conversation history to last %d messages "
+                    "(ctx limit guard)",
+                    max_msgs,
+                )
+            for msg in history:
                 role = getattr(msg, "role", None)
                 content = getattr(msg, "content", None)
                 if role and content:
@@ -188,6 +217,14 @@ class LlamaCppAdapter(LLMAdapter):
                 config_key="SLM_MODEL_PATH",
             )
 
+        # If a previous fatal decode error occurred, don't retry — fall through
+        # to the next provider in the LLMRouter.
+        if self._failed:
+            raise LLMResponseError(
+                "LlamaCpp is in a failed state (llama_decode error). "
+                "Restart the server to reset."
+            )
+
         llm = await self._get_llm()
         messages = self._build_messages(prompt, context)
 
@@ -210,8 +247,21 @@ class LlamaCppAdapter(LLMAdapter):
                 max_tokens,
             )
             return response_text
+        except LLMResponseError:
+            raise
         except Exception as e:
-            logger.exception("Llama generation failed: %s", type(e).__name__)
+            err_str = str(e)
+            if "llama_decode" in err_str or "GGML_ASSERT" in err_str:
+                # Fatal decode failure — mark adapter as failed to prevent
+                # repeated crashes on subsequent requests until server restarts.
+                self._failed = True
+                logger.error(
+                    "LlamaCpp FATAL decode error — marking adapter as failed. "
+                    "Subsequent requests will skip local model. Error: %s",
+                    err_str,
+                )
+            else:
+                logger.exception("Llama generation failed: %s", type(e).__name__)
             raise LLMResponseError(f"LlamaCpp generation failed: {e}") from e
 
     async def stream_response(

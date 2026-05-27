@@ -135,13 +135,17 @@ class SearchRouter:
             return ""
 
     async def _ddg_search(self, query: str) -> str:
-        """Search DuckDuckGo using the duckduckgo-search library.
+        """Search DuckDuckGo using the ddgs library.
 
         Returns a formatted string of the top 3-5 results with titles,
         snippets, and source URLs.
         """
         try:
-            from duckduckgo_search import DDGS
+            # Try the new package name first (renamed from duckduckgo_search → ddgs)
+            try:
+                from ddgs import DDGS
+            except ImportError:
+                from duckduckgo_search import DDGS  # legacy name, still works
 
             # Run the synchronous DDGS in a thread to avoid blocking the event loop
             def _do_search() -> list[dict]:
@@ -168,33 +172,14 @@ class SearchRouter:
 
         except ImportError:
             logger.warning(
-                "duckduckgo-search not installed. Install with: pip install duckduckgo-search"
+                "Neither 'ddgs' nor 'duckduckgo-search' is installed. "
+                "Install with: pip install ddgs"
             )
-            # Fall back to the legacy Instant Answer API
-            return await self._ddg_instant_answer(query)
+            return ""
         except Exception as e:
             logger.debug("DuckDuckGo search failed: %s — %s", type(e).__name__, e)
             return ""
 
-    async def _ddg_instant_answer(self, query: str) -> str:
-        """Legacy fallback: DuckDuckGo Instant Answer API (limited coverage)."""
-        try:
-            url = "https://api.duckduckgo.com/"
-            session = await self._get_session()
-            params: dict[str, str] = {
-                "q": query,
-                "format": "json",
-                "no_redirect": "1",
-                "no_html": "1",
-            }
-            async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=5)) as r:
-                if r.status == 200:
-                    data = await r.json(content_type=None)
-                    return data.get("AbstractText") or data.get("Answer") or ""
-            return ""
-        except Exception as e:
-            logger.debug("DuckDuckGo IA fallback failed: %s", type(e).__name__)
-            return ""
 
     async def _tavily_search(self, query: str) -> str:
         """Query Tavily API for deep research (1,000 req/month free)."""

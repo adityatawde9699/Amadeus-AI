@@ -42,20 +42,6 @@ async def test_get_llm_miss(cache_service, mock_redis):
     assert cache_service._misses == 1
 
 
-@pytest.mark.asyncio
-async def test_set_tts(cache_service, mock_redis):
-    await cache_service.set_tts("hello", "voice1", b"audio")
-    mock_redis.setex.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_get_tts(cache_service, mock_redis):
-    mock_redis.get.return_value = b"audio"
-    result = await cache_service.get_tts("hello", "voice1")
-    assert result == b"audio"
-    assert cache_service._hits == 1
-
-
 def test_cache_stats(cache_service, mock_redis):
     cache_service._hits = 5
     cache_service._misses = 5

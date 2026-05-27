@@ -269,7 +269,7 @@ class InteractionLogORM(Base):
         server_default=func.now(),
         index=True,
     )
-    source: Mapped[str] = mapped_column(String(32), index=True)  # voice, text, api
+    source: Mapped[str] = mapped_column(String(32), index=True)  # text, api
     interaction_type: Mapped[str] = mapped_column(String(32), default="conversation")
     input_text: Mapped[str] = mapped_column(Text)
     response_text: Mapped[str | None] = mapped_column(Text, nullable=True)
