@@ -28,6 +28,8 @@ class QueueFullError(Exception):
 
 
 from src.app.services.tool_registry import ToolRegistry
+from src.core.domain.action import AgentAction
+from src.core.domain.context import RequestContext
 from src.core.domain.models import PermissionProfile
 from src.infra.tools.base import ToolExecutor
 
@@ -128,23 +130,24 @@ class ReActAgent:
     async def run(
         self,
         task: str,
-        context: str = "",
-        permission_profile: PermissionProfile = PermissionProfile.SYSTEM_FULL,
+        context: RequestContext,
+        context_summary: str = "",
     ) -> AgentResult:
         """
         Execute a task using the async State Machine built on asyncio.Queue.
 
         Args:
             task: The user's request
-            context: Additional context
-            permission_profile: Security clearance for this specific request
+            context: RequestContext containing session and permissions
+            context_summary: Additional context summary
 
         Returns:
             AgentResult with final answer and execution trace
         """
         self.task = task
         self.context = context
-        self.permission_profile = permission_profile
+        self.context_summary = context_summary
+        self.permission_profile = context.permissions
         self.steps: list[AgentStep] = []
         self.tools_used: list[str] = []
         self.observations: list[str] = []
@@ -184,7 +187,7 @@ class ReActAgent:
 
                 thought, action, action_input = await self._think(
                     task=self.task,
-                    context=self.context,
+                    context=self.context_summary,
                     scratchpad=scratchpad,
                     observations=self.observations,
                 )
@@ -308,8 +311,6 @@ class ReActAgent:
                 await self.queue.put(AgentState.END)
 
             elif state == AgentState.END:
-                # 3. Learning Step - Extract entities/relationships from this interaction
-                await self._learn_from_interaction(self.task, final_answer)
                 break
 
         return AgentResult(
@@ -433,42 +434,7 @@ class ReActAgent:
             except Exception as mem_err:
                 logger.debug("Memory retrieval skipped: %s", mem_err)
 
-        # 2. Retrieve Graph Facts (Episodic)
         graph_block = ""
-        # Check if graph_repo is available (we'll need to inject this or get from service)
-        graph_repo = getattr(self, "graph_repo", None)
-        if graph_repo:
-            try:
-                # Extract potential entity names from task using LLM
-                potential_entities = []
-                if self.llm_generate:
-                    try:
-                        extract_prompt = f"Extract all named entities (people, places, projects, things) from the following text. Return ONLY a comma-separated list of names (no explanation).\\nText: {task}"
-                        extracted = await self.llm_generate(extract_prompt)
-                        potential_entities = [
-                            e.strip(" '\\\"") for e in extracted.split(",") if e.strip()
-                        ]
-                    except Exception as e:
-                        logger.debug("Entity extraction failed, falling back to heuristic: %s", e)
-
-                if not potential_entities:
-                    words = task.split()
-                    potential_entities = [w.strip("?,.!") for w in words if w and w[0].isupper()]
-
-                facts = []
-                for entity in potential_entities:
-                    rel_triples = await graph_repo.find_relationships_by_entity(entity)
-                    for t in rel_triples:
-                        facts.append(f"{t['subject']} {t['predicate']} {t['object']}")
-
-                if facts:
-                    graph_block = (
-                        "\n[RELEVANT KG FACTS]\n- "
-                        + "\n- ".join(list(set(facts))[:10])
-                        + "\n"
-                    )
-            except Exception as graph_err:
-                logger.debug("Graph fact retrieval skipped: %s", graph_err)
 
         # SEC-01: Sanitize user task to prevent ReAct prompt injection.
         # Strip control tokens that could override the agent's action parsing.
@@ -505,13 +471,14 @@ Key rules:
 Previous Steps:
 {scratchpad if scratchpad else "(none yet)"}
 
-Decide the next action. Respond in this EXACT format:
-Thought: [your reasoning about what needs to be done next]
-Plan: [briefly state the remaining steps to achieve the user's goal]
-Action: [tool_name or FINISH]
-Action Input: {{"param": "value"}}
-
-Your response:"""
+Decide the next action. Respond ONLY with a valid JSON object matching this schema. Do not include markdown formatting or backticks.
+{{
+  "intent": "your reasoning about what needs to be done next",
+  "tool": "tool_name or null if FINISH",
+  "args": {{"param": "value"}},
+  "requires_confirmation": false,
+  "confidence": 1.0
+}}"""
 
         try:
             if self.llm_generate is None:
@@ -524,37 +491,28 @@ Your response:"""
             return await self._think_with_keywords(task, observations)
 
     def _parse_llm_response(self, response: str) -> tuple[str, str, dict]:
-        """Parse LLM response into thought, action, input."""
+        """Parse LLM response using AgentAction JSON schema."""
         import json
-        import re
+        
+        # Clean up markdown code blocks if the LLM adds them despite instructions
+        cleaned = response.strip()
+        if cleaned.startswith("```json"):
+            cleaned = cleaned[7:]
+        if cleaned.startswith("```"):
+            cleaned = cleaned[3:]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3]
+        
+        cleaned = cleaned.strip()
 
-        thought = ""
-        action = self.FINISH_ACTION
-        action_input = {}
-
-        # Extract thought
-        thought_match = re.search(r"Thought:\s*(.+?)(?=Plan:|Action:|$)", response, re.DOTALL)
-        if thought_match:
-            thought = thought_match.group(1).strip()
-
-        # Extract plan
-        plan_match = re.search(r"Plan:\s*(.+?)(?=Action:|$)", response, re.DOTALL)
-        if plan_match:
-            plan = plan_match.group(1).strip()
-            thought += f"\nPlan: {plan}"
-
-        # Extract action
-        action_match = re.search(r"Action:\s*(\w+)", response)
-        if action_match:
-            action = action_match.group(1)
-
-        # Extract action input
-        input_match = re.search(r"Action Input:\s*(\{.+?\})", response, re.DOTALL)
-        if input_match:
-            with contextlib.suppress(json.JSONDecodeError):
-                action_input = json.loads(input_match.group(1))
-
-        return (thought, action, action_input)
+        try:
+            action_model = AgentAction.model_validate_json(cleaned)
+            action = action_model.tool or self.FINISH_ACTION
+            return (action_model.intent, action, action_model.args)
+        except Exception as e:
+            logger.error("Failed to parse LLM JSON response: %s | Raw: %s", e, cleaned)
+            # Fallback for severe malformation
+            return ("Failed to parse structured action.", self.FINISH_ACTION, {"answer": "I had trouble forming a structured response. Please try again."})
 
     @staticmethod
     def _action_signature(action: str, action_input: dict) -> str:
@@ -579,46 +537,7 @@ Your response:"""
         normalized = json.dumps(action_input, sort_keys=True, default=str)
         return f"{action}|{normalized}"
 
-    async def _learn_from_interaction(self, task: str, answer: str) -> None:
-        """
-        Extract new entities and relationships from the user task and assistant response.
-        Updates the Knowledge Graph repository.
-        """
-        graph_repo = getattr(self, "graph_repo", None)
-        if not graph_repo or not self.llm_generate:
-            return
 
-        learn_prompt = f"""Extract relationships (Subject, Predicate, Object) from this interaction.
-User: {task}
-Assistant: {answer}
-
-Respond ONLY with a JSON list of triples, or an empty list [].
-Example: [{{"subject": "Sarah", "predicate": "is_boss_of", "object": "User", "type": "person"}}]
-
-Relationships:"""
-
-        try:
-            response = await self.llm_generate(learn_prompt)
-            import json
-            import re
-
-            # Clean JSON from markdown if present
-            match = re.search(r"\[.*\]", response, re.DOTALL)
-            if match:
-                triples = json.loads(match.group(0))
-                for t in triples:
-                    sub = t.get("subject")
-                    pred = t.get("predicate")
-                    obj = t.get("object")
-                    e_type = t.get("type", "unknown")
-
-                    if sub and pred and obj:
-                        sub_id = await graph_repo.upsert_entity(sub, entity_type=e_type)
-                        obj_id = await graph_repo.upsert_entity(obj)
-                        await graph_repo.add_relationship(sub_id, pred, obj_id)
-                        logger.info("Learned relationship: %s -> %s -> %s", sub, pred, obj)
-        except Exception as e:
-            logger.debug("Learning step failed: %s", e)
 
     async def _synthesize_answer(self, task: str, observations: list[str]) -> str:
         """Combine observations into a final answer."""
@@ -708,7 +627,7 @@ class AgentOrchestrator:
         self.memory_service = memory_service
         self.max_queue_size = max_queue_size
 
-        self.queue: asyncio.Queue[tuple[str, str, PermissionProfile, asyncio.Future]] = (
+        self.queue: asyncio.Queue[tuple[str, RequestContext, str, asyncio.Future]] = (
             asyncio.Queue(maxsize=self.max_queue_size)
         )
 
@@ -814,7 +733,7 @@ class AgentOrchestrator:
         logger.info("AgentOrchestrator worker loop started.")
         while True:
             try:
-                task, context, permission_profile, future = await self.queue.get()
+                task, context, context_summary, future = await self.queue.get()
 
                 intent = self._predict_intent(task)
                 target_agent = self.agents.get(intent, self.agents["general"])
@@ -823,7 +742,7 @@ class AgentOrchestrator:
 
                 try:
                     result = await target_agent.run(
-                        task, context, permission_profile=permission_profile
+                        task, context, context_summary=context_summary
                     )
                     if not future.done():
                         future.set_result(result)
@@ -856,8 +775,8 @@ class AgentOrchestrator:
     async def execute(
         self,
         task: str,
-        context: str = "",
-        permission_profile: PermissionProfile = PermissionProfile.SYSTEM_FULL,
+        context: RequestContext,
+        context_summary: str = "",
     ) -> AgentResult:
         """
         Public endpoint: Submits a task to the orchestrator queue and awaits the result.
@@ -870,13 +789,13 @@ class AgentOrchestrator:
         if self._worker_task is None:
             intent = self._predict_intent(task)
             target_agent = self.agents.get(intent, self.agents["general"])
-            return await target_agent.run(task, context, permission_profile=permission_profile)
+            return await target_agent.run(task, context, context_summary=context_summary)
 
         loop = asyncio.get_running_loop()
         future = loop.create_future()
 
         try:
-            self.queue.put_nowait((task, context, permission_profile, future))
+            self.queue.put_nowait((task, context, context_summary, future))
         except asyncio.QueueFull as e:
             logger.warning(
                 "AgentOrchestrator queue is full (maxsize=%s), rejecting request.",

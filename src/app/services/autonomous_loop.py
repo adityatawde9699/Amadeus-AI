@@ -19,6 +19,7 @@ class AutonomousObservationLoop:
         self.interval_minutes = interval_minutes
         self.session_ids = session_ids or []  # List of active session IDs to monitor
         self._running = False
+        self._recent_observations: dict[str, list[datetime]] = {}
 
     async def start(self) -> None:
         """Start the background observation loop."""
@@ -69,8 +70,32 @@ class AutonomousObservationLoop:
 
     async def _trigger_observation(self, session_id: str) -> None:
         """Trigger the agent to observe its state."""
-        logger.info("Triggering autonomous observation for session %s", session_id)
         try:
+            from src.core.config import get_settings
+            settings = get_settings()
+
+            # Enforce Rate Limiting
+            now = datetime.now()
+            history = self._recent_observations.get(session_id, [])
+            # Prune history older than 1 hour
+            history = [t for t in history if (now - t).total_seconds() < 3600]
+            self._recent_observations[session_id] = history
+
+            if len(history) >= settings.PROACTIVE_MESSAGE_LIMIT_PER_HOUR:
+                logger.info(
+                    "Skipping proactive observation for session %s (Rate limit reached: %d/hr)",
+                    session_id, len(history)
+                )
+                return
+
+            # Record this attempt
+            self._recent_observations[session_id].append(now)
+
+            if settings.PROACTIVE_DRY_RUN:
+                logger.info("[DRY RUN] Would trigger proactive observation for session %s", session_id)
+                return
+
+            logger.info("Triggering autonomous observation for session %s", session_id)
             # ARCH-02: Use the DI container singleton so the observation loop gets the
             # full tool registry, LLM router, and cache — not a lobotomised bare instance.
             from src.container import global_container
@@ -78,7 +103,7 @@ class AutonomousObservationLoop:
             svc = global_container.amadeus_service()
 
             prompt = (
-                f"SYSTEM BACKGROUND EVENT: It is currently {datetime.now().strftime('%H:%M')}. "
+                f"SYSTEM BACKGROUND EVENT: It is currently {now.strftime('%H:%M')}. "
                 "Review recent messages or your long-term memory. If there is something "
                 "important to notify the user about proactively, use tools to send an outbound message (like send_email or platform integrations). "
                 "If not, finish the task silently without bothering the user."

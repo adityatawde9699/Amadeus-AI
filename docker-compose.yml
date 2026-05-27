@@ -1,157 +1,82 @@
-# =============================================================================
-# Amadeus AI - Docker Compose Configuration
-# =============================================================================
-# Development and production profiles for the AI assistant
-#
-# Usage:
-#   Development: docker-compose up --build
-#   Production:  docker-compose --profile prod up --build
-# =============================================================================
+version: '3.8'
 
 services:
-  # ---------------------------------------------------------------------------
-  # API Service (Development)
-  # ---------------------------------------------------------------------------
-  api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: runtime
-    container_name: amadeus-api
-    ports:
-      - "${API_PORT:-8000}:8000"
-    environment:
-      - ENV=development
-      - DEBUG=true
-      - DATABASE_URL=postgresql://amadeus:${POSTGRES_PASSWORD:-amadeus_password}@postgres:5432/amadeus_db
-      - REDIS_URL=redis://redis:6379/0
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - WEATHER_API_KEY=${WEATHER_API_KEY}
-      - NEWS_API_KEY=${NEWS_API_KEY}
-      - SECRET_KEY=${SECRET_KEY:-change_me_in_production}
-      - GROQ_API_KEY=${GROQ_API_KEY:-}
-      - LOG_LEVEL=INFO
-    volumes:
-      # Mount source code for hot-reload during development
-      - ./src:/app/src:ro
-      # Persist data (if needed for other files)
-      - amadeus-data:/app/data
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/detailed')" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    restart: unless-stopped
-    networks:
-      - amadeus-network
-
-  # ---------------------------------------------------------------------------
-  # API Service (Production)
-  # ---------------------------------------------------------------------------
-  api-prod:
-    profiles:
-      - prod
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: runtime
-    container_name: amadeus-api-prod
-    ports:
-      - "${API_PORT:-8000}:8000"
+  amadeus:
+    build: .
+    container_name: amadeus_runtime
+    restart: always
     environment:
       - ENV=production
-      - DEBUG=false
-      - DATABASE_URL=postgresql://amadeus:${POSTGRES_PASSWORD:-change_me_in_production}@postgres:5432/amadeus_db
+      - DATABASE_URL=postgresql+asyncpg://amadeus:password@postgres:5432/amadeus
       - REDIS_URL=redis://redis:6379/0
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - WEATHER_API_KEY=${WEATHER_API_KEY}
-      - NEWS_API_KEY=${NEWS_API_KEY}
-      - SECRET_KEY=${SECRET_KEY}
-      - LOG_LEVEL=WARNING
-    command: gunicorn -k uvicorn.workers.UvicornWorker --workers 4 --bind 0.0.0.0:8000 src.api.server:app
-    volumes:
-      - amadeus-data:/app/data
+      - CHROMA_ENABLED=True
+      - QDRANT_HOST=qdrant
+    ports:
+      - "8000:8000"
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/detailed')" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    restart: always
-    networks:
-      - amadeus-network
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 1G
-        reservations:
-          cpus: '0.5'
-          memory: 256M
+      - postgres
+      - redis
+      - qdrant
+    volumes:
+      - ./data:/app/data
 
-  # ---------------------------------------------------------------------------
-  # Cache Service (Redis)
-  # ---------------------------------------------------------------------------
-  redis:
-    image: redis:7-alpine
-    container_name: amadeus-redis
-    # Port 6379 is NOT exposed to the host — Redis is internal to the Docker network.
-    # Expose only if you need external Redis access (add auth first: --requirepass).
-    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+  worker:
+    build: .
+    container_name: amadeus_worker
     restart: always
-    networks:
-      - amadeus-network
+    command: ["uv", "run", "arq", "src.infra.queue.worker.WorkerSettings"]
+    environment:
+      - ENV=production
+      - DATABASE_URL=postgresql+asyncpg://amadeus:password@postgres:5432/amadeus
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+      - postgres
+    volumes:
+      - ./data:/app/data
 
-  # ---------------------------------------------------------------------------
-  # Database Service (PostgreSQL)
-  # ---------------------------------------------------------------------------
   postgres:
     image: postgres:15-alpine
-    container_name: amadeus-postgres
-    # Port 5432 is NOT exposed to the host — DB is internal to the Docker network.
+    container_name: amadeus_postgres
+    restart: always
     environment:
       - POSTGRES_USER=amadeus
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-amadeus_password}
-      - POSTGRES_DB=amadeus_db
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=amadeus
+    ports:
+      - "5432:5432"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U amadeus -d amadeus_db" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: amadeus_redis
     restart: always
-    networks:
-      - amadeus-network
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
 
-# =============================================================================
-# VOLUMES
-# =============================================================================
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: amadeus_qdrant
+    restart: always
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrantdata:/qdrant/storage
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: amadeus_jaeger
+    restart: always
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+
 volumes:
-  amadeus-data:
-    driver: local
-  postgres-data:
-    driver: local
-
-# =============================================================================
-# NETWORKS
-# =============================================================================
-networks:
-  amadeus-network:
-    driver: bridge
+  pgdata:
+  redisdata:
+  qdrantdata:

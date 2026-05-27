@@ -160,7 +160,9 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-# =============================================================================
-# GITGUARDIAN
-# =============================================================================
+# Gitguardian
 .cache_ggshield
+
+# Local models directory
+Model/
+

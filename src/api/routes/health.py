@@ -3,6 +3,7 @@ Health and system status API routes.
 """
 
 import psutil
+from typing import Any
 from fastapi import APIRouter, Depends
 
 from src.app.services.amadeus_service import AmadeusService
@@ -35,6 +36,21 @@ async def detailed_health(amadeus: AmadeusService = Depends(get_amadeus_service)
         cache_stats=cache_stats,
     )
 
+@router.get("/health/dependencies", tags=["Health"])
+async def get_dependencies_health() -> dict[str, Any]:
+    """
+    Check the health of external dependencies like Redis, Qdrant, and LLM endpoints.
+    """
+    from src.infra.resilience.watchdog import DependencyWatchdog
+    watchdog = DependencyWatchdog(settings)
+    redis_ok = await watchdog.check_redis()
+    qdrant_ok = await watchdog.check_qdrant()
+    llms_ok = await watchdog.check_llm_providers()
+    return {
+        "redis": redis_ok,
+        "qdrant": qdrant_ok,
+        "llm_providers": llms_ok
+    }
 
 @router.get("/system/status", response_model=SystemStatusResponse, tags=["System"])
 async def get_system_status() -> SystemStatusResponse:
@@ -100,31 +116,3 @@ async def get_system_status() -> SystemStatusResponse:
         is_healthy=is_healthy,
         alerts=alerts,
     )
-
-
-@router.get("/usage/daily", tags=["Health"])
-async def get_daily_usage() -> dict[str, object]:
-    """Monitor daily API usage to stay within free tiers."""
-    from datetime import date
-
-    from src.container import get_llm_router
-
-    llm_router = get_llm_router()
-
-    # Get SearchRouter instance (you'll need to make this accessible)
-    # For now, return static structure
-
-    return {
-        "date": date.today().isoformat(),
-        "llm": getattr(llm_router, "get_usage_report", dict)()
-        if hasattr(llm_router, "get_usage_report")
-        else {},
-        "search": {},
-        "voice": {
-            "stt": "whisper_local_unlimited",
-            "tts": "edge_tts_unlimited",
-            "monthly_cost": 0.0,
-        },
-        "estimated_monthly_cost": "$5.00",  # Railway only
-        "budget_status": "under_budget",
-    }

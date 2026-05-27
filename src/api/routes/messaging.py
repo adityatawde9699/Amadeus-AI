@@ -17,8 +17,7 @@ from pydantic import BaseModel, Field
 
 from src.api.middleware.authentication import verify_jwt_token
 from src.infra.messaging.email_adapter import EmailAdapter
-from src.infra.messaging.telegram_adapter import TelegramAdapter
-from src.infra.messaging.whatsapp_adapter import WhatsAppAdapter
+from src.transports.telegram_transport import TelegramTransport
 
 
 logger = logging.getLogger(__name__)
@@ -26,8 +25,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/messaging", tags=["Messaging"])
 
 # Singletons — lazy-initialized from settings
-_telegram = TelegramAdapter()
-_whatsapp = WhatsAppAdapter()
+_telegram = TelegramTransport()
 _email = EmailAdapter()
 
 
@@ -39,13 +37,13 @@ _email = EmailAdapter()
 class SendMessageRequest(BaseModel):
     """Outbound message dispatch request."""
 
-    channel: Literal["telegram", "whatsapp", "email"] = Field(
-        description="Target channel: 'telegram', 'whatsapp', or 'email'."
+    channel: Literal["telegram", "email"] = Field(
+        description="Target channel: 'telegram' or 'email'."
     )
     to: str = Field(
         description=(
             "Recipient identifier — Telegram chat_id (int as string), "
-            "WhatsApp phone number (e.g. '919876543210'), or email address."
+            "or email address."
         )
     )
     message: str = Field(description="Message body to send.")
@@ -62,7 +60,6 @@ class SendMessageResponse(BaseModel):
 
 class StatusResponse(BaseModel):
     telegram: bool
-    whatsapp: bool
     email: bool
 
 
@@ -94,9 +91,6 @@ async def send_message(
                     detail="Telegram adapter is not configured (TELEGRAM_BOT_TOKEN missing)",
                 )
             success = await _telegram.send_message(int(req.to), req.message)
-
-        elif req.channel == "whatsapp":
-            success = await _whatsapp.send_message(req.to, req.message)
 
         elif req.channel == "email":
             if not _email.is_configured:
@@ -150,6 +144,5 @@ async def messaging_status() -> StatusResponse:
     """
     return StatusResponse(
         telegram=_telegram.is_ready,
-        whatsapp=bool(_whatsapp._access_token),
         email=_email.is_configured,
     )

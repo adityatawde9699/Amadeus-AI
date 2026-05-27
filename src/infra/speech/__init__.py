@@ -1,1 +1,0 @@
-# Speech / Voice Adapters Package

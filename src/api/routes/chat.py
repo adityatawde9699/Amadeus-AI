@@ -6,12 +6,9 @@ plus a server-sent events (SSE) streaming endpoint for lower TTFT.
 """
 
 import asyncio
-import json
 import logging
-from collections.abc import AsyncGenerator
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import StreamingResponse
 
 from src.api.auth.manager import current_active_user, fastapi_users
 from src.infra.persistence.orm_models import UserORM
@@ -158,104 +155,4 @@ async def clear_conversation(
     return {"status": "ok", "message": "Conversation cleared"}
 
 
-@router.get(
-    "/stream",
-    summary="Stream a chat response via Server-Sent Events (SSE)",
-    response_class=StreamingResponse,
-)
-@inject
-async def chat_stream(
-    message: str = Query(..., description="User message to send to Amadeus"),
-    session_id: str | None = Query(default=None, description="Optional session ID for context"),
-    source: str = Query(default="api", description="Request source identifier"),
-    amadeus: AmadeusService = Depends(Provide[Container.amadeus_service]),
-    user: UserORM | None = Depends(optional_user),
-) -> StreamingResponse:
-    """
-    Stream the Amadeus response as Server-Sent Events (SSE).
 
-    Uses Gemini ``stream=True`` when available; falls back to word-by-word
-    chunking for Groq so the client always sees progressive output.
-
-    **SSE event format**::
-
-        data: {"delta": "token text"}
-
-        data: [DONE]
-    """
-    active_session_id = str(user.id) if user is not None else session_id or amadeus.session_id
-
-    async def event_generator() -> AsyncGenerator[str, None]:
-        try:
-            # --- Native Gemini streaming (lowest TTFT) ---
-            gemini_model = getattr(amadeus, "model", None)
-            if gemini_model is not None:
-                try:
-                    system_prompt = getattr(amadeus, "_get_system_prompt", lambda: "")() or ""
-                    full_prompt = f"{system_prompt}\n\nUser: {message}\nAssistant:"
-                    stream = gemini_model.generate_content(full_prompt, stream=True)
-                    for chunk in stream:
-                        if chunk.text:
-                            yield f"data: {json.dumps({'delta': chunk.text})}\n\n"
-                    yield "data: [DONE]\n\n"
-                    return
-                except Exception as gemini_err:
-                    logger.debug("Gemini stream failed, falling back: %s", gemini_err)
-
-            # --- Fallback: batch response chunked word-by-word ---
-            async with _chat_semaphore:
-                # Extract Permission Profile
-                profile = PermissionProfile.SYSTEM_FULL
-                if user is not None and user.role.value.lower() == "guest":
-                    profile = PermissionProfile.READ_ONLY
-
-                try:
-                    response_text = await amadeus.handle_command(
-                        user_input=message,
-                        source=source,
-                        session_id=active_session_id,
-                        permission_profile=profile,
-                    )
-                except QueueFullError as e:
-                    raise HTTPException(status_code=429, detail=str(e)) from e
-
-            # PC-02: Chunk by sentence boundaries instead of word-by-word.
-            # Reduces asyncio.sleep() calls from ~500 to ~25 per average response,
-            # cutting artificial latency from ~5s to ~1.25s.
-            import re as _re
-            sentences = _re.split(r"(?<=[.!?])\s+", response_text.strip())
-            chunks: list[str] = []
-            current_chunk: list[str] = []
-            current_words = 0
-            for sentence in sentences:
-                words_in_sentence = len(sentence.split())
-                if current_words + words_in_sentence > 15 and current_chunk:
-                    chunks.append(" ".join(current_chunk))
-                    current_chunk = [sentence]
-                    current_words = words_in_sentence
-                else:
-                    current_chunk.append(sentence)
-                    current_words += words_in_sentence
-            if current_chunk:
-                chunks.append(" ".join(current_chunk))
-
-            for i, chunk in enumerate(chunks):
-                text = chunk + (" " if i < len(chunks) - 1 else "")
-                yield f"data: {json.dumps({'delta': text})}\n\n"
-                await asyncio.sleep(0.05)
-
-            yield "data: [DONE]\n\n"
-
-        except Exception as e:
-            logger.error("SSE stream error: %s", e, exc_info=True)
-            yield f"data: {json.dumps({'error': 'Stream error'})}\n\n"
-            yield "data: [DONE]\n\n"
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",  # Disable Nginx buffering
-        },
-    )

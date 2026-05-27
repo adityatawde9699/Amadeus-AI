@@ -1,17 +1,17 @@
 <div align="center">
 
-# Amadeus AI v3.2.1
+# Amadeus AI v3.2.2
 
-**A production-grade, modular AI assistant backend built on Clean Architecture — text, voice, and autonomous tool execution unified under a single, fully decomposed service layer.**
+**A secure autonomous AI operating layer built on Clean Architecture — autonomous tool execution, long-horizon goal tracking, and multi-transport messaging unified under a single service layer.**
 
 [![CI Pipeline](https://github.com/adityatawde9699/Amadeus-AI/actions/workflows/main.yml/badge.svg)](https://github.com/adityatawde9699/Amadeus-AI/actions)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.118%2B-009688?logo=fastapi)](https://fastapi.tiangolo.com)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE.txt)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
-> **Tech Stack Highlights:**
-> `Python 3.11+` · `FastAPI` · `SQLAlchemy 2.0` · `Ollama` · `Groq (Llama 3.3)` · `Gemini` · `OpenAI (GPT-4o-mini)` · `Redis` · `Qdrant` · `PostgreSQL` · `JWT Auth` · `SSE Streaming` · `faster-whisper` · `Edge TTS` · `Telegram` · `WhatsApp` · `Docker` · `GitHub Actions` · `sentence-transformers (all-MiniLM-L6-v2)` · `rank-bm25` · `Prometheus`
+> **Tech Stack:**
+> `Python 3.11+` · `FastAPI` · `SQLAlchemy 2.0` · `Groq (Llama 3.3)` · `Gemini` · `Redis` · `Qdrant` · `PostgreSQL` · `JWT Auth` · `Telegram` · `Docker` · `sentence-transformers` · `llama-cpp-python` · `huggingface_hub`
 
 </div>
 
@@ -19,7 +19,7 @@
 
 ## 1. Problem Statement
 
-Building a personal or team AI assistant that is both capable and safe in production is unsolved by any single off-the-shelf tool:
+Building a secure autonomous AI operating layer that is both capable and safe in production is unsolved by any single off-the-shelf tool:
 
 | Pain Point | Reality |
 |---|---|
@@ -36,50 +36,50 @@ Building a personal or team AI assistant that is both capable and safe in produc
 
 ## 2. What is Amadeus?
 
-**Amadeus is a self-hosted AI assistant daemon** — a persistent FastAPI backend service that acts as the brain of a fully autonomous personal assistant. It is not a chatbot UI, not a thin API wrapper around a single LLM, and not a prompt-engineering framework.
+**Amadeus is a secure autonomous AI operating layer** — a persistent FastAPI backend that acts as the execution layer for autonomous operations. It is not a chatbot UI, not a thin wrapper around a single LLM, and not a prompt-engineering framework.
 
-It is a **production-grade, clean-architecture system** with the following defining properties:
+It is a **clean-architecture system** with the following defining properties:
+
+### Multi-Transport Architecture
+Requests arrive via three independent transport modules — `fastapi_transport.py` (HTTP/WebSocket), `telegram_transport.py` (Telegram Bot), and `cli_transport.py` (direct CLI) — all sharing a single `AmadeusService` singleton through the DI container.
 
 ### Autonomous Agent Loop
-Every user request enters a **ReAct (Reason + Act) agent loop** managed by `AgentOrchestrator`. The agent reasons, selects a tool, executes it, observes the result, and iterates — generating natural language prose only when it has enough information. Cycle detection, HITL confirmation gates, and a tool execution timeout guard against runaway loops.
+Every request enters a **ReAct (Reason + Act) agent loop** managed by `AgentOrchestrator`. The agent reasons, selects a tool, executes it, observes the result, and iterates — generating natural language only when sufficient information is gathered. Cycle detection, HITL confirmation gates, and tool execution timeouts guard against runaway loops.
 
 ### Multi-LLM Provider Router
-A **priority-ordered fallback chain** routes inference requests across five providers:
+A **priority-ordered fallback chain** routes inference requests:
 ```
-LlamaCpp (local GGUF) → Ollama (local server) → Groq (Llama 3.3 70B) → Gemini 2.5 Flash → OpenAI (GPT-4o-mini)
+LlamaCpp (local GGUF) → Groq (Llama 3.3 70B) → Gemini 2.5 Flash
 ```
-Each provider has a **Redis-backed daily quota counter**. When a provider exhausts its quota or fails, the router falls back to the next automatically. No human intervention needed.
+Each provider tracks a **Redis-backed daily quota counter**. When a provider exhausts its quota or fails, the router falls back automatically. `LOCAL_ONLY_MODE=true` disables all cloud providers.
 
-### 60+ Sandboxed Tools
-Amadeus executes a categorised registry of tools spanning:
+### Local Model Management
+`ModelManager` (`src/infra/model_manager.py`) resolves and auto-downloads models into `Model/`:
+- **Embed models**: saved to `Model/embed/<name>/` via `snapshot_download`
+- **GGUF files**: downloaded from any HuggingFace repo via `hf_hub_download`
+Configured entirely via `.env` — no manual file management required.
+
+### 53 Sandboxed Tools
+Amadeus executes a categorised registry spanning:
 - **System**: volume, brightness, screenshots, hardware monitoring
 - **Filesystem**: read, write, copy, move, search — all sandboxed to `SEARCH_ALLOWED_DIRS`
 - **Productivity**: tasks, reminders, notes, Pomodoro, calendar
 - **Information**: weather, news, Wikipedia, web search, math, time
-- **Communication**: Telegram, WhatsApp, Email, Slack
-- **Code**: sandboxed Python execution in an ephemeral Docker container (`--network=none`)
-- **Office** *(Windows)*: Word, Excel, Outlook via `pywin32`
+- **Communication**: Telegram, Email
+- **Goals**: `create_goal`, `update_goal`, `list_active_goals`
 
 ### Tiered Semantic Memory
-Conversation context is stored in three tiers:
-1. **Flash Cache (L1)** — in-process NumPy ring buffer, ~1 µs lookup, 100 entries
-2. **Qdrant (L2)** — persistent vector store, cosine similarity search, `all-MiniLM-L6-v2` embeddings
-3. **Knowledge Graph (L3)** — LLM-extracted Subject-Predicate-Object entities in PostgreSQL
+Conversation context stored via Qdrant persistent vector store with `all-MiniLM-L6-v2` (384-dim) embeddings. A NumPy ring-buffer Flash Cache (L1, 100 entries) intercepts Qdrant for recently-accessed memories.
+
+### Long-Horizon Goal Tracking
+`GoalRepository` persists multi-step objectives across sessions in PostgreSQL. The agent can create, update, and list active goals as part of its normal tool loop, enabling it to maintain context over long-running projects.
 
 ### Defence-in-Depth Security
-Every attack surface is covered:
 - **SEC-01**: Prompt injection resistance — `<user_task>` XML boundaries + `[BLOCKED:TOKEN]` neutralisation
-- **SEC-02**: WhatsApp HMAC-SHA256 webhook verification
 - **SEC-03**: Telegram `MASTER_TELEGRAM_CHAT_ID` allowlist
 - **HITL**: All destructive tools require explicit user confirmation (60-second timeout)
 - **Filesystem sandboxing**: All path operations enforce `SEARCH_ALLOWED_DIRS`
-- **JWT RBAC**: Per-route role enforcement (`admin` / `user` / `guest`)
-
-### Production Observability
-- **Prometheus** metrics at `/api/v1/metrics` — per-provider LLM counters, per-tool latency histograms, Qdrant error counters
-- **Liveness** (`/api/v1/health/live`) and **Readiness** (`/api/v1/health/ready`) probes for container orchestrators
-- **Structured JSON logs** via `structlog` with `request_id` tracing
-- **Sentry** error tracking integration
+- **JWT RBAC**: Per-route role enforcement
 
 ---
 
@@ -89,42 +89,33 @@ Amadeus solves each pain point with a concrete, implemented mechanism:
 
 | Pain Point | Amadeus Solution |
 |---|---|
-| Single-provider lock-in | 5-provider fallback chain with Redis daily quota tracking |
-| No offline mode | LlamaCpp + Ollama first in the chain; `LOCAL_ONLY_MODE=true` disables all cloud providers |
+| Single-provider lock-in | 3-provider fallback chain with Redis daily quota tracking |
+| No offline mode | LlamaCpp first in the chain; `LOCAL_ONLY_MODE=true` disables all cloud providers |
 | No authentication | JWT Bearer on all protected routes, RBAC roles, per-user rate limiting |
-| Prompt injection | `<user_task>` XML boundary + `[BLOCKED:TOKEN]` neutralisation in ReAct prompt (SEC-01) |
-| Tool execution safety | HITL confirmation gate + Docker sandbox + `SEARCH_ALLOWED_DIRS` path validation |
-| No observability | Prometheus metrics, health probes, structured JSON logs, Sentry |
-| Messaging channel auth | Telegram allowlist (SEC-03) + WhatsApp HMAC (SEC-02) |
-| Memory amnesia | 3-tier memory (Flash Cache → Qdrant → Knowledge Graph) with idempotent deduplication |
+| Prompt injection | `<user_task>` XML boundary + `[BLOCKED:TOKEN]` neutralisation (SEC-01) |
+| Tool execution safety | HITL confirmation gate + `SEARCH_ALLOWED_DIRS` path validation |
+| Memory amnesia | Persistent memory via Qdrant with idempotent deduplication |
+| No long-horizon context | GoalRepository tracks multi-step objectives across sessions |
+| Model scatter | ModelManager downloads and organises all models into `Model/` |
 
 ---
 
 ## 4. Features
 
 ### Conversational AI
-- Multi-LLM routing: **LlamaCpp (local GGUF)** → **Ollama (local server)** → Groq (Llama 3.3 70B) → Gemini 2.5 Flash → **OpenAI GPT-4o-mini** (emergency fallback)
+- Multi-LLM routing: **LlamaCpp (local GGUF)** → Groq (Llama 3.3 70B) → Gemini 2.5 Flash
 - **100% Local Inference**: `SLM_MODEL_PATH` loads a GGUF model directly via `llama-cpp-python` — zero network calls, zero API cost, full conversation memory
-- **Local Server Option**: `LOCAL_ONLY_MODE` via Ollama for complete offline privacy and zero-cost inference.
+- **Local Server Option**: `LOCAL_ONLY_MODE` for complete offline privacy and zero-cost inference.
 - **Redis-backed daily quota tracking** per provider — shared across all workers, auto-expires at midnight
 - **Semantic long-term memory** via Qdrant vector search (`all-mpnet-base-v2` 768-dim embeddings) — top-3 relevant memories injected into the agent prompt on every request
-- **Flash Memory Cache (L1)** — tier-1 in-process ring buffer (100 entries, NumPy float32) intercepts Qdrant calls with cosine similarity check (threshold 0.85); cache hit skips Qdrant entirely (~microsecond vs ~5ms)
-- **Episodic memory (Knowledge Graph)** — LLM-driven entity extraction stores relationships (Subject-Predicate-Object) in PostgreSQL for precision context recall
-- **Server-Sent Events (SSE) streaming**: `GET /api/v1/chat/stream` — native Gemini `stream=True` with word-by-word fallback for Groq
 - Persistent conversation memory with configurable context window
 - Concurrent request limiting (`asyncio.Semaphore` — default 20 simultaneous chats)
 
 ### Messaging & Channels
-- **Inbound webhooks** — Telegram Bot API, WhatsApp Meta Cloud API (with challenge verification)
-- **Outbound messaging dispatch** — `POST /api/v1/messaging/send` routes to Telegram, WhatsApp, or Email from one endpoint
+- **Inbound webhooks** — Telegram Bot API
+- **Outbound messaging dispatch** — `POST /api/v1/messaging/send` routes to Telegram or Email from one endpoint
 - Email send/receive via SMTP (`aiosmtplib`) and IMAP (`imap_tools`)
 - `GET /api/v1/messaging/status` — live readiness check for all configured channels
-
-### Voice Interface
-- Real-time bidirectional voice via WebSocket (`/api/v1/ws/voice`)
-- Speech-to-text via `faster-whisper` (CTranslate2 — CPU and CUDA)
-- Text-to-speech via Microsoft Edge TTS (`edge-tts`) — free, unlimited
-- Configurable TTS voice (e.g. `en-US-JennyNeural`)
 
 ### Tool Execution Engine
 **Information tools:**
@@ -140,8 +131,6 @@ Amadeus solves each pain point with a concrete, implemented mechanism:
 - Pomodoro timer (start, stop, status)
 - Notes (create, list, retrieve)
 - Reminders (set, list — with natural language time parsing via `dateparser`)
-- **Office Integrations**: Microsoft Office adapters for creating and reading Word/Excel documents and Outlook emails (requires Windows + `pywin32`)
-- **Slack Integration**: Read channels, and send or read messages via `slack-sdk`
 
 **System & monitoring tools:**
 - System Controls (set/get volume, screen brightness, take screenshots, list open apps)
@@ -172,7 +161,6 @@ Amadeus solves each pain point with a concrete, implemented mechanism:
 - **Agent Queue Backpressure**: The orchestrator enforces strict concurrency limits via `maxsize`, safely shedding excess loads with `HTTP 429` (Too Many Requests).
 - **IPC Authentication**: Background RPC calls require an `X-IPC-Token` to prevent unauthenticated local access loops.
 - **SEC-01 — Prompt Injection Resistance**: User input is wrapped in `<user_task>` XML tags; ReAct control tokens (`Action:`, `Thought:`, etc.) embedded in user text are neutralised with `[BLOCKED:TOKEN]` markers before reaching the LLM.
-- **SEC-02 — WhatsApp HMAC Verification**: Every inbound WhatsApp webhook is verified against `X-Hub-Signature-256` using `HMAC-SHA256` + `WHATSAPP_APP_SECRET`. Forged payloads receive HTTP 403.
 - **SEC-03 — Telegram Authorization**: `MASTER_TELEGRAM_CHAT_ID` allowlist enforced on every incoming message. Unauthorized `chat_id` values receive `"Unauthorized."` and are dropped.
 - **SEC-06 — Secure SECRET_KEY**: Auto-generates a cryptographically-secure ephemeral key at startup if `SECRET_KEY` is not configured. Warns operators loudly. No more `"fallback"` literal.
 - JWT Bearer authentication on all protected routes (`/chat`, `/tasks`, `/voice`, `/messaging`)
@@ -244,7 +232,6 @@ Amadeus solves each pain point with a concrete, implemented mechanism:
 | **Redis** | 6+ | Recommended | Rate limiting, LLM daily quota tracking, TTS + tool result caching. Falls back to in-memory if unavailable. |
 | **Qdrant** | 1.7+ | Recommended | Vector memory store for long-term semantic recall. Runs local file-based by default (no server needed). |
 | **Docker** | 24+ | Optional | Required only for the Python code-execution sandbox (`execute_python_script` tool) |
-| **Ollama** | 0.3+ | Optional | Local LLM server for `OLLAMA_ENABLED=true` mode |
 
 ### LLM Model Requirements *(if using local inference)*
 
@@ -303,19 +290,13 @@ cp .env.example .env
 
 | Variable | Description |
 |----------|-------------|
-| `OPENAI_API_KEY` | Emergency fallback LLM (GPT-4o-mini, paid) |
-| `OPENAI_MODEL` | OpenAI model override (default: `gpt-4o-mini`) |
 | `REDIS_URL` | Redis for caching + quota tracking (default: `redis://localhost:6379/0`) |
 | `WEATHER_API_KEY` | OpenWeatherMap API key |
 | `NEWS_API_KEY` | NewsAPI key |
 | `TAVILY_API_KEY` | Tavily deep search |
-| `EDGE_TTS_VOICE` | Edge TTS voice name (default: `en-US-JennyNeural`) |
 | `SENTRY_DSN` | Sentry error tracking DSN |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token — required for Telegram channel |
 | `TELEGRAM_WEBHOOK_SECRET` | Secret header for Telegram webhook validation |
-| `WHATSAPP_ACCESS_TOKEN` | Meta WhatsApp Cloud API access token |
-| `WHATSAPP_PHONE_NUMBER_ID` | WhatsApp sender phone number ID |
-| `WHATSAPP_VERIFY_TOKEN` | Token for Meta webhook challenge verification |
 | `EMAIL_IMAP_SERVER` | IMAP server hostname (e.g. `imap.gmail.com`) |
 | `EMAIL_SMTP_SERVER` | SMTP server hostname (e.g. `smtp.gmail.com`) |
 | `EMAIL_SMTP_PORT` | SMTP port (default: `587`) |
@@ -327,17 +308,17 @@ cp .env.example .env
 ### Option A — Local Installation (without Docker)
 
 ```bash
-# Install all dependencies including dev tools and voice extras
-pip install -e ".[all]"
-
-# OR using uv (faster)
+# Install dependencies
 uv sync --all-extras --dev
 
 # Run database migrations
-python -m alembic upgrade head
+uv run alembic upgrade head
 
-# Start the API server
-uvicorn src.api.server:app --reload --host 0.0.0.0 --port 8000
+# Start via FastAPI transport
+uv run python -m src.transports.fastapi_transport
+
+# Or via CLI transport for testing
+uv run python -m src.transports.cli_transport
 ```
 
 ### Option B — Docker (Development)
@@ -419,11 +400,9 @@ curl -N -H "Authorization: Bearer $TOKEN" \
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `POST` | `/api/v1/messaging/send` | Yes | Send outbound message (Telegram / WhatsApp / Email) |
+| `POST` | `/api/v1/messaging/send` | Yes | Send outbound message (Telegram / Email) |
 | `GET` | `/api/v1/messaging/status` | No | Check which channels are configured |
 | `POST` | `/api/v1/webhooks/telegram` | Secret token | Receive inbound Telegram updates |
-| `GET` | `/api/v1/webhooks/whatsapp` | Verify token | Meta webhook challenge verification |
-| `POST` | `/api/v1/webhooks/whatsapp` | — | Receive inbound WhatsApp messages |
 
 **Send message request:**
 ```json
@@ -485,13 +464,9 @@ curl -N -H "Authorization: Bearer $TOKEN" \
 - **Redis 5+** — caching layer (via `redis-py` async client)
 
 ### AI & LLM
-- **Ollama** — Default primary local LLM execution (recommended: `phi3:mini` or `llama3.2`) for offline inference
 - **Groq API (Llama 3.3 70B)** — Cloud primary LLM (free tier)
-- **Google Generative AI (Gemini 2.5 Flash)** — Secondary cloud LLM, supports native `stream=True`
-- **OpenAI GPT-4o-mini** — Emergency fallback (paid, optional) via `openai_adapter.py`
+- **Google Generative AI (Gemini 2.5 Flash)** — Secondary cloud LLM
 - **Qdrant** — vector database for semantic long-term memory
-- **Flash Memory Cache** — Tier-1 in-process ring buffer for high-frequency memories
-- **Knowledge Graph** — structured entity relationship storage via SQLAlchemy/PostgreSQL
 - **LLMRouter** — Redis-backed daily-quota-aware routing engine with atomic `INCR`/`EXPIRE`
 - **SemanticToolRouter** — sentence-transformers based zero-training tool intent triaging
 - **WorkspaceIndexer** — hybrid BM25 + dense vector retrieval engine for project RAG
@@ -538,23 +513,22 @@ block-beta
 
   block:clients["🌐  CLIENT LAYER"]:1
     columns 3
-    A["🖥️ HTTP / REST\nclients"] B["🎙️ WebSocket\nvoice stream"] C["📨 Telegram /\nWhatsApp / Email"]
+    A["🖥️ HTTP / REST\nclients"] B["📨 Telegram Bot"] C["💻 CLI"]
   end
 
   space
 
-  block:api["⚡  API LAYER  —  src/api/"]:1
+  block:transports["🔀  TRANSPORT LAYER  —  src/transports/"]:1
     columns 3
-    D["🔐 JWT Auth\n& RBAC"] E["🛡️ Rate Limiter\nSlowAPI"] F["📋 Audit Logger\nRequest IDs"]
-    G["/chat  /tasks\n/voice  /llm"] H["/webhooks\n/messaging"] I["WS /ws/voice\nSSE stream"]
+    D["⚡ fastapi_transport\nFastAPI + JWT"] E["📨 telegram_transport\nWebhook handler"] F["💻 cli_transport\nDirect runner"]
   end
 
   space
 
   block:app["🧠  APPLICATION LAYER  —  src/app/"]:1
     columns 3
-    J["🤖 AmadeusService\nOrchestrator"] K["📝 ConversationManager\nHistory · DB Sync"] L["🎤 VoiceService\nSTT → LLM → TTS"]
-    J2["🔍 ArgumentExtractor\nLLM · Regex"] K2["⚙️ ToolDispatcher\nTimeouts · Cache"] L2["✍️ ResponseComposer\nPromptz · LOCAL_ONLY"]
+    J["🤖 AmadeusService\nOrchestrator"] K["📝 ConversationManager\nHistory · DB Sync"] L["🔄 AgentOrchestrator\nReAct loop"]
+    J2["🔍 ArgumentExtractor\nLLM · Regex"] K2["⚙️ ToolDispatcher\nTimeouts · Cache"] L2["✍️ ResponseComposer\nPrompts"]
   end
 
   space
@@ -570,22 +544,22 @@ block-beta
     columns 3
     block:llmblock["🤖 LLM"]:1
       columns 1
-      Q["LlamaCpp  (local)"] R["Ollama  (local)"] S["Groq / Gemini / OpenAI"]
+      Q["LlamaCpp  (local)"] S["Groq / Gemini"]
     end
     block:datablock["💾 Data"]:1
       columns 1
-      T["PostgreSQL / SQLite"] U["Redis Cache"] V["Qdrant Vectors"]
+      T["PostgreSQL"] U["Redis Cache"] V["Qdrant Vectors"]
       V2["Flash Memory Cache"]
     end
     block:svcblock["🛠️ Services"]:1
       columns 1
-      W["Whisper STT\nEdge TTS"] X["DDG→Tavily\nSearch Router"] Y["Tools: info /\nproductivity / system"]
-      Z["Workspace Indexer\nHybrid RAG"]
+      X["DDG→Tavily\nSearch Router"] Y["Tools: info /\nproductivity / system / goals"]
+      Z["ModelManager\nAuto-download"]
     end
   end
 
-  clients --> api
-  api --> app
+  clients --> transports
+  transports --> app
   app --> core
   app --> infra
   core --> infra
@@ -604,7 +578,6 @@ sequenceDiagram
     participant Agent as 🔄 Agent Loop
     participant Router as 🔀 LLMRouter
     participant LlamaCpp as 💻 LlamaCpp
-    participant Ollama as 🦙 Ollama
     participant Groq as ☁️ Groq
     participant Cache as ⚡ Redis Cache
     participant DB as 🗄️ PostgreSQL
@@ -626,13 +599,8 @@ sequenceDiagram
         alt LlamaCpp available
             LlamaCpp-->>Router: ✅ Response
         else LlamaCpp not configured
-            Router->>Ollama: is_available()?
-            alt Ollama running
-                Ollama-->>Router: ✅ Response
-            else Quota / Unavailable
-                Router->>Groq: generate()
-                Groq-->>Router: ✅ Response
-            end
+            Router->>Groq: generate()
+            Groq-->>Router: ✅ Response
         end
         Router-->>Agent: (response, provider_used)
         Agent-->>Amadeus: final_response
@@ -643,28 +611,7 @@ sequenceDiagram
     FastAPI-->>Client: 200 JSON
 ```
 
-### Voice Pipeline
 
-```mermaid
-flowchart LR
-    A(["🎙️ Audio\nBytes"]):::input
-    B(["📝 Transcribed\nText"]):::step
-    C(["🧠 LLM\nResponse"]):::step
-    D(["🔊 TTS\nAudio"]):::output
-
-    A -->|"faster-whisper\nCPU / CUDA"| B
-    B -->|"LLMRouter\nlocal-first"| C
-    C -->|"Edge TTS\nen-US-JennyNeural"| D
-
-    subgraph ws ["WebSocket  /api/v1/ws/voice"]
-        B
-        C
-    end
-
-    classDef input  fill:#E1F5EE,stroke:#1D9E75,color:#04342C,rx:8
-    classDef step   fill:#EEEDFE,stroke:#7F77DD,color:#26215C,rx:8
-    classDef output fill:#FAEEDA,stroke:#BA7517,color:#412402,rx:8
-```
 
 
 
@@ -1055,129 +1002,102 @@ asyncio.run(voice_session())
 ```
 Amadeus-AI/
 │
-├── .github/
-│   ├── workflows/
-│   │   └── main.yml                  # CI/CD: lint → test → train-model → deploy (Railway staging)
-│   ├── ISSUE_TEMPLATE/
-│   │   ├── bug_report.md             # Structured bug report form
-│   │   └── feature_request.md        # Feature request form
-│   ├── PULL_REQUEST_TEMPLATE.md      # PR checklist for contributors
-│   └── CODEOWNERS                    # Auto-assign reviewers by file path
-├── CONTRIBUTING.md                   # Developer setup, coding standards, PR workflow
-├── CHANGELOG.md                      # Release history (Keep a Changelog format)
-├── SECURITY.md                       # Vulnerability reporting policy
-├── CODE_OF_CONDUCT.md                # Contributor Covenant v2.1
+├── .github/                        # CI/CD workflows and issue templates
+│   └── workflows/main.yml          # Lint → test → Docker build
+├── CONTRIBUTING.md
+├── CHANGELOG.md
+├── SECURITY.md
+├── CODE_OF_CONDUCT.md
 │
-├── alembic/                      # Database migration scripts
-│   ├── env.py
+├── alembic/                        # Database migration scripts
 │   └── versions/
 │
-├── data/
-│   ├── agent_workspace/          # Sandboxed LLM filesystem (path-traversal protected)
-│   ├── training_data.json        # 3 168 labeled examples across 23 tool categories
-│   └── amadeus.db                # SQLite database (development only)
+├── data/                           # Runtime data (gitignored)
 │
-├── Model/
-│   └── semantic_tool_embeddings.npz  # Pre-built 768-dim tool embeddings (all-mpnet-base-v2)
-│                                     # Auto-regenerated on tool metadata change via fingerprint
+├── deploy/
+│   └── amadeus.service             # systemd unit for bare-metal Linux
+│
+├── Model/                          # All local models (managed by ModelManager)
+│   └── embed/                      # Embedding models auto-downloaded here
 │
 ├── scripts/
-│   ├── generate_training_data.py # Generates training_data.json from templates
-│   └── index_workspace.py        # CLI for building Hybrid Workspace Index (v3.2.0)
+│   ├── generate_training_data.py
+│   ├── index_workspace.py
+│   └── retrain_classifier.py
 │
 ├── src/
-│   ├── container.py              # IoC container — wires all dependencies
+│   ├── container.py                # IoC container — wires all dependencies
 │   │
-│   ├── api/                      # ── API LAYER ──────────────────────────────────────────
-│   │   ├── server.py             #    FastAPI app factory, middleware registration
+│   ├── transports/                 # ── TRANSPORT LAYER ───────────────────────────
+│   │   ├── fastapi_transport.py    # FastAPI app factory, JWT, rate limiting
+│   │   ├── telegram_transport.py   # Telegram webhook adapter
+│   │   └── cli_transport.py        # Direct CLI runner
+│   │
+│   ├── api/                        # ── API ROUTES & MIDDLEWARE ────────────────
 │   │   ├── middleware/
-│   │   │   ├── authentication.py #    JWT Bearer token verification (HS256)
-│   │   │   ├── rbac.py           #    READ_ONLY / SYSTEM_FULL permission profiles
-│   │   │   └── audit_logger.py   #    Request ID injection, latency headers
+│   │   │   ├── authentication.py   # JWT Bearer verification (HS256)
+│   │   │   ├── rbac.py             # Permission profiles
+│   │   │   └── audit_logger.py     # Request ID injection, latency headers
 │   │   └── routes/
-│   │       ├── chat.py           #    POST /chat · GET /chat/stream (SSE)
-│   │       ├── messaging.py      #    POST /messaging/send
-│   │       ├── webhooks.py       #    Telegram + WhatsApp inbound webhooks
-│   │       ├── voice.py          #    WS  /ws/voice  (real-time bidirectional)
-│   │       ├── tasks.py          #    CRUD /tasks
-│   │       ├── health.py         #    Detailed health (DB · Redis · classifier)
-│   │       └── llm.py            #    Daily quota report
+│   │       ├── chat.py             # POST /chat · GET /chat/stream (SSE)
+│   │       ├── messaging.py        # POST /messaging/send
+│   │       ├── webhooks.py         # Telegram inbound webhooks
+│   │       ├── tasks.py            # CRUD /tasks
+│   │       └── health.py           # /health/live · /health/ready
 │   │
-│   ├── app/                      # ── APPLICATION LAYER ──────────────────────────────────
+│   ├── app/                        # ── APPLICATION LAYER ─────────────────────
 │   │   └── services/
-│   │       ├── amadeus_service.py    #  Thin orchestrator (~260 lines) — coordinates sub-services
-│   │       ├── conversation_manager.py # ConversationMessage + history cache + DB sync (v3.2.0)
-│   │       ├── argument_extractor.py #  NLP → tool args: LLM JSON + 15 regex fast-paths (v3.2.0)
-│   │       ├── tool_dispatcher.py    #  Tool lookup, per-tool timeouts, result caching (v3.2.0)
-│   │       ├── response_composer.py  #  LLM prose + 3-tier system prompt + LOCAL_ONLY guard (v3.2.0)
-│   │       ├── semantic_router.py    #  UnifiedSemanticRouter — zero-training cosine triage
-│   │       ├── agent_loop.py         #  ReAct agent: LLM ↔ tool loop with memory injection
-│   │       ├── tool_registry.py      #  Tool discovery and single-source registration
-│   │       └── voice_service.py      #  STT → LLM → TTS pipeline
+│   │       ├── amadeus_service.py  # Thin orchestrator
+│   │       ├── agent_loop.py       # ReAct agent + AgentOrchestrator
+│   │       ├── autonomous_loop.py  # Proactive observation loop
+│   │       ├── conversation_manager.py
+│   │       ├── argument_extractor.py
+│   │       ├── tool_dispatcher.py
+│   │       ├── response_composer.py
+│   │       ├── semantic_router.py  # Zero-training cosine triage
+│   │       └── tool_registry.py
 │   │
-│   ├── core/                     # ── CORE LAYER (no external deps) ──────────────────────
-│   │   ├── config.py             #    Pydantic-settings: typed env var schema
-│   │   ├── exceptions.py         #    AmadeusError hierarchy
-│   │   ├── domain/
-│   │   │   └── models.py         #    Pydantic domain models
+│   ├── core/                       # ── CORE LAYER (no external deps) ───────
+│   │   ├── config.py               # Pydantic-settings typed env schema
+│   │   ├── exceptions.py           # AmadeusError hierarchy
+│   │   ├── domain/models.py        # Pydantic domain models
 │   │   └── interfaces/
-│   │       ├── llm.py            #    LLMAdapter ABC
-│   │       └── repositories.py   #    Abstract repository interfaces
+│   │       ├── llm.py              # LLMAdapter ABC
+│   │       └── repositories.py     # Abstract repository interfaces
 │   │
-│   └── infra/                    # ── INFRASTRUCTURE LAYER ────────────────────────────────
+│   └── infra/                      # ── INFRASTRUCTURE LAYER ───────────────
+│       ├── model_manager.py        # Auto-download embed + GGUF models
 │       ├── llm/
-│       │   ├── router.py             #    Multi-LLM routing + Redis quota tracking
-│       │   ├── llama_cpp_adapter.py  #    LlamaCpp — local GGUF offline inference
-│       │   ├── ollama_adapter.py     #    Ollama — local server inference
-│       │   ├── groq_adapter.py       #    Groq — Llama 3.3 70B cloud
-│       │   ├── gemini_adapter.py     #    Gemini 2.5 Flash — native streaming
-│       │   └── openai_adapter.py     #    GPT-4o-mini — emergency paid fallback
-│       ├── memory_service.py         #    Qdrant + Flash Cache + KG (v3.1.0)
-│       ├── workspace_indexer.py      #    Hybrid BM25 + Dense RAG (v3.1.0)
+│       │   ├── router.py           # Multi-LLM routing + Redis quota
+│       │   ├── llama_cpp_adapter.py
+│       │   ├── groq_adapter.py
+│       │   └── gemini_adapter.py
+│       ├── memory_service.py       # Qdrant + Flash Cache
 │       ├── messaging/
-│       │   ├── telegram_adapter.py  # Telegram Bot API
-│       │   ├── whatsapp_adapter.py  # Meta WhatsApp Cloud API
-│       │   └── email_adapter.py     # SMTP send + IMAP fetch
-│       ├── cache/
-│       │   └── cache_service.py  #    Redis async client
+│       │   ├── telegram_adapter.py
+│       │   └── email_adapter.py
+│       ├── cache/cache_service.py  # Redis async client
 │       ├── persistence/
-│       │   ├── database.py       #    Async engine + session factory
-│       │   ├── orm_models.py     #    SQLAlchemy ORM models
-│       │   └── repositories/     #    Concrete repository implementations
-│       ├── speech/
-│       │   ├── adapters.py       #    faster-whisper STT + pyttsx3 TTS adapters
-│       │   ├── edge_tts_adapter.py #  Microsoft Edge TTS (free, unlimited)
-│       │   └── tts_router.py     #    TTS provider selector
-│       ├── search/
-│       │   └── search_router.py  #    Tiered web search: DuckDuckGo → Tavily
+│       │   ├── database.py
+│       │   ├── orm_models.py       # SQLAlchemy ORM (includes GoalORM)
+│       │   └── repositories/
+│       ├── search/search_router.py # DuckDuckGo → Tavily
 │       └── tools/
-│           ├── base.py           #    Tool, ToolCategory, @tool decorator
-│           ├── info_tools.py     #    Weather · news · Wikipedia · calculator · search
-│           ├── productivity_tools.py # Tasks · Pomodoro · notes · reminders · Slack · Office
-│           ├── monitor_tools.py  #    CPU · memory · disk · battery with alert thresholds
-│           └── system_tools.py   #    File ops · app launch · system commands (sandboxed)
+│           ├── agent_tools.py      # Goal + schedule tools
+│           ├── info_tools.py
+│           ├── productivity_tools.py
+│           ├── monitor_tools.py
+│           └── system_tools.py
 │
 ├── tests/
-│   ├── conftest.py               # Pytest fixtures — async DB session, DI container
-│   ├── manual_routing_check.py   # Dev script: print top-3 routing scores per query
 │   ├── unit/
-│   │   ├── test_classifier_loading.py        # UnifiedSemanticRouter init + routing tests
-│   │   ├── test_amadeus_service_errors.py    # Error handling: production vs debug modes
-│   │   ├── test_llm_router.py                # LLMRouter quota + fallback logic
-│   │   ├── test_memory_agent_integration.py  # ReAct agent memory injection
-│   │   ├── test_memory_service.py            # Qdrant store/retrieve + Flash Cache
-│   │   ├── test_openai_adapter.py            # OpenAI adapter contract tests
-│   │   └── core/test_config.py               # Settings validation
 │   └── integration/
-│       ├── api/test_health.py                # Live endpoint smoke tests (testcontainers)
-│       └── test_llm_routing_fallback.py      # Full LLM fallback chain (PostgreSQL container)
 │
-├── Dockerfile                    # 3-stage: builder → model_cache (Whisper) → runtime
-├── docker-compose.yml            # dev profile (API + PostgreSQL) + prod profile (gunicorn)
-├── locustfile.py                 # Load testing configuration
-├── pyproject.toml                # Project metadata, dependencies, ruff/mypy/coverage config
-├── alembic.ini                   # Alembic migration configuration
-└── .env.example                  # All environment variables documented with defaults
+├── Dockerfile
+├── docker-compose.yml
+├── pyproject.toml
+├── alembic.ini
+└── .env.example
 ```
 
 </details>
@@ -1186,11 +1106,12 @@ Amadeus-AI/
 
 | Layer | Path | Responsibility |
 |-------|------|----------------|
+| Transport | `src/transports/` | FastAPI ASGI app · Telegram webhook · CLI runner — each shares the same `AmadeusService` singleton |
 | API | `src/api/` | HTTP routing, JWT auth middleware, request/response serialization |
-| Application | `src/app/services/` | **Orchestrator** (`AmadeusService`) + 4 focused sub-services: `ConversationManager`, `ArgumentExtractor`, `ToolDispatcher`, `ResponseComposer` |
+| Application | `src/app/services/` | **Orchestrator** (`AmadeusService`) + focused sub-services: `ConversationManager`, `ArgumentExtractor`, `ToolDispatcher`, `ResponseComposer` |
 | Core | `src/core/` | Domain models, interfaces, config, exceptions — zero external deps |
-| Infrastructure | `src/infra/` | LLM adapters, DB, cache, speech, search, messaging, RAG engine |
-| Data | — | PostgreSQL · SQLite · Redis · Qdrant · Flash Cache |
+| Infrastructure | `src/infra/` | LLM adapters, DB, cache, memory, search, messaging, tools, `ModelManager` |
+| Data | — | PostgreSQL · Redis · Qdrant · Flash Cache |
 
 ---
 
@@ -1257,15 +1178,29 @@ Set the following environment variables in the Railway dashboard:
 - `REDIS_URL` (Railway Redis plugin)
 - `ENV=production`, `DEBUG=false`
 
-### Deploy with Docker Compose (Self-hosted)
+### Deploy with Docker Compose
 
 ```bash
-# Production profile (4 Gunicorn workers, resource limits)
-# Note: Redis and PostgreSQL ports are internal-only for security
-docker-compose --profile prod up -d
+docker compose up -d
 
 # View logs
-docker-compose logs -f api-prod
+docker compose logs -f amadeus
+
+# Run migrations inside the container
+docker compose exec amadeus uv run alembic upgrade head
+```
+
+### Deploy as a Linux Daemon
+
+```bash
+# Copy the unit file
+sudo cp deploy/amadeus.service /etc/systemd/system/
+
+# Enable and start
+sudo systemctl daemon-reload
+sudo systemctl enable amadeus
+sudo systemctl start amadeus
+sudo journalctl -u amadeus -f
 ```
 
 ### Deploy as a Standalone Windows Daemon

@@ -58,6 +58,14 @@ class TaskStatus(StrEnum):
     COMPLETED = "completed"
 
 
+class GoalStatus(StrEnum):
+    """Status of a long-term goal."""
+
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    ABANDONED = "abandoned"
+
+
 class ReminderStatus(StrEnum):
     """Status of a reminder."""
 
@@ -193,6 +201,28 @@ class Task(BaseModel):
         return self.model_copy(
             update={
                 "status": TaskStatus.COMPLETED,
+                "completed_at": datetime.utcnow(),
+            }
+        )
+
+
+class Goal(BaseModel):
+    """Domain model for a long-term goal."""
+
+    id: int | None = None
+    title: str
+    description: str = ""
+    status: GoalStatus = GoalStatus.ACTIVE
+    target_date: datetime | None = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    completed_at: datetime | None = None
+    parent_goal_id: int | None = None
+
+    def mark_complete(self) -> "Goal":
+        """Return a new Goal marked as complete."""
+        return self.model_copy(
+            update={
+                "status": GoalStatus.COMPLETED,
                 "completed_at": datetime.utcnow(),
             }
         )

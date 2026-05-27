@@ -45,6 +45,14 @@ class TaskStatusDB(enum.StrEnum):
     COMPLETED = "completed"
 
 
+class GoalStatusDB(enum.StrEnum):
+    """Goal status enum for database."""
+
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    ABANDONED = "abandoned"
+
+
 class ReminderStatusDB(enum.StrEnum):
     """Reminder status enum for database."""
 
@@ -123,6 +131,36 @@ class TaskORM(Base):
 
     def __repr__(self) -> str:
         return f"<Task(id={self.id}, status={self.status.value})>"
+
+
+class GoalORM(Base):
+    """ORM model for long-term goals."""
+
+    __tablename__ = "goals"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(256))
+    description: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[GoalStatusDB] = mapped_column(
+        SAEnum(GoalStatusDB),
+        default=GoalStatusDB.ACTIVE,
+        index=True,
+    )
+    target_date: Mapped[datetime | None] = mapped_column(nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        server_default=func.now(),
+        index=True,
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(nullable=True, index=True)
+    parent_goal_id: Mapped[int | None] = mapped_column(nullable=True, index=True)
+
+    __table_args__ = (
+        Index("idx_goal_status_created", "status", "created_at"),
+        Index("idx_goal_status_target", "status", "target_date"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<Goal(id={self.id}, title='{self.title[:30]}', status={self.status.value})>"
 
 
 class NoteORM(Base):
@@ -381,65 +419,4 @@ class ConversationSummaryORM(Base):
         return f"<ConversationSummary(id={self.id}, msgs={self.messages_summarized})>"
 
 
-# =============================================================================
-# KNOWLEDGE GRAPH (Episodic Memory)
-# =============================================================================
 
-
-class EntityORM(Base):
-    """
-    ORM model for entities in the Knowledge Graph.
-    Entities represent people, places, objects, or concepts the user mentions.
-    """
-
-    __tablename__ = "graph_entities"
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(256), index=True)
-    entity_type: Mapped[str | None] = mapped_column(String(64), index=True)
-    description: Mapped[str] = mapped_column(Text, default="")
-    created_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(),
-    )
-    updated_at: Mapped[datetime | None] = mapped_column(
-        server_default=func.now(),
-        onupdate=func.now(),
-    )
-
-    __table_args__ = (Index("idx_entity_name_type", "name", "entity_type"),)
-
-    def __repr__(self) -> str:
-        return f"<Entity(name='{self.name}', type='{self.entity_type}')>"
-
-
-class RelationshipORM(Base):
-    """
-    ORM model for relationships in the Knowledge Graph (SPO Triples).
-    Subject -> Predicate -> Object
-    """
-
-    __tablename__ = "graph_relationships"
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    subject_id: Mapped[int] = mapped_column(index=True)
-    predicate: Mapped[str] = mapped_column(String(128), index=True)
-    object_id: Mapped[int] = mapped_column(index=True)
-
-    strength: Mapped[int] = mapped_column(default=1)
-    created_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(),
-    )
-    updated_at: Mapped[datetime | None] = mapped_column(
-        server_default=func.now(),
-        onupdate=func.now(),
-    )
-
-    __table_args__ = (
-        Index("idx_rel_triple", "subject_id", "predicate", "object_id"),
-        Index("idx_rel_predicate", "predicate"),
-    )
-
-    def __repr__(self) -> str:
-        return (
-            f"<Relationship(sub={self.subject_id}, pred='{self.predicate}', obj={self.object_id})>"
-        )

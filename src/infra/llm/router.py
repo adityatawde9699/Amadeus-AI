@@ -20,24 +20,46 @@ Usage tracking resets daily at midnight (UTC).
 import asyncio
 import logging
 import re
-from collections import defaultdict
+from collections import defaultdict, deque
+from dataclasses import dataclass
 from datetime import date
 from typing import TYPE_CHECKING, Any, ClassVar
+import time
 
+from opentelemetry import trace
 from src.core.exceptions import LLMRateLimitError
+from src.runtime.events import EventBus
 
 
 if TYPE_CHECKING:
     from src.infra.llm.gemini_adapter import GeminiAdapter
     from src.infra.llm.groq_adapter import GroqAdapter
     from src.infra.llm.llama_cpp_adapter import LlamaCppAdapter
-    from src.infra.llm.ollama_adapter import OllamaAdapter
+from src.infra.resilience.circuit_breaker import CircuitBreaker, CircuitBreakerOpenException
 
 
 logger = logging.getLogger(__name__)
 
 
 # =============================================================================
+# PROVIDER HEALTH
+# =============================================================================
+
+@dataclass
+class ProviderHealth:
+    name: str
+    p95_latency_ms: float = 1000.0
+    timeout_rate: float = 0.0      # timeouts / total calls (rolling 100)
+    tokens_per_second: float = 20.0
+    error_rate: float = 0.0
+
+def provider_score(h: ProviderHealth) -> float:
+    return (
+        (1 / max(h.p95_latency_ms, 1)) * 0.4
+        + (1 - h.timeout_rate) * 0.35
+        + (1 - h.error_rate) * 0.25
+    )
+
 # =============================================================================
 # REDIS COUNTER BACKEND
 # =============================================================================
@@ -123,45 +145,36 @@ class LLMRouter:
 
     DAILY_LIMITS: ClassVar[dict[str, int]] = {
         "llama_cpp": 999_999,  # Local SLM — unlimited
-        "ollama": 999_999,  # Local — effectively unlimited
         "groq": 14400,  # Free tier — Llama 3.3 70B
         "gemini": 1500,  # Free tier — Gemini 2.5 Flash
-        "openai": 100,  # Paid — $0.50/month safety buffer
     }
 
     # Cost per request in USD (for cost tracking)
     COST_PER_REQUEST: ClassVar[dict[str, float]] = {
         "llama_cpp": 0.0,
-        "ollama": 0.0,  # Free — runs locally on your machine
         "groq": 0.0,  # Free
         "gemini": 0.0,  # Free tier
-        "openai": 0.005,  # Paid
     }
 
     def __init__(
         self,
-        ollama: "OllamaAdapter | None" = None,
         llama_cpp: "LlamaCppAdapter | None" = None,
         groq: "GroqAdapter | None" = None,
         gemini: "GeminiAdapter | None" = None,
-        openai: object | None = None,
         redis_url: str | None = None,
         local_only_mode: bool = False,
+        event_bus: EventBus | None = None,
     ) -> None:
+        self.event_bus = event_bus
         self._providers: dict[str, object] = {}
         # LlamaCpp (SLM) is always first — locally prioritized
         if llama_cpp:
             self._providers["llama_cpp"] = llama_cpp
-        # Ollama is secondary local option
-        if ollama:
-            self._providers["ollama"] = ollama
         if not local_only_mode:
             if groq:
                 self._providers["groq"] = groq
             if gemini:
                 self._providers["gemini"] = gemini
-            if openai:
-                self._providers["openai"] = openai
 
         self._local_only_mode = local_only_mode
         if local_only_mode:
@@ -169,11 +182,28 @@ class LLMRouter:
                 "LLMRouter: LOCAL_ONLY_MODE active — cloud providers disabled, using local models only"
             )
 
+        self._circuit_breakers: dict[str, CircuitBreaker] = {}
+        for p in self._providers:
+            self._circuit_breakers[p] = CircuitBreaker(
+                name=f"llm_{p}", 
+                failure_threshold=3, 
+                recovery_timeout=60,
+                event_bus=self.event_bus
+            )
+
         # In-memory counters (always present; Redis supplements these)
         self._usage: dict[str, int] = defaultdict(int)
         self._usage_date: date = date.today()
         # asyncio.Lock protects _usage from concurrent coroutine interleaving
         self._lock: asyncio.Lock = asyncio.Lock()
+
+        # Track ProviderHealth
+        self._provider_health: dict[str, ProviderHealth] = {
+            p: ProviderHealth(name=p) for p in self._providers
+        }
+        self._call_history: dict[str, deque[tuple[float, bool]]] = {
+            p: deque(maxlen=100) for p in self._providers
+        }
 
         # Redis backend for shared quota tracking across multiple workers
         self._redis: _RedisCounterBackend | None = (
@@ -237,22 +267,23 @@ class LLMRouter:
         # ── Build provider priority list ─────────────────────────────────────
         if effective_complexity == "high" and not self._local_only_mode:
             # High complexity: prioritize cloud models, but keep local as last-resort fallback
-            providers_order = ["groq", "gemini", "openai", "llama_cpp", "ollama"]
+            providers_order = ["groq", "gemini", "llama_cpp"]
             logger.info("LLMRouter: high complexity → prioritizing cloud with local fallback: %s", providers_order)
         else:
             # simple / normal: local first, cloud as fallback
-            providers_order = ["llama_cpp", "ollama", "groq", "gemini"]
-            if not self._local_only_mode and effective_complexity != "simple":
-                providers_order.append("openai")
+            providers_order = ["llama_cpp", "groq", "gemini"]
 
         # Respect LOCAL_ONLY_MODE
         if self._local_only_mode:
-            providers_order = [p for p in providers_order if p in ("llama_cpp", "ollama")]
+            providers_order = [p for p in providers_order if p in ("llama_cpp",)]
+            
+        # Score and sort active providers dynamically based on health
+        active_providers = [p for p in providers_order if p in self._providers]
+        active_providers.sort(
+            key=lambda p: provider_score(self._provider_health[p]), reverse=True
+        )
 
-        for provider_name in providers_order:
-            if provider_name not in self._providers:
-                continue
-
+        for provider_name in active_providers:
             limit = self.DAILY_LIMITS.get(provider_name, 0)
 
             # Use Redis count when available; in-memory otherwise
@@ -285,12 +316,41 @@ class LLMRouter:
 
             try:
                 provider = self._providers[provider_name]
-                result = await provider.generate_response(  # type: ignore[attr-defined]
-                    prompt=prompt,
-                    context=context,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                )
+                cb = self._circuit_breakers[provider_name]
+                
+                tracer = trace.get_tracer(__name__)
+                with tracer.start_as_current_span(f"LLMRouter.generate ({provider_name})") as span:
+                    span.set_attribute("provider.name", provider_name)
+                    span.set_attribute("prompt.complexity", effective_complexity)
+                    
+                    t_start = time.time()
+                    try:
+                        result = await cb.call(
+                            provider.generate_response,
+                            prompt=prompt,
+                            context=context,
+                            temperature=temperature,
+                            max_tokens=max_tokens,
+                        )
+                        success = True
+                    except Exception as e:
+                        span.record_exception(e)
+                        success = False
+                        raise e
+                    finally:
+                        latency_ms = (time.time() - t_start) * 1000
+                        span.set_attribute("provider.latency_ms", latency_ms)
+                        async with self._lock:
+                            history = self._call_history[provider_name]
+                            history.append((latency_ms, success))
+                            if history:
+                                # Quick rolling average for p95 mock
+                                latencies = [x[0] for x in history if x[1]]
+                                if latencies:
+                                    self._provider_health[provider_name].p95_latency_ms = sum(latencies)/len(latencies)
+                                fails = sum(1 for x in history if not x[1])
+                                self._provider_health[provider_name].error_rate = fails / len(history)
+                
                 async with self._lock:
                     self._usage[provider_name] += 1
                 # Persist to Redis so other workers see the updated count
@@ -316,6 +376,9 @@ class LLMRouter:
 
             except LLMRateLimitError:
                 logger.warning("Provider %s rate limited, trying next.", provider_name)
+                continue
+            except CircuitBreakerOpenException:
+                logger.warning("Provider %s circuit is OPEN, trying next.", provider_name)
                 continue
             except Exception as e:
                 logger.exception(

@@ -14,7 +14,10 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, ClassVar
 
+from src.core.domain.context import RequestContext
 from src.core.domain.models import PermissionProfile
+from opentelemetry import trace
+from src.runtime.events import EventBus
 
 if TYPE_CHECKING:
     from src.app.services.tool_registry import ToolRegistry
@@ -74,10 +77,12 @@ class ToolDispatcher:
         tool_registry: ToolRegistry,
         tool_executor: ToolExecutor,
         cache_service: CacheService | None = None,
+        event_bus: EventBus | None = None,
     ) -> None:
         self._registry = tool_registry
         self._executor = tool_executor
         self._cache = cache_service
+        self.event_bus = event_bus
 
     # ------------------------------------------------------------------
     # Public API
@@ -87,75 +92,101 @@ class ToolDispatcher:
         self,
         tool_name: str,
         args: dict,
-        permission_profile: PermissionProfile = PermissionProfile.SYSTEM_FULL,
+        context: RequestContext,
     ) -> ToolDispatchResult:
         """
-        Execute *tool_name* with *args* under the given *permission_profile*.
+        Execute *tool_name* with *args* under the given *context*.
 
         Returns a ToolDispatchResult — never propagates exceptions; errors
         are captured into the result instead.
         """
-        tool = self._registry.get(tool_name)
-        if tool is None:
-            return ToolDispatchResult(
-                success=False,
-                output=f"Tool '{tool_name}' not found in registry.",
-                tool_name=tool_name,
-                error_message="not_found",
-            )
-
-        # ── Cache read ────────────────────────────────────────────────
-        if self._cache:
-            cached = await self._cache.get_tool_result(tool_name, args)
-            if cached:
-                logger.debug("Tool cache hit for '%s'", tool_name)
-                self._bump_cache_metric()
+        tracer = trace.get_tracer(__name__)
+        with tracer.start_as_current_span("ToolDispatcher.dispatch") as span:
+            span.set_attribute("tool.name", tool_name)
+            span.set_attribute("context.session_id", context.session_id)
+            
+            tool = self._registry.get(tool_name)
+            if tool is None:
+                span.set_attribute("tool.success", False)
                 return ToolDispatchResult(
-                    success=True,
-                    output=cached,
+                    success=False,
+                    output=f"Tool '{tool_name}' not found in registry.",
                     tool_name=tool_name,
-                    extra={"cache_hit": True},
+                    error_message="not_found",
+                )
+    
+            # ── Cache read ────────────────────────────────────────────────
+            if self._cache:
+                cached = await self._cache.get_tool_result(tool_name, args)
+                if cached:
+                    logger.debug("Tool cache hit for '%s'", tool_name)
+                    self._bump_cache_metric()
+                    span.set_attribute("tool.cache_hit", True)
+                    span.set_attribute("tool.success", True)
+                    return ToolDispatchResult(
+                        success=True,
+                        output=cached,
+                        tool_name=tool_name,
+                        extra={"cache_hit": True},
+                    )
+    
+            # ── Increment Prometheus counter ──────────────────────────────
+            self._bump_tool_metric(tool_name)
+    
+            # ── Execute with per-tool timeout ─────────────────────────────
+            timeout_s = self.TOOL_TIMEOUTS.get(tool_name, self.DEFAULT_TIMEOUT)
+            
+            # Enqueue slow tools via arq if applicable (placeholder for 1.3 integration)
+            # TODO: integrate with arq Redis queue for background execution.
+    
+            try:
+                result = await asyncio.wait_for(
+                    self._executor.execute(tool, args, permission_profile=context.permissions),
+                    timeout=timeout_s,
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Tool '%s' timed out after %ds", tool_name, timeout_s)
+                span.set_attribute("tool.timeout", True)
+                span.set_attribute("tool.success", False)
+                return ToolDispatchResult(
+                    success=False,
+                    output=(
+                        f"The {tool_name} tool took too long to respond ({timeout_s}s). "
+                        "Please try again or simplify your request."
+                    ),
+                    tool_name=tool_name,
+                    timed_out=True,
                 )
 
-        # ── Increment Prometheus counter ──────────────────────────────
-        self._bump_tool_metric(tool_name)
-
-        # ── Execute with per-tool timeout ─────────────────────────────
-        timeout_s = self.TOOL_TIMEOUTS.get(tool_name, self.DEFAULT_TIMEOUT)
-        try:
-            result = await asyncio.wait_for(
-                self._executor.execute(tool, args, permission_profile=permission_profile),
-                timeout=timeout_s,
-            )
-        except asyncio.TimeoutError:
-            logger.warning("Tool '%s' timed out after %ds", tool_name, timeout_s)
+            if result.success:
+                output_str = str(result.result)
+                # ── Cache write ───────────────────────────────────────────
+                if self._cache:
+                    await self._cache.set_tool_result(tool_name, args, output_str)
+                span.set_attribute("tool.success", True)
+                
+                if self.event_bus:
+                    await self.event_bus.emit("tool.completed", {"tool_name": tool_name})
+                    
+                return ToolDispatchResult(
+                    success=True,
+                    output=output_str,
+                    tool_name=tool_name,
+                )
+    
+            span.set_attribute("tool.success", False)
+            if result.error_message:
+                span.set_attribute("tool.error", result.error_message)
+                
+            if self.event_bus:
+                await self.event_bus.emit("tool.failed", {"tool_name": tool_name, "error": result.error_message})
+                
             return ToolDispatchResult(
                 success=False,
-                output=(
-                    f"The {tool_name} tool took too long to respond ({timeout_s}s). "
-                    "Please try again or simplify your request."
-                ),
+                output=f"I tried to use {tool_name} but encountered an issue: {result.error_message}",
                 tool_name=tool_name,
-                timed_out=True,
+                error_message=result.error_message,
             )
-
-        if result.success:
-            output_str = str(result.result)
-            # ── Cache write ───────────────────────────────────────────
-            if self._cache:
-                await self._cache.set_tool_result(tool_name, args, output_str)
-            return ToolDispatchResult(
-                success=True,
-                output=output_str,
-                tool_name=tool_name,
-            )
-
-        return ToolDispatchResult(
-            success=False,
-            output=f"I tried to use {tool_name} but encountered an issue: {result.error_message}",
-            tool_name=tool_name,
-            error_message=result.error_message,
-        )
 
     # ------------------------------------------------------------------
     # Metrics helpers (best-effort — never raise)

@@ -25,6 +25,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 from functools import partial, wraps
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
@@ -80,6 +81,21 @@ class ToolCategory(StrEnum):
 
 
 # =============================================================================
+# TOOL CAPABILITY
+# =============================================================================
+
+@dataclass
+class ToolCapability:
+    name: str
+    risk_level: Literal["low", "medium", "high", "critical"] = "low"
+    timeout_seconds: int = 15
+    resource_cost: Literal["trivial", "low", "medium", "high"] = "trivial"
+    requires_confirmation: bool = False
+    requires_network: bool = False
+    modifies_filesystem: bool = False
+    modifies_system_state: bool = False
+
+# =============================================================================
 # TOOL DATACLASS
 # =============================================================================
 
@@ -105,6 +121,7 @@ class Tool:
     category: ToolCategory
     parameters: dict = field(default_factory=dict)
     requires_confirmation: bool = False
+    capability: ToolCapability | None = None
     is_async: bool = False
 
     def get_preview(self, args: dict[str, Any]) -> str:
@@ -194,6 +211,7 @@ def tool(
     category: ToolCategory,
     parameters: dict | None = None,
     requires_confirmation: bool = False,
+    capability: ToolCapability | None = None,
 ) -> Callable[[F], F]:
     """
     Decorator to register a function as a tool.
@@ -214,6 +232,7 @@ def tool(
         category: Tool category
         parameters: Parameter schema dict
         requires_confirmation: Whether to confirm before executing
+        capability: Security and capability policies for this tool
 
     Returns:
         Decorated function with _tool_metadata attribute
@@ -239,6 +258,7 @@ def tool(
             category=category,
             parameters=parameters or {},
             requires_confirmation=requires_confirmation,
+            capability=capability or ToolCapability(name=name, requires_confirmation=requires_confirmation),
         )
 
         return cast("F", final_func)

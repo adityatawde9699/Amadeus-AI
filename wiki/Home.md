@@ -1,35 +1,34 @@
 # Amadeus-AI Wiki
 
-> **v3.2.1 — Security Hardening & Observability Edition**  
-> A production-grade, multi-modal AI assistant backend built on Clean Architecture — text, voice, and tool execution unified under one API.
+> **v3.2.2 — Model Manager, Goal Tracking & Transport Refactor**
+> A secure autonomous AI operating layer built on Clean Architecture — autonomous tool execution, long-horizon planning, and multi-transport messaging unified under a single service layer.
 
 ---
 
 ## What is Amadeus?
 
-Amadeus is a **FastAPI-based AI assistant backend** that solves three concrete problems with existing open-source assistants:
+Amadeus is a **FastAPI-based autonomous AI backend** that provides:
 
-| Problem | Amadeus Solution |
+| Capability | Implementation |
 |---|---|
-| Single LLM provider — fails when rate-limited | Multi-provider fallback router with Redis-backed daily quota tracking |
-| No authentication boundary | JWT Bearer auth on all protected routes with RBAC |
-| No local tool execution | 60+ tools spanning system, productivity, communication, and code sandboxing |
+| Multi-provider LLM routing | LlamaCpp (local GGUF) → Groq → Gemini with Redis-backed daily quota tracking |
+| 53 sandboxed tools | System · filesystem · productivity · information · communication |
+| Long-term semantic memory | Qdrant vector store with `all-MiniLM-L6-v2` embeddings |
+| Goal management | `GoalRepository` tracks multi-session objectives |
+| Multi-transport messaging | FastAPI · Telegram · CLI all share a single `AmadeusService` |
+| Local model auto-download | `ModelManager` resolves and fetches models into `Model/` on first run |
 
 ---
 
-## What's New in v3.2.1
+## What's New in v3.2.2
 
-- **SEC-01 — Prompt Injection Resistance** — User input wrapped in `<user_task>` XML tags; ReAct control tokens neutralised with `[BLOCKED:TOKEN]` before LLM sees them
-- **SEC-02 — WhatsApp HMAC** — Every webhook POST verified against `X-Hub-Signature-256`; forged payloads → HTTP 403
-- **SEC-03 — Telegram Authorization** — `MASTER_TELEGRAM_CHAT_ID` allowlist; unknown senders receive `"Unauthorized."` and are dropped
-- **SEC-06 — Secure SECRET_KEY** — Auto-generates cryptographically-secure ephemeral key if not configured; no more `"fallback"` literal
-- **CQ-01/02 — Filesystem Sandboxing** — `copy_file`, `move_file`, `create_folder` all enforce `SEARCH_ALLOWED_DIRS` via `_assert_in_allowed_dirs()`
-- **ARCH-04 — Qdrant Init Lock** — `asyncio.Lock()` prevents FileLock collision from concurrent `initialize()` races
-- **DR-01/02/03 — Daemon Reliability** — Autonomous loop task tracked + done-callback; AgentOrchestrator.shutdown() implemented; APScheduler uses `wait=True`
-- **IMessagingAdapter Protocol** — Unified `Protocol` for Telegram/WhatsApp/Slack — see `src/infra/messaging/protocols.py`
-- **Health Probes** — `/api/v1/health/live` (liveness) and `/api/v1/health/ready` (readiness with per-dependency 503 map)
-- **Per-Tool Prometheus Metrics** — `amadeus_tool_duration_seconds` Histogram + `amadeus_tool_executions_total` Counter + `amadeus_memory_errors_total` Counter
-- **Test Suite** — 20 new unit tests in `tests/unit/test_security_hardening.py` and `tests/unit/test_agent_reliability.py`
+- **Transport Layer** — `src/api/server.py` replaced by discrete transport modules: `fastapi_transport.py`, `telegram_transport.py`, `cli_transport.py`
+- **Voice Service Removed** — STT/TTS pipeline and all speech dependencies purged from the DI container
+- **ModelManager** — `src/infra/model_manager.py` auto-downloads embed models and GGUF files into `Model/` on first run
+- **Goal Management** — `create_goal`, `update_goal`, `list_active_goals` tools; `GoalORM` backed by PostgreSQL
+- **Proactive Loop Governance** — Per-session rate limiting (`PROACTIVE_MESSAGE_LIMIT_PER_HOUR`) and dry-run mode (`PROACTIVE_DRY_RUN`)
+- **Deployment** — `docker-compose.yml` and `deploy/amadeus.service` systemd unit added
+- **Repository cleanup** — Removed `scratch/`, `wiki-publish/`, stale dev scripts, and empty files
 
 ---
 
@@ -37,20 +36,20 @@ Amadeus is a **FastAPI-based AI assistant backend** that solves three concrete p
 
 | Section | Description |
 |---|---|
-| [[Architecture]] | Clean Architecture layers, request lifecycle, LLM routing pipeline, voice pipeline, memory tiers |
-| [[Quick-Start]] | Prerequisites, local installation, Docker development & production |
-| [[Configuration-Reference]] | All `.env` variables — required, LLM providers, optional integrations |
-| [[Core-Systems]] | Semantic Router, Omni-Workspace RAG, Flash Memory Cache, Agent Orchestrator, HITL |
-| [[Tool-Registry]] | All 60+ tools organized by category |
-| [[API-Reference]] | Authentication, chat, voice WebSocket, messaging, tasks, health endpoints |
-| [[Redis-Quota-Tracking]] | Daily LLM quota counters, Redis key schema, cost alerts |
-| [[Messaging-Integrations]] | Telegram, WhatsApp, Email setup guides |
-| [[Security-Model]] | Auth, network isolation, secret management, tool execution safety, prompt injection defence |
-| [[Deployment]] | Railway, Docker Compose, Windows Daemon |
-| [[Development-Guide]] | Adding LLM providers & tools, testing, coding standards |
-| [[Observability]] | Prometheus metrics, health probes, structured logging, Sentry |
+| [[Architecture]] | Layer diagram, request lifecycle, LLM routing, model resolution, memory tiers, goal management |
+| [[Quick-Start]] | Prerequisites, local installation, Docker |
+| [[Configuration-Reference]] | All `.env` variables — LLM providers, model directory, proactive loop |
+| [[Core-Systems]] | Semantic Router, Agent Orchestrator, HITL, Flash Memory Cache |
+| [[Tool-Registry]] | All 53 tools organized by category |
+| [[API-Reference]] | Chat, messaging, tasks, health endpoints |
+| [[Redis-Quota-Tracking]] | Daily LLM quota counters and Redis key schema |
+| [[Messaging-Integrations]] | Telegram and Email setup |
+| [[Security-Model]] | Auth, prompt injection defence, filesystem sandboxing, tool execution safety |
+| [[Deployment]] | Docker Compose, systemd service, environment setup |
+| [[Development-Guide]] | Adding LLM providers and tools, testing, coding standards |
+| [[Observability]] | Prometheus metrics, health probes, structured logging |
 | [[Known-Limitations-and-Roadmap]] | Current gaps and planned improvements |
-| [[Changelog]] | Version history highlights |
+| [[Changelog]] | Version history |
 
 ---
 

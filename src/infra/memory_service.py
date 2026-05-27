@@ -26,7 +26,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from opentelemetry import trace
+
 from src.core.config import Settings, get_settings
+from src.infra.resilience.circuit_breaker import CircuitBreaker, CircuitBreakerOpenException
 
 
 logger = logging.getLogger(__name__)
@@ -84,105 +87,7 @@ class MemoryResult:
 # =============================================================================
 # QDRANT MEMORY SERVICE
 # =============================================================================
-# FLASH MEMORY L1 CACHE
-# =============================================================================
 
-
-class FlashMemoryCache:
-    """
-    Tier-1 in-memory ring-buffer that intercepts Qdrant calls for recently
-    stored memories.
-
-    Architecture
-    -----------
-    - Pre-allocates a (capacity × dim) NumPy float32 matrix on first push.
-    - New memories are written in a circular fashion (oldest is overwritten).
-    - At query time: single matrix-vector dot product over the active rows
-      returns cosine similarities in one C-array call — sub-microsecond on
-      an i3 for capacity=100.
-    - If best_score ≥ threshold → return the cached MemoryResult immediately,
-      skipping Qdrant entirely.
-    - If no hit → falls through to the normal Qdrant lookup.
-
-    RAM cost: capacity × dim × 4 bytes = 100 × 768 × 4 ≈ 307 KB. Trivial.
-
-    Parameters
-    ----------
-    capacity:
-        Maximum number of memories held in the L1 cache (ring buffer).
-    threshold:
-        Minimum cosine similarity to accept a cache hit (default 0.85).
-    """
-
-    def __init__(self, capacity: int = 100, threshold: float = 0.85) -> None:
-        self._capacity = capacity
-        self._threshold = threshold
-        self._embeddings: Any = None           # np.ndarray (capacity, dim), lazy-init
-        self._entries: list[Any] = [None] * capacity  # parallel MemoryResult list
-        self._head: int = 0                    # next write position
-        self._slots: int = 0                   # number of valid entries (0 → capacity)
-
-    def push(self, result: Any, embedding: list[float]) -> None:
-        """
-        Add a memory + its embedding to the ring buffer.
-        Overwrites the oldest entry once the buffer is full.
-        """
-        import numpy as np
-
-        emb = np.array(embedding, dtype=np.float32)
-        # L2-normalise so the dot product equals cosine similarity
-        norm = float(np.linalg.norm(emb))
-        if norm > 0:
-            emb /= norm
-
-        # Lazy-initialise the matrix on the first push
-        if self._embeddings is None:
-            self._embeddings = np.zeros((self._capacity, emb.shape[0]), dtype=np.float32)
-
-        self._embeddings[self._head] = emb
-        self._entries[self._head] = result
-        self._head = (self._head + 1) % self._capacity
-        self._slots = min(self._slots + 1, self._capacity)
-
-    def check(self, query_embedding: list[float]) -> Any:
-        """
-        Return the best-matching MemoryResult if its cosine similarity to
-        query_embedding is ≥ threshold, otherwise return None.
-        """
-        if self._slots == 0 or self._embeddings is None:
-            return None
-
-        import numpy as np
-
-        q = np.array(query_embedding, dtype=np.float32)
-        norm = float(np.linalg.norm(q))
-        if norm > 0:
-            q /= norm
-
-        # Cosine similarity across all active slots (pure NumPy → C BLAS)
-        scores: Any = self._embeddings[: self._slots] @ q  # shape (slots,)
-        best_idx = int(np.argmax(scores))
-        best_score = float(scores[best_idx])
-
-        if best_score >= self._threshold:
-            hit = self._entries[best_idx]
-            if hit is not None:
-                hit.score = best_score  # surface the actual score to caller
-                return hit
-
-        return None
-
-    def invalidate(self) -> None:
-        """Clear all cached entries (e.g. after a session reset)."""
-        self._embeddings = None
-        self._entries = [None] * self._capacity
-        self._head = 0
-        self._slots = 0
-
-    @property
-    def size(self) -> int:
-        """Number of valid entries currently in the cache."""
-        return self._slots
 
 
 # =============================================================================
@@ -223,9 +128,9 @@ class QdrantMemoryService:
         # Reuse CHROMA settings for Qdrant location/collection name
         self._enabled = self._settings.CHROMA_ENABLED
         self._initialized = False
+        self._circuit_breaker = CircuitBreaker("qdrant", failure_threshold=3, recovery_timeout=60)
 
-        # Tier-1 Flash Memory Cache (intercepts Qdrant for recent memories)
-        self._flash_cache = FlashMemoryCache(capacity=100, threshold=0.85)
+
 
     async def initialize(self) -> None:
         """Call this async method before using the service."""
@@ -304,19 +209,31 @@ class QdrantMemoryService:
     def _setup_embedding_model(self) -> None:
         """
         Configure embedding model with local-first priority:
-          1. sentence-transformers (local, offline, free, no quota)
-          2. Gemini embedding API (cloud fallback, requires API key + quota)
+          1. Local MODEL_DIR/embed/<model> (auto-downloaded on first run)
+          2. HuggingFace cache (fallback if ModelManager can't resolve)
+          3. Gemini embedding API (cloud fallback, requires API key + quota)
         """
-        # --- Try local sentence-transformers first ---
+        model_name = self._settings.EMBED_MODEL_NAME
+
+        # Resolve local path via ModelManager
+        try:
+            from src.infra.model_manager import ModelManager
+            mm = ModelManager(self._settings)
+            load_path, local_dir = mm.resolve_embed_model()
+        except Exception as exc:
+            logger.warning("ModelManager failed: %s — falling back to HF id", exc)
+            load_path, local_dir = model_name, None
+
+        # --- Try local sentence-transformers ---
         try:
             from sentence_transformers import SentenceTransformer
 
-            # all-MiniLM-L6-v2: ~80MB, 384-dim, fast and memory efficient
-            self._local_embed_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-            self._embed_dim = 384
+            self._local_embed_model = SentenceTransformer(load_path)
+            self._embed_dim = self._local_embed_model.get_sentence_embedding_dimension() or 384
             self._use_local_embed = True
             logger.info(
-                "Local sentence-transformers embedding model loaded (all-MiniLM-L6-v2, dim=384)"
+                "Local embed model loaded: %s → %s (dim=%d)",
+                model_name, load_path, self._embed_dim,
             )
             return
         except ImportError:
@@ -419,11 +336,24 @@ class QdrantMemoryService:
         if not self._enabled or not self._initialized:
             return False
 
-        # Identity memories have fixed high importance
-        if subtype == "identity":
-            importance = 1.0
-
-        embedding = await self._embed_async(text, "retrieval_document")
+        tracer = trace.get_tracer(__name__)
+        with tracer.start_as_current_span("QdrantMemoryService.store") as span:
+            span.set_attribute("memory.role", role)
+            span.set_attribute("memory.subtype", subtype)
+            
+            # Identity memories have fixed high importance
+            if subtype == "identity":
+                importance = 1.0
+            elif importance == 0.5:
+                # Auto-compute importance
+                if role == "user":
+                    importance = 0.6 if type == "memory" else 0.4
+                elif role == "system":
+                    importance = 0.7
+                    
+            trust_score = 0.8 if source == "user" else 0.5
+    
+            embedding = await self._embed_async(text, "retrieval_document")
         if embedding is None:
             return False
 
@@ -435,10 +365,43 @@ class QdrantMemoryService:
         id_str = str(uuid.uuid5(uuid.NAMESPACE_OID, raw_key))
         timestamp_str = datetime.now(UTC).isoformat()
 
+        # Contradiction Resolution: If this is an identity fact, check for existing contradictory/duplicate facts.
+        if subtype == "identity":
+            try:
+                from qdrant_client.models import Filter, FieldCondition, MatchValue
+                existing_hits = await self._circuit_breaker.call(
+                    self._client.search,
+                    collection_name=self._settings.CHROMA_COLLECTION_NAME,
+                    query_vector=embedding,
+                    limit=3,
+                    query_filter=Filter(
+                        must=[
+                            FieldCondition(key="subtype", match=MatchValue(value="identity")),
+                            FieldCondition(key="session_id", match=MatchValue(value=session_id)),
+                        ]
+                    )
+                )
+                to_delete = []
+                for hit in existing_hits:
+                    # If similarity is > 0.90, we consider it a duplicate/contradiction of the same topic.
+                    if hit.score > 0.90 and hit.id != id_str:
+                        to_delete.append(hit.id)
+                
+                if to_delete:
+                    await self._circuit_breaker.call(
+                        self._client.delete,
+                        collection_name=self._settings.CHROMA_COLLECTION_NAME,
+                        points_selector=to_delete
+                    )
+                    logger.info("Resolved contradiction: deleted %d existing identity memories.", len(to_delete))
+            except Exception as e:
+                logger.warning("Contradiction resolution failed: %s", e)
+
         try:
             from qdrant_client.models import PointStruct
 
-            await self._client.upsert(
+            await self._circuit_breaker.call(
+                self._client.upsert,
                 collection_name=self._settings.CHROMA_COLLECTION_NAME,
                 points=[
                     PointStruct(
@@ -453,29 +416,21 @@ class QdrantMemoryService:
                             "subtype": subtype,
                             "importance": importance,
                             "source": source,
+                            "trust_score": trust_score,
+                            "access_count": 0,
                         },
                     )
                 ],
             )
+            span.set_attribute("memory.stored", True)
             logger.debug("Memory stored — id=%s, role=%s", id_str[:8], role)
 
-            # --- Push to L1 Flash Cache ---
-            # Build a MemoryResult so the cache stores the full object
-            flash_result = MemoryResult(
-                session_id=session_id,
-                role=role,
-                text=text,
-                timestamp=timestamp_str,
-                distance=1.0,
-                type=type,
-                subtype=subtype,
-                importance=importance,
-                source=source,
-                score=1.0,
-            )
-            self._flash_cache.push(flash_result, embedding)
+
 
             return True
+        except CircuitBreakerOpenException:
+            logger.warning("Qdrant circuit is OPEN. Skipping store.")
+            return False
         except Exception as exc:
             logger.warning("Qdrant upsert failed: %s", exc)
             # P7-Chaos01: Increment memory error counter for Prometheus alerting
@@ -484,36 +439,32 @@ class QdrantMemoryService:
                 amadeus_memory_errors_total.labels(operation="upsert").inc()
             except Exception:
                 pass
+            span.set_attribute("memory.stored", False)
+            span.set_attribute("memory.error", str(exc))
             return False
 
     async def retrieve(self, query: str, top_k: int = 5) -> list[MemoryResult]:
         """
-        Two-tier semantic retrieval:
-          Tier 1 — Flash Memory Cache (NumPy cosine similarity, ~microsecond).
-                    Returns immediately if any recent memory scores ≥ 0.85.
-          Tier 2 — Qdrant (async network call, full historical search).
-                    Only reached on L1 cache miss.
+        Semantic retrieval:
+          Qdrant (async network call, full historical search).
         """
         if not self._enabled or not self._initialized:
             return []
 
-        embedding = await self._embed_async(query, "retrieval_query")
-        if embedding is None:
-            return []
-
-        # --- Tier 1: Flash Memory Cache ---
-        flash_hit = self._flash_cache.check(embedding)
-        if flash_hit is not None:
-            logger.debug(
-                "Flash cache HIT (score=%.3f) — skipping Qdrant lookup.", flash_hit.score
-            )
-            return [flash_hit]
-
-        # --- Tier 2: Full Qdrant search ---
+        tracer = trace.get_tracer(__name__)
+        with tracer.start_as_current_span("QdrantMemoryService.retrieve") as span:
+            span.set_attribute("memory.top_k", top_k)
+            
+            embedding = await self._embed_async(query, "retrieval_query")
+            if embedding is None:
+                return []
+    
+            # --- Qdrant search ---
         try:
             import math
 
-            results = await self._client.search(
+            results = await self._circuit_breaker.call(
+                self._client.search,
                 collection_name=self._settings.CHROMA_COLLECTION_NAME,
                 query_vector=embedding,
                 limit=top_k * 2,  # Fetch more to allow for re-ranking
@@ -553,7 +504,11 @@ class QdrantMemoryService:
                     importance = 1.0
                     recency_decay = 1.0  # Never decays
 
-                weighted_score = (0.6 * similarity) + (0.25 * importance) + (0.15 * recency_decay)
+                # Access frequency boost
+                access_count = payload.get("access_count", 0)
+                access_boost = min(0.1, access_count * 0.01)
+
+                weighted_score = (0.6 * similarity) + (0.25 * importance) + (0.15 * recency_decay) + access_boost
 
                 memories.append(
                     MemoryResult(
@@ -573,10 +528,19 @@ class QdrantMemoryService:
             # Sort by weighted score descending and take top_k
             memories.sort(key=lambda x: x.score, reverse=True)
             memories = memories[:top_k]
-
+            
+            span.set_attribute("memory.retrieved_count", len(memories))
             logger.debug("Qdrant: retrieved %d weighted memories (L1 miss).", len(memories))
+            
+            # Fire and forget task to increment access_count for these memories
+            if memories:
+                asyncio.create_task(self._increment_access_counts([m.text for m in memories]))
+                
             return memories
 
+        except CircuitBreakerOpenException:
+            logger.warning("Qdrant circuit is OPEN. Skipping retrieve.")
+            return []
         except Exception as exc:
             logger.warning("Qdrant search failed (client type=%s): %s", type(self._client), exc)
             # P7-Chaos01: Increment memory error counter for Prometheus alerting
@@ -585,6 +549,7 @@ class QdrantMemoryService:
                 amadeus_memory_errors_total.labels(operation="search").inc()
             except Exception:
                 pass
+            span.record_exception(exc)
             return []
 
     async def clear_session(self, session_id: str) -> int:
@@ -614,8 +579,7 @@ class QdrantMemoryService:
                     ),
                 )
                 logger.info("Cleared %d memories for session=%s", count, session_id[:8])
-            # Flush flash cache so no stale entries survive a session reset
-            self._flash_cache.invalidate()
+
             return int(count)
         except Exception as exc:
             logger.warning("Qdrant session clear failed: %s", exc)
@@ -645,7 +609,6 @@ class QdrantMemoryService:
                     ),
                 )
                 logger.info("Deleted %d memories matching text='%s'", count, text[:20])
-                self._flash_cache.invalidate()
             return int(count)
         except Exception as exc:
             logger.warning("Qdrant delete_by_text failed: %s", exc)
@@ -693,3 +656,82 @@ class QdrantMemoryService:
             char_count += len(line)
 
         return "\n".join(lines)
+
+    async def _increment_access_counts(self, texts: list[str]) -> None:
+        """Increment access_count for the given memory texts (used by fire-and-forget task)."""
+        if not self._enabled or not self._initialized:
+            return
+            
+        try:
+            from qdrant_client.models import FieldCondition, Filter, MatchValue
+            for text in texts:
+                # Need to find the point by text and update its payload
+                results = await self._client.search(
+                    collection_name=self._settings.CHROMA_COLLECTION_NAME,
+                    query_vector=[0.0]*getattr(self, "_embed_dim", 384), # Dummy vector if using text filter
+                    query_filter=Filter(must=[FieldCondition(key="text", match=MatchValue(value=text))]),
+                    limit=1,
+                    with_payload=True
+                )
+                if results:
+                    hit = results[0]
+                    current_count = hit.payload.get("access_count", 0) if hit.payload else 0
+                    await self._client.set_payload(
+                        collection_name=self._settings.CHROMA_COLLECTION_NAME,
+                        payload={"access_count": current_count + 1},
+                        points=[hit.id]
+                    )
+        except Exception as exc:
+            logger.debug("Failed to increment access counts: %s", exc)
+
+    async def prune_stale_memories(self, session_id: str, older_than_days: int = 90) -> int:
+        """
+        Remove memories for a session that are older than X days and not marked as identity.
+        """
+        if not self._enabled or not self._initialized:
+            return 0
+            
+        try:
+            from qdrant_client.models import FieldCondition, Filter, MatchValue
+            
+            # Fetch all memories for session to check timestamps
+            results = await self._client.scroll(
+                collection_name=self._settings.CHROMA_COLLECTION_NAME,
+                scroll_filter=Filter(must=[FieldCondition(key="session_id", match=MatchValue(value=session_id))]),
+                limit=10000,
+                with_payload=True
+            )
+            
+            points = results[0]
+            now = datetime.now(UTC)
+            stale_ids = []
+            
+            for point in points:
+                payload = point.payload or {}
+                subtype = payload.get("subtype", "")
+                if subtype == "identity":
+                    continue
+                    
+                timestamp_str = payload.get("timestamp", "")
+                if timestamp_str:
+                    try:
+                        mem_time = datetime.fromisoformat(timestamp_str)
+                        if mem_time.tzinfo is None:
+                            mem_time = mem_time.replace(tzinfo=UTC)
+                        days_old = (now - mem_time).total_seconds() / (24 * 3600)
+                        if days_old > older_than_days:
+                            stale_ids.append(point.id)
+                    except Exception:
+                        pass
+                        
+            if stale_ids:
+                await self._client.delete(
+                    collection_name=self._settings.CHROMA_COLLECTION_NAME,
+                    points_selector=stale_ids
+                )
+                logger.info("Pruned %d stale memories for session=%s", len(stale_ids), session_id)
+                
+            return len(stale_ids)
+        except Exception as exc:
+            logger.warning("Failed to prune stale memories: %s", exc)
+            return 0

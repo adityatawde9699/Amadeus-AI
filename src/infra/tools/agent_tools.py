@@ -33,30 +33,25 @@ def get_agent_tools() -> list[Any]:
     )
     async def schedule_future_task(minutes: int, prompt: str, session_id: str) -> str:
         """Schedule a task for the agent to execute proactively."""
-        try:
-            from src.api.server import scheduler
-        except ImportError as e:
-            logger.exception("Cannot import scheduler: %s", e)
-            return "Failed to access system scheduler."
-
         run_date = datetime.now() + timedelta(minutes=minutes)
 
-        async def _execute_proactive_task(task_prompt: str, s_id: str) -> None:
-            logger.info("Executing scheduled proactive task: %s for session %s", task_prompt, s_id)
+        async def _execute_proactive_task() -> None:
+            logger.info("Executing scheduled proactive task: %s for session %s", prompt, session_id)
             try:
-                # Use the container singleton — NOT a bare AmadeusService() —
-                # so it gets llm_router, tool_registry, and cache_service injected.
                 from src.container import get_amadeus_service
-
                 svc = get_amadeus_service()
-                await svc.handle_background_event(task_prompt)
+                await svc.handle_background_event(prompt)
             except Exception as e:
                 logger.exception("Failed to execute proactive task: %s", e)
 
         try:
-            scheduler.add_job(
-                _execute_proactive_task, "date", run_date=run_date, args=[prompt, session_id]
-            )
+            # Schedule via asyncio: create the coroutine to run after `minutes` delay
+            async def _delayed_task() -> None:
+                await asyncio.sleep(minutes * 60)
+                await _execute_proactive_task()
+
+            import asyncio as _asyncio
+            _asyncio.create_task(_delayed_task())
             return f"Successfully scheduled task to execute in {minutes} minutes at {run_date.strftime('%H:%M:%S')}."
         except Exception as e:
             logger.exception("Failed to schedule future task: %s", e)
@@ -127,8 +122,106 @@ def get_agent_tools() -> list[Any]:
             logger.exception("Failed to forget memory: %s", e)
             return f"Error: {e}"
 
+    @tool(
+        name="create_goal",
+        description="Create a long-term goal that spans multiple sessions. Use this when the user gives you a multi-step project or long-term objective.",
+        category=ToolCategory.PRODUCTIVITY,
+        parameters={
+            "title": {"type": "string", "description": "Short title of the goal."},
+            "description": {"type": "string", "description": "Detailed description of the goal and its success criteria."},
+        },
+    )
+    async def create_goal(title: str, description: str, **kwargs: Any) -> str:
+        """Create a new long-term goal."""
+        try:
+            from src.container import get_amadeus_service
+            svc = get_amadeus_service()
+            if not svc.goal_repository:
+                return "Goal repository is not available."
+
+            from src.core.domain.models import Goal, GoalStatus
+            goal = Goal(
+                title=title,
+                description=description,
+                status=GoalStatus.ACTIVE,
+            )
+            created = await svc.goal_repository.create(goal)
+            return f"Successfully created goal #{created.id}: {created.title}"
+        except Exception as e:
+            logger.exception("Failed to create goal: %s", e)
+            return f"Error: {e}"
+
+    @tool(
+        name="update_goal",
+        description="Update the status of a long-term goal. Use this to mark a goal as completed or abandoned.",
+        category=ToolCategory.PRODUCTIVITY,
+        parameters={
+            "goal_id": {"type": "integer", "description": "The ID of the goal to update."},
+            "status": {"type": "string", "description": "The new status: 'active', 'completed', or 'abandoned'."},
+        },
+    )
+    async def update_goal(goal_id: int, status: str, **kwargs: Any) -> str:
+        """Update a long-term goal."""
+        try:
+            from src.container import get_amadeus_service
+            svc = get_amadeus_service()
+            if not svc.goal_repository:
+                return "Goal repository is not available."
+
+            from src.core.domain.models import GoalStatus
+            try:
+                goal_status = GoalStatus(status.lower())
+            except ValueError:
+                return f"Invalid status '{status}'. Must be active, completed, or abandoned."
+
+            goal = await svc.goal_repository.get_by_id(goal_id)
+            if not goal:
+                return f"Goal #{goal_id} not found."
+
+            if goal_status == GoalStatus.COMPLETED:
+                goal = await svc.goal_repository.mark_complete(goal_id)
+            else:
+                goal.status = goal_status
+                goal = await svc.goal_repository.update(goal)
+                
+            return f"Successfully updated goal #{goal.id} to {goal.status.value}"
+        except Exception as e:
+            logger.exception("Failed to update goal: %s", e)
+            return f"Error: {e}"
+
+    @tool(
+        name="list_active_goals",
+        description="List all currently active long-term goals.",
+        category=ToolCategory.PRODUCTIVITY,
+        parameters={},
+    )
+    async def list_active_goals(**kwargs: Any) -> str:
+        """List active long-term goals."""
+        try:
+            from src.container import get_amadeus_service
+            svc = get_amadeus_service()
+            if not svc.goal_repository:
+                return "Goal repository is not available."
+
+            goals = await svc.goal_repository.get_active()
+            if not goals:
+                return "No active goals found."
+
+            lines = ["Active Goals:"]
+            for g in goals:
+                lines.append(f"#{g.id}: {g.title} (Created: {g.created_at.strftime('%Y-%m-%d')})")
+                if g.description:
+                    lines.append(f"  Description: {g.description}")
+            return "\n".join(lines)
+        except Exception as e:
+            logger.exception("Failed to list active goals: %s", e)
+            return f"Error: {e}"
+
     return [
         schedule_future_task._tool_metadata,
         store_core_memory._tool_metadata,
         forget_core_memory._tool_metadata,
+        create_goal._tool_metadata,
+        update_goal._tool_metadata,
+        list_active_goals._tool_metadata,
     ]
