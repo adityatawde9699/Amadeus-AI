@@ -23,8 +23,6 @@ class TestSettings:
         assert settings.ASSISTANT_NAME == "Amadeus"
         assert settings.ENV == "development"
         assert settings.DEBUG is False
-        assert settings.VOICE_ENABLED is True
-        assert settings.WHISPER_MODEL == "tiny"
 
     def test_env_override(self):
         """Test that environment variables override defaults."""

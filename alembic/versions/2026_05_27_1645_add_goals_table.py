@@ -1,7 +1,7 @@
 """add goals table
 
-Revision ID: 2026_05_27_1645_add_goals_table
-Revises: 2026_05_27_1038_remove_kg_tables
+Revision ID: a1b2c3d4e5f6
+Revises: 52a12a970e5b
 Create Date: 2026-05-27 16:45:00.000000
 
 """
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '2026_05_27_1645_add_goals_table'
-down_revision: Union[str, None] = '2026_05_27_1038_remove_kg_tables'
+revision: str = 'a1b2c3d4e5f6'
+down_revision: Union[str, None] = '52a12a970e5b'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

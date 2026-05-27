@@ -5,14 +5,14 @@ build-backend = "hatchling.build"
 [project]
 name = "amadeus-ai"
 version = "3.2.0"
-description = "A production-ready AI voice assistant built with Clean Architecture principles"
+description = "A production-ready AI assistant built with Clean Architecture principles"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.11"
 authors = [
     {name = "Aditya Tawde", email = "adityatawde9699@gmail.com"}
 ]
-keywords = ["ai", "assistant", "voice", "llm", "fastapi", "clean-architecture"]
+keywords = ["ai", "assistant", "llm", "fastapi", "clean-architecture"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
@@ -91,6 +91,8 @@ dependencies = [
     "opentelemetry-sdk>=1.42.1",
     "opentelemetry-exporter-otlp>=1.42.1",
     "opentelemetry-instrumentation-fastapi>=0.63b1",
+    "ddgs>=9.14.4",
+    "textual>=8.2.7",
 ]
 
 [project.optional-dependencies]
@@ -311,7 +313,6 @@ ignore = [
 
     # --- Security warnings for intentional patterns ---
     "S110",    # try-except-pass — always accompanied by a logger or comment
-    "S306",    # suspicious-mktemp-usage — used in Whisper temp file pipeline
     "S307",    # suspicious-eval-usage — controlled eval in tool execution
     "S603",    # subprocess-without-shell-equals-true — intentional
     "S311",    # non-cryptographic random — used for session/display purposes only

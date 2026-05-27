@@ -31,7 +31,6 @@ async def detailed_health(amadeus: AmadeusService = Depends(get_amadeus_service)
         version=settings.ASSISTANT_VERSION,
         environment=settings.ENV,
         database="connected" if settings.DATABASE_URL else "not configured",
-        voice_enabled=settings.VOICE_ENABLED,
         classifier_enabled=getattr(amadeus, "classifier_enabled", False),
         cache_stats=cache_stats,
     )

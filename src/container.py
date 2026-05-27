@@ -156,8 +156,14 @@ def _build_tool_registry() -> ToolRegistry:
         try:
             from src.infra.tools.base import ToolCategory
             from src.infra.tools.web_research_tools import build_web_research_tools
+            from src.infra.search.search_router import SearchRouter
 
-            for td in build_web_research_tools():
+            # Build and initialize a search router for the tool
+            _search_router = SearchRouter(
+                tavily_api_key=getattr(get_settings(), "TAVILY_API_KEY", None),
+            )
+
+            for td in build_web_research_tools(search_router=_search_router):
                 registry.register_function(
                     func=td["function"],
                     name=td["name"],

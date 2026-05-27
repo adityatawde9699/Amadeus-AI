@@ -266,22 +266,31 @@ class LLMRouter:
 
         # ── Build provider priority list ─────────────────────────────────────
         if effective_complexity == "high" and not self._local_only_mode:
-            # High complexity: prioritize cloud models, but keep local as last-resort fallback
-            providers_order = ["groq", "gemini", "llama_cpp"]
-            logger.info("LLMRouter: high complexity → prioritizing cloud with local fallback: %s", providers_order)
+            # High complexity: prioritize cloud models, local as last-resort fallback
+            cloud_order = ["groq", "gemini"]
+            local_order = ["llama_cpp"]
         else:
-            # simple / normal: local first, cloud as fallback
-            providers_order = ["llama_cpp", "groq", "gemini"]
+            # simple / normal / auto: LOCAL FIRST — always try Llama before cloud.
+            # Health-score sort only reorders within the cloud tier.
+            cloud_order = ["groq", "gemini"]
+            local_order = ["llama_cpp"]
 
         # Respect LOCAL_ONLY_MODE
         if self._local_only_mode:
-            providers_order = [p for p in providers_order if p in ("llama_cpp",)]
-            
-        # Score and sort active providers dynamically based on health
-        active_providers = [p for p in providers_order if p in self._providers]
-        active_providers.sort(
+            cloud_order = []
+
+        # Sort cloud providers by health score (best first)
+        active_cloud = [p for p in cloud_order if p in self._providers]
+        active_cloud.sort(
             key=lambda p: provider_score(self._provider_health[p]), reverse=True
         )
+        active_local = [p for p in local_order if p in self._providers]
+
+        # Final ordered list: local first for auto/simple/normal, cloud first for high
+        if effective_complexity == "high" and not self._local_only_mode:
+            active_providers = active_cloud + active_local
+        else:
+            active_providers = active_local + active_cloud
 
         for provider_name in active_providers:
             limit = self.DAILY_LIMITS.get(provider_name, 0)
@@ -411,3 +420,17 @@ class LLMRouter:
         return sum(
             self._usage.get(provider, 0) * cost for provider, cost in self.COST_PER_REQUEST.items()
         )
+
+    async def warmup(self) -> None:
+        """
+        Eagerly initialize local providers (LlamaCpp) so the first user request
+        is not blocked by model loading. Called during runtime startup.
+        """
+        llama = self._providers.get("llama_cpp")
+        if llama is not None and hasattr(llama, "_get_llm"):
+            try:
+                logger.info("LLMRouter: warming up LlamaCpp model (eager load)...")
+                await llama._get_llm()  # type: ignore[attr-defined]
+                logger.info("LLMRouter: LlamaCpp warmup complete — model is hot.")
+            except Exception as exc:
+                logger.warning("LLMRouter: LlamaCpp warmup failed (will retry on first request): %s", exc)

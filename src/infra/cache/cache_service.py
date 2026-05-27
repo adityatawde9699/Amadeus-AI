@@ -1,12 +1,11 @@
 """
 Unified Redis Cache Service for Amadeus AI.
 
-Provides namespaced caching for LLM responses, TTS audio, tool results,
+Provides namespaced caching for LLM responses, tool results,
 and search results. Each namespace has an appropriate TTL.
 
 Cache namespaces and TTLs:
 - llm:    3600s  (1 hour)  — LLM responses (may become stale)
-- tts:    86400s (24 hours) — Audio for common phrases
 - tool:   300s   (5 min)   — Weather, news, system stats
 - search: 1800s  (30 min)  — Search results
 
@@ -59,7 +58,6 @@ class CacheService:
 
     NAMESPACES: ClassVar[dict[str, int]] = {
         "llm": 3600,  # 1 hour
-        "tts": 86400,  # 24 hours
         "tool": 300,  # 5 minutes
         "search": 1800,  # 30 minutes
     }
@@ -137,22 +135,6 @@ class CacheService:
         """Cache an LLM response."""
         key = self._key("llm", f"{provider}:{prompt}")
         await self._set(key, response, self.NAMESPACES["llm"])
-
-    # -------------------------------------------------------------------------
-    # TTS Audio Cache
-    # -------------------------------------------------------------------------
-
-    async def get_tts(self, text: str, voice: str) -> bytes | None:
-        """Retrieve cached TTS audio bytes."""
-        key = self._key("tts", f"{voice}:{text}")
-        return await self._get(key)
-
-    async def set_tts(self, text: str, voice: str, audio: bytes) -> None:
-        """Cache TTS audio bytes."""
-        if not audio:
-            return
-        key = self._key("tts", f"{voice}:{text}")
-        await self._set(key, audio, self.NAMESPACES["tts"])
 
     # -------------------------------------------------------------------------
     # Tool Result Cache

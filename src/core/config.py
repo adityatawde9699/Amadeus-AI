@@ -332,7 +332,6 @@ class Settings(BaseSettings):
     # DISPLAY LIMITS
     # =========================================================================
     DISPLAY_PROCESSES_COUNT: int = Field(default=10, ge=1, le=50)
-    DISPLAY_PROCESSES_VOICE_COUNT: int = Field(default=5, ge=1, le=20)
     DISPLAY_TEMPERATURE_SENSORS_LIMIT: int = Field(default=3, ge=1, le=10)
     DISPLAY_ALERTS_LIMIT: int = Field(default=5, ge=1, le=20)
 
