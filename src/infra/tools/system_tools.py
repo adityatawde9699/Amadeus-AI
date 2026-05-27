@@ -18,8 +18,7 @@ import psutil
 
 from src.infra.system.app_registry import AppRegistry
 from src.infra.tools.base import Tool, ToolCategory, tool
-from src.infra.tools.office_tools import get_office_tools
-from src.infra.tools.slack_tools import get_slack_tools
+
 
 
 logger = logging.getLogger(__name__)
@@ -461,6 +460,4 @@ def get_system_tools() -> list[Tool]:
         delete_file._tool_metadata,  # type: ignore[attr-defined]
         create_folder._tool_metadata,  # type: ignore[attr-defined]
     ]
-    tools.extend(get_office_tools())
-    tools.extend(get_slack_tools())
     return tools

@@ -18,7 +18,6 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from src.core.config import Settings
-    from src.infra.knowledge_graph import KnowledgeGraphService
     from src.infra.llm.router import LLMRouter
     from src.infra.memory_service import QdrantMemoryService
 
@@ -115,12 +114,10 @@ class ResponseComposer:
         llm_router: LLMRouter | None,
         settings: Settings,
         memory_service: QdrantMemoryService | None = None,
-        kg_service: KnowledgeGraphService | None = None,
     ) -> None:
         self._llm_router = llm_router
         self._settings = settings
         self._memory_service = memory_service
-        self._kg_service = kg_service
 
     # ------------------------------------------------------------------
     # System / identity prompt
@@ -153,17 +150,6 @@ class ResponseComposer:
         )
 
         if user_query and memory_enabled:
-            # Tier 2: KG exact facts
-            if self._kg_service:
-                try:
-                    facts = await self._kg_service.retrieve_triples(user_query, limit=2)
-                    if facts:
-                        parts.append(
-                            "\n[RELEVANT KG FACTS]\n" + "\n".join(f"- {f}" for f in facts)
-                        )
-                except Exception:
-                    logger.warning("KG retrieval failed — skipping", exc_info=True)
-
             # Tier 3: Semantic memories
             if self._memory_service:
                 try:

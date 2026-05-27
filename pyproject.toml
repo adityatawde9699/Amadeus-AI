@@ -83,21 +83,17 @@ dependencies = [
     "sentence-transformers>=5.4.1",
     "rank-bm25>=0.2.2",
     "pycaw>=20251023",
-    "wmi>=1.5.1",
     # Search (DDG web results)
     "duckduckgo-search>=8.0.0",
     # ML (SVM category classifier for tool routing)
     "scikit-learn>=1.4.0",
+    "arq>=0.28.0",
+    "opentelemetry-sdk>=1.42.1",
+    "opentelemetry-exporter-otlp>=1.42.1",
+    "opentelemetry-instrumentation-fastapi>=0.63b1",
 ]
 
 [project.optional-dependencies]
-# Voice features - requires system dependencies (portaudio) and Rust
-voice = [
-    "SpeechRecognition>=3.10.0",
-    "faster-whisper>=0.10.0",
-    "edge-tts>=6.1.0",
-    "elevenlabs>=1.0.0",
-]
 
 # Dashboard UI
 dashboard = [
@@ -139,7 +135,7 @@ test = [
 
 # Full installation with all features
 all = [
-    "amadeus-ai[voice,dashboard,dev]",
+    "amadeus-ai[dashboard,dev]",
 ]
 
 # Multi-LLM providers (optional cost saver)
@@ -375,9 +371,6 @@ exclude = [
 
 [[tool.mypy.overrides]]
 module = [
-    "pyttsx3.*",
-    "speech_recognition.*",
-    "faster_whisper.*",
     "streamlit.*",
     "streamlit_lottie.*",
     "streamlit_mic_recorder.*",
@@ -389,9 +382,6 @@ module = [
     "redis.*",
     "slack_sdk.*",
     "locust.*",
-    "win32com.*",
-    "pywintypes.*",
-    "win32api.*",
     "telegram.*",
     "imap_tools.*",
     "aiosmtplib.*",
@@ -403,8 +393,6 @@ module = [
     "prometheus_fastapi_instrumentator.*",
     "groq.*",
     "openai.*",
-    "edge_tts.*",
-    "elevenlabs.*",
     "fastapi_users.*",
     "fastapi_users_db_sqlalchemy.*",
 ]

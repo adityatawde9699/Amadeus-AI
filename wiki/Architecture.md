@@ -1,74 +1,75 @@
 # Architecture
 
-Amadeus follows **Clean Architecture** with four strict layers. Dependencies only flow inward — the Core layer has zero external dependencies.
+Amadeus follows **Clean Architecture** with strict layer separation. Dependencies only flow inward — the Core layer has zero external imports.
 
 ---
 
 ## Layer Overview
 
 ```
-┌──────────────────────────────────────────────┐
-│              CLIENT LAYER                    │
-│    HTTP / REST · WebSocket · Telegram        │
-│         WhatsApp · Email                     │
-└────────────────────┬─────────────────────────┘
-                     │
-┌────────────────────▼─────────────────────────┐
-│           API LAYER  (src/api/)              │
-│  JWT Auth · Rate Limiter · Audit Logger      │
-│  /chat  /tasks  /voice  /llm  /webhooks      │
-└────────────────────┬─────────────────────────┘
-                     │  Depends()
-┌────────────────────▼─────────────────────────┐
-│       APPLICATION LAYER  (src/app/)          │
-│  AmadeusService · SemanticToolRouter         │
-│  AgentOrchestrator · VoiceService            │
-└────────────────────┬─────────────────────────┘
-                     │
-        ┌────────────┴────────────┐
-        │                        │
-┌───────▼──────┐     ┌───────────▼──────────────┐
-│  CORE        │     │  INFRASTRUCTURE           │
-│  (src/core/) │     │  (src/infra/)             │
-│              │     │                           │
-│  Domain      │     │  LLM Adapters             │
-│  Interfaces  │     │  Qdrant + Flash Cache     │
-│  Exceptions  │     │  Redis · PostgreSQL        │
-│  Config      │     │  Whisper STT · Edge TTS   │
-│              │     │  Tools (60+)              │
-│  (no external│     │  WorkspaceIndexer         │
-│   imports)   │     │  Messaging adapters       │
-└──────────────┘     └───────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│                 CLIENT LAYER                     │
+│   HTTP / REST · WebSocket · Telegram · CLI       │
+└─────────────────────┬────────────────────────────┘
+                      │
+┌─────────────────────▼────────────────────────────┐
+│         TRANSPORT LAYER  (src/transports/)       │
+│  fastapi_transport.py  — FastAPI ASGI app        │
+│  telegram_transport.py — Telegram webhook        │
+│  cli_transport.py      — Direct CLI runner       │
+└─────────────────────┬────────────────────────────┘
+                      │  Depends()
+┌─────────────────────▼────────────────────────────┐
+│       APPLICATION LAYER  (src/app/)              │
+│  AmadeusService · AgentOrchestrator              │
+│  ConversationManager · ToolDispatcher            │
+│  ArgumentExtractor · ResponseComposer            │
+│  AutonomousObservationLoop                       │
+└─────────────────────┬────────────────────────────┘
+                      │
+         ┌────────────┴────────────┐
+         │                        │
+┌────────▼─────────┐   ┌──────────▼───────────────┐
+│  CORE            │   │  INFRASTRUCTURE           │
+│  (src/core/)     │   │  (src/infra/)             │
+│                  │   │                           │
+│  Domain models   │   │  LLM adapters             │
+│  Interfaces/ABCs │   │  Qdrant memory service    │
+│  Exceptions      │   │  Redis / PostgreSQL        │
+│  Settings        │   │  Tools (53 registered)    │
+│                  │   │  ModelManager             │
+│  (no external    │   │  Search router            │
+│   imports)       │   │  Messaging adapters       │
+└──────────────────┘   └───────────────────────────┘
 ```
 
-**Dependency Injection** is handled by `dependency-injector` in `src/container.py`. The `Container` class wires all singletons — LLM router, cache, tool registry, conversation repo, and the main `AmadeusService` — at startup.
+**Dependency Injection** is handled by `dependency-injector` in `src/container.py`. The `Container` wires all singletons — LLM router, cache, tool registry, conversation repo, goal repo, and `AmadeusService` — at startup.
 
 ---
 
 ## Request Lifecycle
 
-A `POST /api/v1/chat` request passes through six stages:
+A request passes through these stages regardless of transport:
 
 ```
-Client
+Client (HTTP / Telegram / CLI)
   │
-  ▼  1. JWT verification (HS256, requires exp claim in production)
+  ▼  1. Transport receives message, builds RequestContext
   │
-  ▼  2. Rate limiting (SlowAPI — keyed by JWT sub, falls back to IP)
+  ▼  2. AmadeusService.process_task() called with context
+  │     ├─ Check Redis LLM response cache (1 h TTL)
+  │     ├─ Retrieve top-3 semantic memories from Qdrant
+  │     └─ Dispatch to AgentOrchestrator queue
   │
-  ▼  3. AmadeusService.handle_command()
-  │     ├─ Check Redis LLM response cache (1h TTL)
-  │     ├─ Store user message in PostgreSQL + Qdrant
-  │     └─ Multi-step? → AgentOrchestrator
-  │         Single-step? → _process_command_internal()
+  ▼  3. AgentOrchestrator routes by ML intent (SVM → keyword fallback)
+  │     Selects: general / system / research agent
   │
-  ▼  4. SemanticToolRouter.route()          ← Stage 1: cosine sim (<10ms)
-  │     └─ Confidence < 0.50? → LLM triage  ← Stage 2: LlamaCpp/Groq
+  ▼  4. ReActAgent loop (max 4 iterations)
+  │     ├─ Thought → LLMRouter.generate()
+  │     ├─ Tool call → ToolExecutor (HITL gate for destructive ops)
+  │     └─ Observation → next iteration or FINISH
   │
-  ▼  5. Tool execution (ToolExecutor, with HITL gate for destructive ops)
-  │     └─ LLMRouter.generate() composes a natural response
-  │
-  ▼  6. Store response in PostgreSQL + Qdrant → return ChatResponse
+  ▼  5. Response stored in PostgreSQL + Qdrant → returned to transport
 ```
 
 ---
@@ -81,13 +82,9 @@ Every generation request flows through `LLMRouter`, which checks Redis daily-quo
 Incoming Request
        │
        ▼
-  LlamaCpp  ──(SLM_MODEL_PATH set? offline GGUF)──▶  ✅ Response
-  (local, unlimited)
-       │ not configured
-       ▼
-  Ollama    ──(running locally?)──▶  ✅ Response
-  (local, unlimited)
-       │ not running
+  LlamaCpp  ──(SLM_MODEL_PATH or auto-downloaded GGUF)──▶  ✅ Response
+  (local, unlimited, offline)
+       │ not configured / no model
        ▼
   Groq      ──(quota < 14,400/day?)──▶  ✅ Response
   (free tier, Llama 3.3 70B)
@@ -97,60 +94,77 @@ Incoming Request
   (free tier, Gemini 2.5 Flash)
        │ exhausted
        ▼
-  OpenAI    ──(key configured?)──▶  ✅ Response
-  (paid, GPT-4o-mini, emergency only)
-       │ no key
-       ▼
-  🚫 LLMRateLimitError → HTTP 503
+  🚫 LLMRateLimitError → transport returns error message
 ```
 
-### Complexity Routing
+**LOCAL_ONLY_MODE=true** disables all cloud providers — only LlamaCpp is used.
 
-The router accepts a `complexity` hint:
+### Complexity Routing
 
 | Value | Behaviour |
 |---|---|
 | `"auto"` | Score the prompt and choose the best tier |
-| `"simple"` | Local-only (LlamaCpp / Ollama) |
+| `"simple"` | Local-only (LlamaCpp) |
 | `"normal"` | Local first, cloud fallback |
-| `"high"` | Cloud-first (Groq → Gemini → OpenAI), local as last resort |
+| `"high"` | Cloud-first (Groq → Gemini), local as last resort |
 
 ---
 
-## Voice Pipeline
+## Model Resolution
+
+`ModelManager` (`src/infra/model_manager.py`) governs all local model lifecycle:
 
 ```
-Audio Bytes (WebSocket /api/v1/ws/voice)
-       │
-       ▼  faster-whisper  (CPU / CUDA, int8, non-blocking via executor)
-Transcribed Text
-       │
-       ▼  LLMRouter (local-first)
-LLM Response Text
-       │
-       ▼  Edge TTS  (en-US-JennyNeural, async streaming, Redis-cached)
-Audio Bytes  ──▶  Client
+resolve_embed_model()
+  ├─ Check MODEL_DIR/embed/<safe_name>/config.json  → load from local dir
+  ├─ MODEL_DOWNLOAD_ENABLED=true → snapshot_download() into Model/embed/
+  └─ Fallback → HuggingFace global cache (model ID string)
+
+resolve_gguf_model()
+  ├─ SLM_MODEL_PATH set and exists → use directly
+  ├─ Model/<SLM_MODEL_FILENAME> exists → use it
+  ├─ SLM_MODEL_REPO_ID + SLM_MODEL_FILENAME set → hf_hub_download()
+  └─ None → LlamaCpp disabled
 ```
 
-The voice WebSocket protocol sends three frames per turn:
-
-1. `{"type": "transcription", "text": "..."}` — what was heard
-2. `{"type": "response_text", "text": "..."}` — the AI reply
-3. Binary frame — TTS audio bytes (MP3)
+All models are stored under `Model/` inside the project root, configurable via `MODEL_DIR`.
 
 ---
 
 ## Memory Architecture
 
-Amadeus uses a three-tier memory system:
+Amadeus uses a two-tier active memory system:
 
 | Tier | Technology | Purpose | Latency |
 |---|---|---|---|
 | **L1 Flash Cache** | NumPy float32 ring buffer (100 entries, ~307 KB RAM) | Intercepts Qdrant for recently-accessed memories | ~1 µs |
-| **L2 Qdrant (Semantic)** | `all-mpnet-base-v2` 768-dim vectors + cosine similarity | Long-term cross-session recall with recency/importance weighting | ~5 ms |
-| **L3 Knowledge Graph** | SQLite via SQLAlchemy (EntityORM + RelationshipORM SPO triples) | Structured episodic memory — relationships between entities | ~2 ms |
+| **L2 Qdrant (Semantic)** | `all-MiniLM-L6-v2` 384-dim vectors + cosine similarity | Long-term cross-session recall with recency/importance weighting | ~5 ms |
 
-The L1 cache is invalidated on `clear_conversation()`. Identity memories (subtype `"identity"`, importance `1.0`) never decay in the L2 ranking formula.
+Identity memories (`subtype="identity"`, `recency_decay=1.0`) never decay. Contradiction resolution: if a new identity memory has cosine similarity > 0.90 with an existing one, the older entry is deleted before insert.
+
+---
+
+## Goal Management
+
+The `GoalRepository` tracks long-horizon objectives across sessions:
+
+| Tool | Description |
+|---|---|
+| `create_goal` | Define a new multi-step objective |
+| `update_goal` | Transition status: `active` → `completed` / `abandoned` |
+| `list_active_goals` | Retrieve all currently active goals for context injection |
+
+Goals are persisted in PostgreSQL via `GoalORM` and injected into the DI container as `_GoalRepoProxy`.
+
+---
+
+## Proactive Observation Loop
+
+`AutonomousObservationLoop` fires background checks at `PROACTIVE_CHECK_INTERVAL_MINUTES` intervals:
+
+- **Rate limiting**: At most `PROACTIVE_MESSAGE_LIMIT_PER_HOUR` dispatches per `session_id` per hour.
+- **Dry-run mode**: `PROACTIVE_DRY_RUN=true` logs intent without dispatching to transport — safe for development.
+- Task stored as `self._task`; done-callback logs unhandled exceptions. `stop()` cancels cleanly.
 
 ---
 

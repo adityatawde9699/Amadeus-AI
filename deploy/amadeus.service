@@ -1,0 +1,20 @@
+[Unit]
+Description=Amadeus AI runtime daemon
+After=network.target postgresql.service redis.service qdrant.service
+
+[Service]
+Type=simple
+User=amadeus
+Group=amadeus
+WorkingDirectory=/opt/amadeus
+Environment="PATH=/opt/amadeus/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
+EnvironmentFile=/opt/amadeus/.env
+ExecStart=/opt/amadeus/.venv/bin/python -m src.transports.fastapi_transport
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=amadeus
+
+[Install]
+WantedBy=multi-user.target

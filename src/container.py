@@ -7,14 +7,13 @@ Wires up all services with their dependencies using dependency-injector.
 from __future__ import annotations
 
 import logging
-from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 import redis.asyncio
 from dependency_injector import containers, providers
 
 from src.app.services.amadeus_service import AmadeusService
 from src.app.services.tool_registry import ToolRegistry
-from src.app.services.voice_service import VoiceService
 from src.core.config import get_settings
 from src.infra.cache.cache_service import CacheService
 from src.infra.llm.router import LLMRouter
@@ -72,6 +71,25 @@ def _build_conversation_repo_factory() -> object:
             return _caller
 
     return _ConversationRepoProxy()
+
+
+def _build_goal_repo_factory() -> object:
+    """Build a per-request goal repository proxy."""
+    from src.infra.persistence.database import get_session
+    from src.infra.persistence.repositories.goal_repository import (
+        SQLAlchemyGoalRepository,
+    )
+
+    class _GoalRepoProxy:
+        def __getattr__(self, method_name: str) -> object:
+            async def _caller(*args: object, **kwargs: object) -> object:
+                async with get_session() as session:
+                    repo = SQLAlchemyGoalRepository(session)
+                    return await getattr(repo, method_name)(*args, **kwargs)
+
+            return _caller
+
+    return _GoalRepoProxy()
 
 
 def _build_tool_registry() -> ToolRegistry:
@@ -197,49 +215,34 @@ def _build_llm_router() -> LLMRouter:
         except Exception as e:
             logger.warning("Failed to configure GeminiAdapter: %s", type(e).__name__)
 
-    openai_adapter = None
-    if getattr(settings, "OPENAI_API_KEY", None):
-        try:
-            from src.infra.llm.openai_adapter import OpenAIAdapter
-
-            openai_adapter = OpenAIAdapter(api_key=settings.OPENAI_API_KEY)
-        except Exception as e:
-            logger.warning("Failed to configure OpenAIAdapter: %s", type(e).__name__)
-
-    ollama_adapter = None
-    # Only wire Ollama if explicitly enabled (avoids connection errors when not running)
-    if getattr(settings, "OLLAMA_ENABLED", False):
-        try:
-            from src.infra.llm.ollama_adapter import OllamaAdapter
-
-            ollama_adapter = OllamaAdapter(
-                base_url=settings.OLLAMA_URL,
-                model=settings.OLLAMA_MODEL,
-                timeout=settings.OLLAMA_TIMEOUT_SECONDS,
-                context_length=settings.OLLAMA_NUM_CTX,
-            )
-        except Exception as e:
-            logger.warning("Failed to configure OllamaAdapter: %s", type(e).__name__)
-
     llama_cpp_adapter = None
-    if getattr(settings, "SLM_MODEL_PATH", None):
+    # Resolve GGUF path: SLM_MODEL_PATH > Model/<filename> > auto-download
+    try:
+        from src.infra.model_manager import ModelManager
+        mm = ModelManager(settings)
+        resolved_gguf = mm.resolve_gguf_model()
+    except Exception as e:
+        logger.warning("ModelManager GGUF resolution failed: %s", e)
+        resolved_gguf = Path(settings.SLM_MODEL_PATH) if settings.SLM_MODEL_PATH else None
+
+    if resolved_gguf and resolved_gguf.exists():
         try:
             from src.infra.llm.llama_cpp_adapter import LlamaCppAdapter
 
             llama_cpp_adapter = LlamaCppAdapter(
-                model_path=settings.SLM_MODEL_PATH,
+                model_path=str(resolved_gguf),
                 threads=settings.SLM_THREADS,
                 context_length=settings.SLM_CTX_SIZE,
             )
         except Exception as e:
             logger.exception("Failed to configure LlamaCppAdapter: %s", e)
+    else:
+        logger.info("No GGUF model available — LlamaCpp disabled.")
 
     return LLMRouter(
-        ollama=ollama_adapter,
         llama_cpp=llama_cpp_adapter,
         groq=groq_adapter,
         gemini=gemini_adapter,
-        openai=openai_adapter,
         redis_url=getattr(settings, "REDIS_URL", None),
         local_only_mode=settings.LOCAL_ONLY_MODE,
     )
@@ -254,31 +257,9 @@ def _build_search_router() -> SearchRouter:
     )
 
 
-def _build_voice_service(amadeus: AmadeusService, cache: CacheService) -> VoiceService:
-    from src.app.services.voice_service import VoiceService
-    from src.infra.speech.adapters import WhisperVoiceInput
-
-    settings = get_settings()
-    stt = WhisperVoiceInput()
-    try:
-        from src.infra.speech.edge_tts_adapter import EdgeTTSAdapter
-        from src.infra.speech.tts_router import TTSRouter
-
-        edge_tts = EdgeTTSAdapter(voice=settings.EDGE_TTS_VOICE, cache_service=cache)
-        tts = TTSRouter(edge_tts=edge_tts)
-    except ImportError:
-        from src.infra.speech.adapters import _SilentTTSAdapter
-
-        tts = _SilentTTSAdapter()  # type: ignore[assignment]
-
-    return VoiceService(amadeus_service=amadeus, stt_service=stt, tts_service=tts)
-
-
-def _build_ml_thread_pool() -> ThreadPoolExecutor:
-    from concurrent.futures import ThreadPoolExecutor
-
-    # A dedicated single-worker pool perfectly bypasses OOM issues on concurrent voice requests
-    return ThreadPoolExecutor(max_workers=1, thread_name_prefix="VoiceML")
+def _build_ml_thread_pool() -> object:
+    """Stub — retained for any lingering references; not injected into any service."""
+    return None
 
 
 # =============================================================================
@@ -294,14 +275,10 @@ class Container(containers.DeclarativeContainer):
             "src.api.routes.chat",
             "src.api.routes.confirm",
             "src.api.routes.health",
-            "src.api.routes.ipc",
             "src.api.routes.llm",
             "src.api.routes.messaging",
-            "src.api.routes.system_admin",
             "src.api.routes.tasks",
-            "src.api.routes.voice",
             "src.api.routes.webhooks",
-            "src.api.routes.websocket",
         ]
     )
 
@@ -316,6 +293,7 @@ class Container(containers.DeclarativeContainer):
     tool_registry = providers.Singleton(_build_tool_registry)
 
     conversation_repo = providers.Singleton(_build_conversation_repo_factory)
+    goal_repo = providers.Singleton(_build_goal_repo_factory)
 
     # llm_router and search_router must be declared BEFORE amadeus_service
     # so dependency-injector can resolve them as constructor arguments.
@@ -328,14 +306,10 @@ class Container(containers.DeclarativeContainer):
         tool_registry=tool_registry,
         cache_service=cache_service,
         conversation_repo=conversation_repo,
+        goal_repository=goal_repo,
         llm_router=llm_router,
     )
 
-    voice_service = providers.Singleton(
-        _build_voice_service,
-        amadeus=amadeus_service,
-        cache=cache_service,
-    )
 
 
 # =============================================================================
@@ -357,10 +331,6 @@ def get_redis_client() -> redis.asyncio.Redis | None:
 
 def get_cache_service() -> CacheService:
     return global_container.cache_service()
-
-
-def get_voice_service() -> VoiceService:
-    return global_container.voice_service()
 
 
 def get_llm_router() -> LLMRouter:

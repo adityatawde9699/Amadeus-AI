@@ -25,6 +25,8 @@ from src.core.domain.models import (
     ReminderStatus,
     Task,
     TaskStatus,
+    Goal,
+    GoalStatus,
 )
 
 
@@ -161,6 +163,31 @@ class ITaskRepository(IRepository[Task]):
         Returns:
             Dict with counts: total, pending, completed.
         """
+
+
+# =============================================================================
+# GOAL REPOSITORY
+# =============================================================================
+
+
+class IGoalRepository(IRepository[Goal]):
+    """Repository interface for Goal entities."""
+
+    @abstractmethod
+    async def get_by_status(self, status: GoalStatus) -> list[Goal]:
+        """Get goals filtered by status."""
+
+    @abstractmethod
+    async def get_active(self) -> list[Goal]:
+        """Get all active goals."""
+
+    @abstractmethod
+    async def get_completed(self) -> list[Goal]:
+        """Get all completed goals."""
+
+    @abstractmethod
+    async def mark_complete(self, goal_id: int) -> Goal | None:
+        """Mark a goal as completed."""
 
 
 # =============================================================================

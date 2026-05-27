@@ -105,6 +105,12 @@ class Settings(BaseSettings):
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
     # =========================================================================
+    # PROACTIVE OBSERVATION LOOP
+    # =========================================================================
+    PROACTIVE_MESSAGE_LIMIT_PER_HOUR: int = 3
+    PROACTIVE_DRY_RUN: bool = False
+
+    # =========================================================================
     # PATHS
     # =========================================================================
     BASE_DIR: Path = Field(default_factory=get_project_root)
@@ -126,37 +132,55 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-3-flash-preview"
     WEATHER_API_KEY: str | None = None
     NEWS_API_KEY: str | None = None
-    OPENAI_API_KEY: str | None = None  # Reserved for future use
 
     # Groq LLM (free tier: 14,400 req/day)
     GROQ_API_KEY: str | None = None
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
 
     # =========================================================================
-    # LOCAL LLM (OLLAMA & SLM) — Primary providers for offline/desktop mode
+    # LOCAL LLM (SLM) — Primary providers for offline/desktop mode
     # Optimized defaults for low RAM machines
     # =========================================================================
-    OLLAMA_URL: str = "http://localhost:11434"
-    # phi3:mini  → 3.8B, ~2.3 GB RAM  ← DEFAULT (best for 4 GB machines)
-    # llama3.2:3b → 3B,  ~2.0 GB RAM
-    # gemma3:2b  → 2B,  ~1.5 GB RAM  (smallest viable)
-    OLLAMA_MODEL: str = "phi3:mini"
     # When True: ONLY use local offline providers, disable all cloud providers
     LOCAL_ONLY_MODE: bool = True
-    OLLAMA_TIMEOUT_SECONDS: float = 120.0  # CPU inference can be slow
-    OLLAMA_NUM_CTX: int = 4096  # Context window (tokens)
 
     # SLM / llama_cpp Settings (Primary if SLM_MODEL_PATH is set)
-    SLM_MODEL_PATH: str | None = None  # Absolute path to .gguf file
+    SLM_MODEL_PATH: str | None = None  # Absolute path to .gguf file (takes priority)
     SLM_THREADS: int = 2
     SLM_CTX_SIZE: int = 2048
 
+    # =========================================================================
+    # MODEL DIRECTORY & AUTO-DOWNLOAD
+    # All local models live under MODEL_DIR (defaults to <project>/Model/).
+    # Set MODEL_DOWNLOAD_ENABLED=True to auto-fetch missing models on startup.
+    # =========================================================================
+    MODEL_DIR: Path | None = None  # Defaults to BASE_DIR/Model (set in validator)
+
+    @field_validator("MODEL_DIR", mode="before")
+    @classmethod
+    def set_model_dir(cls, v: Path | str | None, info: Any) -> Path:
+        """Default MODEL_DIR to <project_root>/Model/"""
+        if v is None:
+            base = info.data.get("BASE_DIR") or Path(__file__).parent.parent.parent
+            return Path(base) / "Model"
+        return Path(v)
+
+    MODEL_DOWNLOAD_ENABLED: bool = True  # Download missing models on first run
+
+    # Embedding model (sentence-transformers compatible)
+    EMBED_MODEL_NAME: str = "sentence-transformers/all-MiniLM-L6-v2"
+    # If set, caches model to MODEL_DIR/<embed subdir>; otherwise uses HF cache
+    EMBED_MODEL_LOCAL_DIR: str | None = None  # Auto-resolved from MODEL_DIR if blank
+
+    # GGUF LLM model — used when SLM_MODEL_PATH is not given
+    # Repo and filename on HuggingFace, e.g.:
+    #   SLM_MODEL_REPO_ID=bartowski/Llama-3.2-1B-Instruct-GGUF
+    #   SLM_MODEL_FILENAME=Llama-3.2-1B-Instruct-Q4_K_M.gguf
+    SLM_MODEL_REPO_ID: str | None = None
+    SLM_MODEL_FILENAME: str | None = None  # exact filename inside the repo
+
     # Search APIs
     TAVILY_API_KEY: str | None = None
-
-    # Speech / Voice Keys
-    ELEVENLABS_API_KEY: str | None = None
-    EDGE_TTS_VOICE: str = "en-US-JennyNeural"
 
     # =========================================================================
     # SECURITY
@@ -165,10 +189,6 @@ class Settings(BaseSettings):
 
     # Loaded from env when provided; otherwise generated once and persisted.
     IPC_SECRET_TOKEN: str = Field(default_factory=load_or_create_ipc_secret)
-
-    # WhatsApp webhook signature secret (Meta App Secret for HMAC-SHA256 verification)
-    # SEC-02: Required to verify X-Hub-Signature-256 on incoming WhatsApp webhooks.
-    WHATSAPP_APP_SECRET: str | None = None
 
     # =========================================================================
     # OBSERVABILITY
@@ -183,17 +203,9 @@ class Settings(BaseSettings):
     TELEGRAM_WEBHOOK_URL: str | None = None  # e.g. https://yourhost.com/api/v1/messaging/telegram
 
     # =========================================================================
-    # MESSAGING: WHATSAPP (Meta Cloud API)
-    # =========================================================================
-    WHATSAPP_ACCESS_TOKEN: str | None = None
-    WHATSAPP_VERIFY_TOKEN: str | None = None
-    WHATSAPP_PHONE_NUMBER_ID: str | None = None
-
-    # =========================================================================
     # PROACTIVE MESSAGING (Master Users)
     # =========================================================================
     MASTER_TELEGRAM_CHAT_ID: str | None = None
-    MASTER_WHATSAPP_NUMBER: str | None = None
     PROACTIVE_CHECK_INTERVAL_MINUTES: int = Field(default=30, ge=1, le=1440)
 
     # =========================================================================
@@ -231,32 +243,10 @@ class Settings(BaseSettings):
     DB_ECHO: bool = False
 
     # =========================================================================
-    # SPEECH / VOICE
-    # =========================================================================
-    VOICE_ENABLED: bool = True
-    WAKE_WORD: str = "amadeus"
-
-    # TTS Settings
-    TTS_RATE: int = Field(default=150, ge=50, le=300)
-    TTS_VOICE_INDEX: int = Field(default=1, ge=0)
-
-    # Whisper Settings
-    WHISPER_MODEL: Literal["tiny", "base", "small", "medium", "large"] = "tiny"
-    WHISPER_DEVICE: Literal["cpu", "cuda"] = "cpu"
-    WHISPER_COMPUTE_TYPE: Literal["int8", "float16", "float32"] = "int8"
-    WHISPER_BEAM_SIZE: int = Field(default=1, ge=1, le=10)
-
-    # Speech Recognition Settings
-    SPEECH_RECOGNITION_TIMEOUT: int = Field(default=5, ge=1, le=30)
-    SPEECH_PHRASE_TIME_LIMIT: int = Field(default=10, ge=1, le=60)
-    SPEECH_ENERGY_THRESHOLD: int = Field(default=4000, ge=100, le=10000)
-    SPEECH_MIN_AUDIO_LENGTH: int = Field(default=3200, ge=100)
-
-    # =========================================================================
     # ASSISTANT IDENTITY
     # =========================================================================
     ASSISTANT_NAME: str = "Amadeus"
-    ASSISTANT_VERSION: str = "3.2.0"
+    ASSISTANT_VERSION: str = "3.2.2"
     ASSISTANT_PERSONALITY: str = "intelligent, analytical, precise, and slightly sarcastic"
     DEFAULT_LOCATION: str = "India"
     TIMEZONE: str = "Asia/Kolkata"
