@@ -73,7 +73,7 @@ LOCAL_ONLY_MODE=true
 | `TAVILY_API_KEY` | Deep web search fallback |
 | `SENTRY_DSN` | Error monitoring (optional) |
 | `QDRANT_URL` | External Qdrant server (default: local file-based) |
-| `CHROMA_ENABLED` | Enable/disable long-term semantic memory |
+| `MEMORY_ENABLED` | Enable/disable long-term semantic memory |
 | `SEARCH_ALLOWED_DIRS` | Comma-separated dirs for `search_file`, `copy_file`, `move_file`, `create_folder` (v3.2.1+) |
 | `PROACTIVE_CHECK_INTERVAL_MINUTES` | APScheduler interval for proactive loop (default `30`) |
 

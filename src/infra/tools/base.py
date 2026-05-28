@@ -134,7 +134,7 @@ class Tool:
 
     def __post_init__(self) -> None:
         """Auto-detect if function is async and standardize parameter schemas."""
-        self.is_async = asyncio.iscoroutinefunction(self.function)
+        self.is_async = inspect.iscoroutinefunction(self.function)
 
         # Ensure parameters are always wrapped in a standard JSON Schema root
         # If the tool author just provided a properties dict, wrap it.
@@ -248,7 +248,7 @@ def tool(
             return await func(*args, **kwargs)
 
         # Choose wrapper based on async
-        final_func: Any = async_wrapper if asyncio.iscoroutinefunction(func) else wrapper
+        final_func: Any = async_wrapper if inspect.iscoroutinefunction(func) else wrapper
 
         # Attach metadata as a runtime attribute (cast tells mypy to treat it as F)
         final_func._tool_metadata = Tool(
@@ -433,27 +433,6 @@ class ToolExecutor:
                     result=result,
                     execution_time_ms=execution_time_ms,
                 )
-                # Phase 12: emit per-tool metrics
-                try:
-                    from src.infra.metrics import (
-                        amadeus_tool_duration_seconds,
-                        amadeus_tool_executions_total,
-                    )
-                    amadeus_tool_duration_seconds.labels(
-                        tool_name=tool.name, success="true"
-                    ).observe(execution_time_ms / 1000)
-                    amadeus_tool_executions_total.labels(
-                        tool_name=tool.name, result="success"
-                    ).inc()
-                except Exception:
-                    pass
-
-                return ToolExecutionResult(
-                    tool_name=tool.name,
-                    success=True,
-                    result=result,
-                    execution_time_ms=execution_time_ms,
-                )
 
             except TypeError as e:
                 logger.warning("Argument error for %s: %s", tool.name, e)
@@ -521,12 +500,23 @@ class ToolExecutor:
         cleaned = {k: v for k, v in args.items() if k in valid_params}
 
         # Check for required parameters
+        # Exclude VAR_KEYWORD (**kwargs) and VAR_POSITIONAL (*args) — they are
+        # never "missing" in the traditional sense and have no default value,
+        # which caused them to be incorrectly flagged as required parameters.
+        _SKIP_KINDS = (
+            inspect.Parameter.VAR_KEYWORD,
+            inspect.Parameter.VAR_POSITIONAL,
+        )
         missing = []
         for name, param in sig.parameters.items():
             if (
+                param.kind in _SKIP_KINDS
+                or name in ("self", "cls")
+            ):
+                continue
+            if (
                 param.default == inspect.Parameter.empty
                 and name not in cleaned
-                and name not in ("self", "cls")
             ):
                 missing.append(name)
 
@@ -542,7 +532,7 @@ class ToolExecutor:
 
     def get_recent_executions(self, limit: int = 10) -> list[dict]:
         """Get recent execution history."""
-        return self.execution_history[-limit:]
+        return list(self.execution_history)[-limit:]
 
     def clear_history(self) -> None:
         """Clear execution history."""

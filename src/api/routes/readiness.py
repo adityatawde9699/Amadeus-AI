@@ -90,10 +90,10 @@ async def readiness() -> dict[str, object]:
 
     # ── Qdrant (vector memory) ────────────────────────────────────────────────
     try:
-        if settings.CHROMA_ENABLED:
+        if settings.MEMORY_ENABLED:
             from qdrant_client import AsyncQdrantClient
 
-            qc = AsyncQdrantClient(path=settings.CHROMA_PERSIST_DIR)
+            qc = AsyncQdrantClient(path=settings.MEMORY_PERSIST_DIR)
             await qc.get_collections()
             await qc.close()
         checks["qdrant"] = True

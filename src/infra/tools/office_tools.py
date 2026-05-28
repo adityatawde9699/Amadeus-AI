@@ -15,16 +15,24 @@ from src.infra.tools.base import Tool, ToolCategory, tool
 
 logger = logging.getLogger(__name__)
 
+# Declared as Any so the type checker permits win32com.client.* attribute access
+# regardless of platform. Replaced with real modules on Windows; remain None elsewhere.
+pythoncom: Any = None
+win32com: Any = None
+
 # Try to import win32com, but handle gracefully if not on Windows or not installed
 try:
-    import pythoncom
-    import win32com.client
+    import pythoncom as _pythoncom  # type: ignore[import-not-found]
+    import win32com as _win32com  # type: ignore[import-not-found]
+    import win32com.client  # type: ignore[import-not-found]  # ensure submodule is loaded
 
+    pythoncom = _pythoncom
+    win32com = _win32com
     HAS_PYWIN32 = True
 except ImportError:
     HAS_PYWIN32 = False
-    pythoncom = None  # type: ignore[assignment]
     logger.warning("pywin32 not installed. Office tools will be unavailable.")
+
 
 
 from contextlib import contextmanager

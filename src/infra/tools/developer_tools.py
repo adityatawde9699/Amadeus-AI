@@ -46,8 +46,11 @@ def _get_sandbox():  # noqa: ANN202
         "Executes a Python script in a secure, sandboxed Docker container with NO internet access. "
         "The script must be self-contained (Python standard library ONLY — no pip packages). "
         "Returns stdout on success or detailed error output on failure. Requires Docker Desktop running. "
-        "Use this for data analysis, complex calculations, file processing, or any task needing code. "
-        "Trigger: 'run this python code', 'execute script', 'analyze this data', 'write and run code'"
+        "Use this for: writing and running code, computing with Python, data analysis, complex calculations, "
+        "generating sequences (Fibonacci, primes, etc.), file processing, algorithm implementation, "
+        "or any task that requires actually executing code. "
+        "Trigger: 'write and run python', 'run python code', 'execute this script', 'write a python script', "
+        "'calculate using code', 'compute with python', 'run a script', 'write code', 'code this up'"
     ),
     category=ToolCategory.SYSTEM,
     parameters={

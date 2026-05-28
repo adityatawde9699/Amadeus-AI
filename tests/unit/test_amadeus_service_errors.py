@@ -9,7 +9,11 @@ Validates that:
 
 import sys
 import types
+from typing import Any, TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
+
+if TYPE_CHECKING:
+    from src.app.services.amadeus_service import AmadeusService
 
 import pytest
 
@@ -21,12 +25,13 @@ import pytest
 # ---------------------------------------------------------------------------
 
 if "google.genai" not in sys.modules:
-    _genai = types.ModuleType("google.genai")
+    _genai: Any = types.ModuleType("google.genai")
     _genai.Client = MagicMock()
     sys.modules["google.genai"] = _genai
     sys.modules["google.genai.types"] = MagicMock()
-    sys.modules["google"] = sys.modules.get("google") or types.ModuleType("google")
-    sys.modules["google"].genai = _genai
+    _google: Any = sys.modules.get("google") or types.ModuleType("google")
+    _google.genai = _genai
+    sys.modules["google"] = _google
 
 
 # ---------------------------------------------------------------------------
@@ -41,7 +46,7 @@ def _make_service(debug: bool = False) -> "AmadeusService":  # noqa: F821
     with (
         patch("src.app.services.amadeus_service.genai"),
         patch("src.app.services.amadeus_service.QdrantMemoryService") as mock_mem,
-        patch("src.app.services.amadeus_service.KnowledgeGraphService"),
+
         patch("src.app.services.amadeus_service.ToolRegistry"),
         patch("src.app.services.amadeus_service.ToolExecutor"),
         patch("src.app.services.amadeus_service.ArgumentExtractor"),
@@ -67,7 +72,7 @@ def _make_service(debug: bool = False) -> "AmadeusService":  # noqa: F821
         mock_settings.BASE_DIR = MagicMock()
 
         svc = AmadeusService(settings=mock_settings, debug_mode=debug)
-        svc.model = None  # No Gemini
+        svc.client = None  # No Gemini
     return svc
 
 
@@ -86,11 +91,14 @@ class TestHandleCommandErrorHandling:
         svc = _make_service(debug=False)
 
         # Force an exception deep inside conversation manager
-        svc.conversation_manager.add = AsyncMock(
-            side_effect=RuntimeError("DB connection string: postgres://admin:secret@host/db")
-        )
+        mock_cm = AsyncMock()
+        mock_cm.add.side_effect = RuntimeError("DB connection string: postgres://admin:secret@host/db")
+        svc._get_conversation_manager = AsyncMock(return_value=mock_cm)
 
-        response = await svc.handle_command("hello")
+        context = MagicMock()
+        context.session_id = "test"
+        context.user_id = "test"
+        response = await svc.handle_command("hello", context)
 
         # The response must not contain any hint of the real error
         assert "postgres" not in response
@@ -107,11 +115,14 @@ class TestHandleCommandErrorHandling:
         svc = _make_service(debug=True)
         svc.debug_mode = True
 
-        svc.conversation_manager.add = AsyncMock(
-            side_effect=ValueError("sensitive internal value: TOKEN=abc123")
-        )
+        mock_cm = AsyncMock()
+        mock_cm.add.side_effect = ValueError("sensitive internal value: TOKEN=abc123")
+        svc._get_conversation_manager = AsyncMock(return_value=mock_cm)
 
-        response = await svc.handle_command("hello")
+        context = MagicMock()
+        context.session_id = "test"
+        context.user_id = "test"
+        response = await svc.handle_command("hello", context)
 
         # Should include the class name for quick debugging
         assert "ValueError" in response
@@ -123,7 +134,8 @@ class TestHandleCommandErrorHandling:
     async def test_empty_input_returns_prompt_not_error(self):
         """Empty / whitespace input returns a prompt, not an exception."""
         svc = _make_service(debug=False)
-        response = await svc.handle_command("   ")
+        context = MagicMock()
+        response = await svc.handle_command("   ", context)
         assert response  # Non-empty
         assert "error" not in response.lower()
 
@@ -132,12 +144,16 @@ class TestHandleCommandErrorHandling:
         """A successful command returns the expected response (no error)."""
         svc = _make_service(debug=False)
 
-        svc.conversation_manager.add = AsyncMock()
+        mock_cm = AsyncMock()
+        svc._get_conversation_manager = AsyncMock(return_value=mock_cm)
         svc.memory_service.store = AsyncMock()
         svc.memory_service.retrieve = AsyncMock(return_value=[])
         svc.memory_service.format_for_prompt = MagicMock(return_value="")
         svc._process_command_internal = AsyncMock(return_value=("Hello!", None))
         svc._is_multi_step_query = MagicMock(return_value=False)
 
-        response = await svc.handle_command("hi there")
+        context = MagicMock()
+        context.session_id = "test"
+        context.user_id = "test"
+        response = await svc.handle_command("hi there", context)
         assert response == "Hello!"

@@ -263,10 +263,6 @@ def _build_search_router() -> SearchRouter:
     )
 
 
-def _build_ml_thread_pool() -> object:
-    """Stub — retained for any lingering references; not injected into any service."""
-    return None
-
 
 # =============================================================================
 # DEPENDENCY INJECTOR CONTAINER
@@ -290,8 +286,6 @@ class Container(containers.DeclarativeContainer):
 
     config = providers.Configuration()
     settings = providers.Factory(get_settings)
-
-    ml_thread_pool = providers.Singleton(_build_ml_thread_pool)
 
     redis_client = providers.Singleton(_build_redis_client)
     cache_service = providers.Singleton(_build_cache_service, redis_client=redis_client)

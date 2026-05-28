@@ -94,9 +94,10 @@ class DockerSandboxExecutor:
                     stdout=True,
                     stderr=True,
                     # ── Timeout ────────────────────────────────────
-                    # The Docker SDK translates this into an API-level
-                    # timeout; the daemon kills the container if exceeded.
-                    timeout=timeout,
+                    # Note: docker-py does not support a timeout kwarg natively on run().
+                    # We rely on the internal process to complete or we'll need to manually
+                    # kill the container in a background task.
+
                 )
 
                 output = (

@@ -89,12 +89,6 @@ class MemoryResult:
 # =============================================================================
 
 
-
-# =============================================================================
-# QDRANT MEMORY SERVICE
-# =============================================================================
-
-
 # Global cache for the Qdrant client to avoid FileLock collisions
 _global_qdrant_client = None
 # ARCH-04: Lock to prevent concurrent initialization races.
@@ -126,7 +120,7 @@ class QdrantMemoryService:
         self._client: Any = None
         self._embed_model: Any = None
         # Reuse CHROMA settings for Qdrant location/collection name
-        self._enabled = self._settings.CHROMA_ENABLED
+        self._enabled = self._settings.MEMORY_ENABLED
         self._initialized = False
         self._circuit_breaker = CircuitBreaker("qdrant", failure_threshold=3, recovery_timeout=60)
 
@@ -152,10 +146,10 @@ class QdrantMemoryService:
                 from qdrant_client import AsyncQdrantClient
                 from qdrant_client.models import Distance, VectorParams
 
-                Path(str(self._settings.CHROMA_PERSIST_DIR)).mkdir(parents=True, exist_ok=True)
+                Path(str(self._settings.MEMORY_PERSIST_DIR)).mkdir(parents=True, exist_ok=True)
 
                 if _global_qdrant_client is None:
-                    _global_qdrant_client = AsyncQdrantClient(path=self._settings.CHROMA_PERSIST_DIR)
+                    _global_qdrant_client = AsyncQdrantClient(path=self._settings.MEMORY_PERSIST_DIR)
 
                 self._client = _global_qdrant_client
 
@@ -166,7 +160,7 @@ class QdrantMemoryService:
                 if not self._enabled:
                     return
 
-                collection_name = self._settings.CHROMA_COLLECTION_NAME
+                collection_name = self._settings.MEMORY_COLLECTION_NAME
                 embed_dim = getattr(self, "_embed_dim", 384)
 
                 # Check if collection exists with correct dimensions
@@ -199,7 +193,7 @@ class QdrantMemoryService:
                     "Qdrant memory initialized — collection=%s, dim=%d, persist_dir=%s",
                     collection_name,
                     embed_dim,
-                    self._settings.CHROMA_PERSIST_DIR,
+                    self._settings.MEMORY_PERSIST_DIR,
                 )
                 self._initialized = True
             except Exception as exc:
@@ -371,7 +365,7 @@ class QdrantMemoryService:
                 from qdrant_client.models import Filter, FieldCondition, MatchValue, QueryRequest
                 qr = await self._circuit_breaker.call(
                     self._client.query_points,
-                    collection_name=self._settings.CHROMA_COLLECTION_NAME,
+                    collection_name=self._settings.MEMORY_COLLECTION_NAME,
                     query=embedding,
                     limit=3,
                     query_filter=Filter(
@@ -390,7 +384,7 @@ class QdrantMemoryService:
                 if to_delete:
                     await self._circuit_breaker.call(
                         self._client.delete,
-                        collection_name=self._settings.CHROMA_COLLECTION_NAME,
+                        collection_name=self._settings.MEMORY_COLLECTION_NAME,
                         points_selector=to_delete
                     )
                     logger.info("Resolved contradiction: deleted %d existing identity memories.", len(to_delete))
@@ -402,7 +396,7 @@ class QdrantMemoryService:
 
             await self._circuit_breaker.call(
                 self._client.upsert,
-                collection_name=self._settings.CHROMA_COLLECTION_NAME,
+                collection_name=self._settings.MEMORY_COLLECTION_NAME,
                 points=[
                     PointStruct(
                         id=id_str,
@@ -465,7 +459,7 @@ class QdrantMemoryService:
 
             qr = await self._circuit_breaker.call(
                 self._client.query_points,
-                collection_name=self._settings.CHROMA_COLLECTION_NAME,
+                collection_name=self._settings.MEMORY_COLLECTION_NAME,
                 query=embedding,
                 limit=top_k * 2,  # Fetch more to allow for re-ranking
                 with_payload=True,
@@ -565,7 +559,7 @@ class QdrantMemoryService:
 
             # Count how many we are about to delete
             count_result = await self._client.count(
-                collection_name=self._settings.CHROMA_COLLECTION_NAME,
+                collection_name=self._settings.MEMORY_COLLECTION_NAME,
                 count_filter=Filter(
                     must=[FieldCondition(key="session_id", match=MatchValue(value=session_id))]
                 ),
@@ -574,7 +568,7 @@ class QdrantMemoryService:
 
             if count > 0:
                 await self._client.delete(
-                    collection_name=self._settings.CHROMA_COLLECTION_NAME,
+                    collection_name=self._settings.MEMORY_COLLECTION_NAME,
                     points_selector=Filter(
                         must=[FieldCondition(key="session_id", match=MatchValue(value=session_id))]
                     ),
@@ -596,7 +590,7 @@ class QdrantMemoryService:
         try:
             from qdrant_client.models import FieldCondition, Filter, MatchValue
             count_result = await self._client.count(
-                collection_name=self._settings.CHROMA_COLLECTION_NAME,
+                collection_name=self._settings.MEMORY_COLLECTION_NAME,
                 count_filter=Filter(
                     must=[FieldCondition(key="text", match=MatchValue(value=text))]
                 ),
@@ -604,7 +598,7 @@ class QdrantMemoryService:
             count = count_result.count
             if count > 0:
                 await self._client.delete(
-                    collection_name=self._settings.CHROMA_COLLECTION_NAME,
+                    collection_name=self._settings.MEMORY_COLLECTION_NAME,
                     points_selector=Filter(
                         must=[FieldCondition(key="text", match=MatchValue(value=text))]
                     ),
@@ -634,7 +628,7 @@ class QdrantMemoryService:
         if not self._enabled or not self._initialized:
             return 0
         try:
-            count = await self._client.count(self._settings.CHROMA_COLLECTION_NAME)
+            count = await self._client.count(self._settings.MEMORY_COLLECTION_NAME)
             return int(count.count)
         except Exception:
             return 0
@@ -659,27 +653,34 @@ class QdrantMemoryService:
         return "\n".join(lines)
 
     async def _increment_access_counts(self, texts: list[str]) -> None:
-        """Increment access_count for the given memory texts (used by fire-and-forget task)."""
+        """Increment access_count for retrieved memories (fire-and-forget).
+
+        Uses scroll() with a payload filter instead of a zero-vector query
+        to reliably locate the correct points without semantic ambiguity.
+        """
         if not self._enabled or not self._initialized:
             return
-            
+
         try:
             from qdrant_client.models import FieldCondition, Filter, MatchValue
+
             for text in texts:
-                qr = await self._client.query_points(
-                    collection_name=self._settings.CHROMA_COLLECTION_NAME,
-                    query=[0.0] * getattr(self, "_embed_dim", 384),
-                    query_filter=Filter(must=[FieldCondition(key="text", match=MatchValue(value=text))]),
+                # scroll() with a filter gives us exact matches — no embedding needed
+                results, _ = await self._client.scroll(
+                    collection_name=self._settings.MEMORY_COLLECTION_NAME,
+                    scroll_filter=Filter(
+                        must=[FieldCondition(key="text", match=MatchValue(value=text))]
+                    ),
                     limit=1,
                     with_payload=True,
                 )
-                if qr.points:
-                    hit = qr.points[0]
-                    current_count = hit.payload.get("access_count", 0) if hit.payload else 0
+                if results:
+                    point = results[0]
+                    current_count = (point.payload or {}).get("access_count", 0)
                     await self._client.set_payload(
-                        collection_name=self._settings.CHROMA_COLLECTION_NAME,
+                        collection_name=self._settings.MEMORY_COLLECTION_NAME,
                         payload={"access_count": current_count + 1},
-                        points=[hit.id]
+                        points=[point.id],
                     )
         except Exception as exc:
             logger.debug("Failed to increment access counts: %s", exc)
@@ -687,50 +688,63 @@ class QdrantMemoryService:
     async def prune_stale_memories(self, session_id: str, older_than_days: int = 90) -> int:
         """
         Remove memories for a session that are older than X days and not marked as identity.
+
+        Paginated via scroll() cursor to avoid loading the entire collection into RAM.
         """
         if not self._enabled or not self._initialized:
             return 0
-            
+
         try:
             from qdrant_client.models import FieldCondition, Filter, MatchValue
-            
-            # Fetch all memories for session to check timestamps
-            results = await self._client.scroll(
-                collection_name=self._settings.CHROMA_COLLECTION_NAME,
-                scroll_filter=Filter(must=[FieldCondition(key="session_id", match=MatchValue(value=session_id))]),
-                limit=10000,
-                with_payload=True
-            )
-            
-            points = results[0]
+
             now = datetime.now(UTC)
-            stale_ids = []
-            
-            for point in points:
-                payload = point.payload or {}
-                subtype = payload.get("subtype", "")
-                if subtype == "identity":
-                    continue
-                    
-                timestamp_str = payload.get("timestamp", "")
-                if timestamp_str:
-                    try:
-                        mem_time = datetime.fromisoformat(timestamp_str)
-                        if mem_time.tzinfo is None:
-                            mem_time = mem_time.replace(tzinfo=UTC)
-                        days_old = (now - mem_time).total_seconds() / (24 * 3600)
-                        if days_old > older_than_days:
-                            stale_ids.append(point.id)
-                    except Exception:
-                        pass
-                        
+            cutoff_seconds = older_than_days * 24 * 3600
+            stale_ids: list = []
+            next_offset = None
+
+            while True:
+                # Paginate in batches of 200 to avoid OOM on large collections
+                scroll_kwargs: dict = dict(
+                    collection_name=self._settings.MEMORY_COLLECTION_NAME,
+                    scroll_filter=Filter(
+                        must=[FieldCondition(key="session_id", match=MatchValue(value=session_id))]
+                    ),
+                    limit=200,
+                    with_payload=True,
+                )
+                if next_offset is not None:
+                    scroll_kwargs["offset"] = next_offset
+
+                points, next_offset = await self._client.scroll(**scroll_kwargs)
+
+                for point in points:
+                    payload = point.payload or {}
+                    if payload.get("subtype") == "identity":
+                        continue
+                    timestamp_str = payload.get("timestamp", "")
+                    if timestamp_str:
+                        try:
+                            mem_time = datetime.fromisoformat(timestamp_str)
+                            if mem_time.tzinfo is None:
+                                mem_time = mem_time.replace(tzinfo=UTC)
+                            age = (now - mem_time).total_seconds()
+                            if age > cutoff_seconds:
+                                stale_ids.append(point.id)
+                        except Exception:
+                            pass
+
+                if next_offset is None:
+                    break
+
             if stale_ids:
                 await self._client.delete(
-                    collection_name=self._settings.CHROMA_COLLECTION_NAME,
-                    points_selector=stale_ids
+                    collection_name=self._settings.MEMORY_COLLECTION_NAME,
+                    points_selector=stale_ids,
                 )
-                logger.info("Pruned %d stale memories for session=%s", len(stale_ids), session_id)
-                
+                logger.info(
+                    "Pruned %d stale memories for session=%s", len(stale_ids), session_id
+                )
+
             return len(stale_ids)
         except Exception as exc:
             logger.warning("Failed to prune stale memories: %s", exc)
