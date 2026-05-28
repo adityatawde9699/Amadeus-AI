@@ -238,10 +238,46 @@ class AmadeusService:
     # ------------------------------------------------------------------
 
     async def _predict_intent(self, query: str) -> tuple[str, str | None]:
-        """Return (intent_type, tool_name_or_None) using the semantic router."""
+        """Return (intent_type, tool_name_or_None) using the semantic router.
+        
+        Override checks fire FIRST so keyword shortcuts (factual queries, sandbox
+        requests) always win regardless of what the semantic router predicted.
+        This prevents the router returning 'calculate' for 'Who is X?' style queries.
+        """
+        lower_query = query.lower().strip()
+
+        # ── Priority 1: Factual knowledge override ──────────────────────────
+        # These always need a live web search, never a calculator or LLM guess.
+        _FACTUAL_PREFIXES = [
+            "who is", "who was", "who are", "who were",
+            "what is", "what was", "what are", "what were",
+            "where is", "where was", "when did", "when was",
+            "who won", "how many", "tell me about", "who created",
+            "who invented", "who founded", "who wrote",
+        ]
+        if any(lower_query.startswith(p) for p in _FACTUAL_PREFIXES):
+            logger.info("Triage override: Factual query detected, routing to web_search")
+            return "tool", "web_search"
+
+        # ── Priority 2: Sandbox execution override ──────────────────────────
+        # Strong coding intent → always use execute_python_script.
+        _SANDBOX_TRIGGERS = [
+            "write and run", "write a python", "run python", "execute python",
+            "run a script", "execute a script", "write a script",
+            "write code and run", "compute with python", "calculate using python",
+            "run this code", "execute this code",
+        ]
+        if any(t in lower_query for t in _SANDBOX_TRIGGERS):
+            logger.info("Triage override: Sandbox execution request detected, routing to execute_python_script")
+            return "tool", "execute_python_script"
+
+        # ── Default: semantic router ────────────────────────────────────────
         if self._semantic_router.is_ready:
-            return self._semantic_router.route(query)
-        return "conversational", None
+            intent_type, tool_name = self._semantic_router.route(query)
+        else:
+            intent_type, tool_name = "conversational", None
+
+        return intent_type, tool_name
 
     async def _process_command_internal(
         self,
@@ -312,16 +348,35 @@ class AmadeusService:
     # ------------------------------------------------------------------
 
     def _is_multi_step_query(self, user_input: str) -> bool:
+        """Return True only when the query clearly requires chaining 2+ distinct tools.
+        
+        Tightened to avoid routing single-tool queries that contain 'and' (e.g.
+        'Who is X and what did he do?') to the heavier AgentOrchestrator.
+        Requires both a conjunction indicator AND evidence of 2 distinct tool categories.
+        """
         lower = user_input.lower()
-        multi_indicators = [" and ", " then ", " also ", " plus ", " as well as "]
+
+        # Must contain an explicit chaining conjunction
+        multi_indicators = [" then ", " after that ", " also ", " and then ", " as well as "]
         if not any(ind in lower for ind in multi_indicators):
             return False
-        intent_keywords = [
-            ["time", "date", "day"], ["weather", "temperature"], ["joke", "funny"],
-            ["task", "todo"], ["note"], ["reminder"], ["system", "cpu", "memory"],
-            ["news"], ["battery"],
+
+        # Only trigger when we can clearly identify 2+ distinct tool-category intents
+        intent_keyword_groups = [
+            ["time", "date", "what day", "current time"],
+            ["weather", "temperature", "forecast"],
+            ["joke", "make me laugh", "funny"],
+            ["my tasks", "my todo", "list tasks"],
+            ["my notes", "list notes"],
+            ["reminder", "remind me"],
+            ["system", "cpu usage", "memory usage", "disk usage"],
+            ["news", "headlines"],
+            ["battery"],
+            ["email", "inbox"],
+            ["pomodoro", "timer"],
         ]
-        return sum(1 for kws in intent_keywords if any(k in lower for k in kws)) >= 2
+        matched = sum(1 for kws in intent_keyword_groups if any(k in lower for k in kws))
+        return matched >= 2
 
     async def _process_with_agent(
         self,
@@ -407,7 +462,7 @@ class AmadeusService:
                 return prose, tool_name
 
             direct = (
-                str(gemini_response.text)
+                gemini_response.text
                 if hasattr(gemini_response, "text") and gemini_response.text
                 else str(gemini_response)
             )
@@ -488,8 +543,9 @@ class AmadeusService:
             return None
 
         async def _generate(prompt: str) -> str:
-            if getattr(self, "llm_router", None) is not None:
-                response, _ = await self.llm_router.generate(prompt, complexity="high")
+            router = getattr(self, "llm_router", None)
+            if router is not None:
+                response, _ = await router.generate(prompt, complexity="high")
                 return response
 
             loop = asyncio.get_running_loop()

@@ -99,7 +99,7 @@ def _bm25_tokenize(text: str) -> list[str]:
     Fast, code-aware BM25 tokeniser.
 
     Keeps underscores within tokens so identifiers like AUTH_UUID_7392 or
-    CHROMA_PERSIST_DIR survive as a single token rather than being split
+    MEMORY_PERSIST_DIR survive as a single token rather than being split
     into meaningless fragments. Case-folded for recall.
     """
     return re.findall(r"[a-z0-9_]+", text.lower())

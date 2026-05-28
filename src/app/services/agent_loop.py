@@ -557,49 +557,6 @@ Decide the next action. Respond ONLY with a valid JSON object matching this sche
         return " ".join(parts)
 
 
-# =============================================================================
-# SPECIALIZED SUB-AGENTS
-# =============================================================================
-
-
-class SystemAgent(ReActAgent):
-    """
-    Specialized agent for OS-level interactions and system controls.
-    """
-
-    def __init__(
-        self,
-        tool_registry: ToolRegistry,
-        tool_executor: ToolExecutor,
-        llm_generate: Callable[[str], Awaitable[str]] | None = None,
-    ):
-        super().__init__(
-            tool_registry=tool_registry,
-            tool_executor=tool_executor,
-            llm_generate=llm_generate,
-            max_iterations=3,
-        )
-
-
-class ResearchAgent(ReActAgent):
-    """
-    Specialized agent for gathering information, checking the weather,
-    getting news, and analyzing documents.
-    """
-
-    def __init__(
-        self,
-        tool_registry: ToolRegistry,
-        tool_executor: ToolExecutor,
-        llm_generate: Callable[[str], Awaitable[str]] | None = None,
-    ):
-        super().__init__(
-            tool_registry=tool_registry,
-            tool_executor=tool_executor,
-            llm_generate=llm_generate,
-            max_iterations=5,
-        )
-
 
 # =============================================================================
 # AGENT ORCHESTRATOR
@@ -631,10 +588,24 @@ class AgentOrchestrator:
             asyncio.Queue(maxsize=self.max_queue_size)
         )
 
-        # Initialize Sub-Agents (all share the same memory_service)
+        # Sub-agents are bare ReActAgent instances differentiated only by
+        # max_iterations — no need for empty subclass hierarchy.
         self.agents = {
-            "system": SystemAgent(tool_registry, tool_executor, llm_generate),
-            "research": ResearchAgent(tool_registry, tool_executor, llm_generate),
+            # System/OS tasks — tight iteration cap to avoid runaway shell commands
+            "system": ReActAgent(
+                tool_registry,
+                tool_executor,
+                llm_generate,
+                max_iterations=3,
+            ),
+            # Research tasks — more steps allowed for multi-source gathering
+            "research": ReActAgent(
+                tool_registry,
+                tool_executor,
+                llm_generate,
+                max_iterations=5,
+            ),
+            # General purpose — balanced cap with memory access
             "general": ReActAgent(
                 tool_registry,
                 tool_executor,

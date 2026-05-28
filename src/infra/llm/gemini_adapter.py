@@ -148,7 +148,13 @@ Guidelines:
         temperature: float = 0.7,
         max_tokens: int | None = None,
     ) -> str:
-        """Generate a text response using Gemini."""
+        """Generate a text response using Gemini.
+
+        The google-genai SDK is synchronous. All calls are wrapped in
+        asyncio.to_thread() so they never block the uvicorn event loop.
+        """
+        import asyncio
+
         self._configure()
 
         try:
@@ -172,34 +178,44 @@ Guidelines:
 
             if self._client is None:
                 raise ValueError("client is missing")
-            
-            # Simple retry loop for 503 errors (High Demand)
-            max_retries = 2
-            for attempt in range(max_retries):
-                try:
-                    response = self._client.models.generate_content(
-                        model=self._model_name,
-                        contents=full_prompt,
-                        config=config,
-                    )
-                    break 
-                except Exception as e:
-                    if "503" in str(e) and attempt < max_retries - 1:
-                        logger.warning("Gemini 503 (High Demand) - retrying in 2s...")
-                        import asyncio
-                        await asyncio.sleep(2)
-                        continue
-                    raise e
 
-            if not response.text:
+            _client = self._client
+            _model = self._model_name
+
+            # Retry loop for 503 (High Demand) — runs entirely in the thread
+            def _call_with_retry() -> object:
+                last_exc: Exception | None = None
+                for attempt in range(2):
+                    try:
+                        return _client.models.generate_content(
+                            model=_model,
+                            contents=full_prompt,
+                            config=config,
+                        )
+                    except Exception as exc:
+                        last_exc = exc
+                        if "503" in str(exc) and attempt == 0:
+                            import time
+                            logger.warning("Gemini 503 (High Demand) - retrying in 2s...")
+                            time.sleep(2)
+                            continue
+                        raise
+                raise last_exc  # type: ignore[misc]
+
+            # Run synchronous SDK call in a thread — never blocks the event loop
+            response = await asyncio.to_thread(_call_with_retry)
+
+            if not response.text:  # type: ignore[union-attr]
                 raise LLMResponseError("Empty response from Gemini")
 
             # Store in cache (expire after 24h)
             if self._redis and cache_key:
-                await self._redis.setex(cache_key, 86400, response.text)
+                await self._redis.setex(cache_key, 86400, response.text)  # type: ignore[union-attr]
 
-            return str(response.text)
+            return str(response.text)  # type: ignore[union-attr]
 
+        except (LLMResponseError, LLMRateLimitError, LLMConnectionError):
+            raise
         except Exception as e:
             error_str = str(e).lower()
             if "block" in error_str or "safety" in error_str:
@@ -211,11 +227,11 @@ Guidelines:
                 raise LLMConnectionError("Gemini", str(e)) from e
             if isinstance(e, TypeError) and "nonetype" in error_str and "iterable" in error_str:
                 logger.warning(
-                    "Gemini SDK returned NoneType iterable error (likely an empty response due to safety or rate limits): %s",
+                    "Gemini SDK returned NoneType iterable error (empty response / safety / rate limit): %s",
                     e,
                 )
                 raise LLMResponseError("Gemini returned an empty or invalid response") from e
-            
+
             logger.exception("Gemini error: %s", e)
             raise LLMResponseError(str(e)) from e
 
@@ -225,18 +241,18 @@ Guidelines:
         tools: list[ToolDefinition],
         context: ConversationContext | None = None,
     ) -> tuple[str | None, ToolExecutionResult | None]:
-        """Generate response with function calling capability."""
+        """Generate response with function calling capability.
+
+        Like generate_response, the sync SDK call is offloaded to a thread.
+        """
+        import asyncio
+
         self._configure()
 
         try:
-            # Convert tool definitions to Gemini function declarations
             gemini_tools = self._convert_tools(tools)
-
             full_prompt = self._build_prompt_with_context(prompt, context)
 
-            # Function calls are extremely dynamic so simple string caching
-            # might not be safe unless context is identical and simple.
-            # For this exercise, caching is mostly effective on direct interactions.
             cache_key = None
             if self._redis and not tools:
                 key_str = f"gemini:tools:{full_prompt}"
@@ -253,8 +269,14 @@ Guidelines:
 
             if self._client is None:
                 raise ValueError("client is missing")
-            response = self._client.models.generate_content(
-                model=self._model_name,
+
+            _client = self._client
+            _model = self._model_name
+
+            # Run synchronous SDK call in a thread — never blocks the event loop
+            response = await asyncio.to_thread(
+                _client.models.generate_content,
+                model=_model,
                 contents=full_prompt,
                 config=config,
             )
@@ -268,21 +290,17 @@ Guidelines:
                     result={"args": dict(fc.args) if fc.args else {}},
                 )
 
-            # No function call, return text response
             return response.text, None
 
         except Exception as e:
             if isinstance(e, TypeError) and "'NoneType'" in str(e):
                 logger.warning(
-                    "Gemini function calling SDK error: %s. Falling back to text response.",
-                    e,
+                    "Gemini function calling SDK error: %s. Falling back to text response.", e
                 )
             else:
                 logger.warning(
-                    "Gemini function calling error: %s. Falling back to text response.",
-                    e,
+                    "Gemini function calling error: %s. Falling back to text response.", e
                 )
-            # Fall back to text-only response
             text = await self.generate_response(prompt, context)
             return text, None
 

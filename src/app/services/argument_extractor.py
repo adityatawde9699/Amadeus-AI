@@ -289,7 +289,26 @@ class ArgumentExtractor:
             return {"content": text}
 
         if tool_name == "add_reminder":
-            return {"reminder_text": text, "time_str": ""}
+            # Extract time expression if present (e.g. "in 30 minutes", "tomorrow 9am")
+            time_match = re.search(
+                r"\b(in\s+\d+\s+\w+|at\s+\d+(?::\d+)?\s*(?:am|pm)?|"
+                r"tomorrow(?:\s+\w+)?|tonight|this\s+evening|next\s+\w+)\b",
+                lower,
+                re.IGNORECASE,
+            )
+            time_str = time_match.group(0) if time_match else ""
+            # Strip conversational noise to get the reminder subject
+            title = re.sub(
+                r"^(?:remind\s+me\s+to\s+|set\s+a?\s*reminder\s+(?:to\s+)?|reminder\s+(?:to\s+)?)",
+                "",
+                lower,
+                flags=re.IGNORECASE,
+            ).strip()
+            # Remove the time clause from the title
+            if time_str:
+                title = title.replace(time_str.lower(), "").strip().rstrip("at").strip()
+            return {"title": title or text, "time": time_str}
+
 
         if tool_name == "set_timer":
             minutes = re.search(r"(\d+)\s*minute", lower)

@@ -31,7 +31,7 @@ class DependencyWatchdog:
             return False
 
     async def check_qdrant(self) -> bool:
-        if not self.settings.CHROMA_ENABLED:
+        if not self.settings.MEMORY_ENABLED:
             return False
         # Qdrant client check (simplified HTTP check if possible or just use client)
         # Since we use local path in some cases, if it's local it's always "up", but for a network Qdrant, we'd ping.

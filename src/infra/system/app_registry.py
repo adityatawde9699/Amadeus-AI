@@ -9,6 +9,8 @@ import json
 import logging
 import platform
 from pathlib import Path
+from typing import Any
+
 
 from rapidfuzz import fuzz, process
 
@@ -80,7 +82,8 @@ class AppRegistry:
 
     def _scan_windows(self) -> dict[str, str]:
         """Use the standard library winreg to find registered App Paths."""
-        import winreg
+        import winreg as _winreg  # type: ignore[import]  # Windows-only
+        winreg: Any = _winreg
 
         apps = {}
 
@@ -121,14 +124,30 @@ class AppRegistry:
 
     def _scan_linux(self) -> dict[str, str]:
         """Parse .desktop files in standard Linux directories to find executables."""
+        import re as _re
         apps = {}
         dirs = [Path("/usr/share/applications"), Path.home() / ".local/share/applications"]
         for d in dirs:
             if d.exists():
                 for desktop_file in d.glob("*.desktop"):
                     name = desktop_file.stem.lower()
-                    # We store the stem (e.g., 'google-chrome') since `gtk-launch` parses the stem locally
-                    apps[name] = str(desktop_file.stem)
+                    try:
+                        content = desktop_file.read_text(encoding="utf-8", errors="ignore")
+                        # Extract Exec= line and strip field codes (%u, %f, etc.)
+                        exec_match = _re.search(r"^Exec=(.+)$", content, _re.MULTILINE)
+                        if exec_match:
+                            exec_val = exec_match.group(1).strip()
+                            # Remove field codes like %u %U %f %F %i %c %k
+                            exec_cmd = _re.sub(r"%[uUfFicdDnNk]", "", exec_val).strip()
+                            # Take only the first token (the binary)
+                            binary = exec_cmd.split()[0] if exec_cmd else ""
+                            if binary:
+                                apps[name] = binary
+                                continue
+                    except Exception:
+                        pass
+                    # Fallback: store the stem so we can attempt a $PATH lookup
+                    apps[name] = desktop_file.stem
         return apps
 
     def get_executable(self, requested_name: str, score_cutoff: float = 80.0) -> str | None:

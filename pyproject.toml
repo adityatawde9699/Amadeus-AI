@@ -82,7 +82,8 @@ dependencies = [
     "python-telegram-bot[webhooks]>=20.7",
     "sentence-transformers>=5.4.1",
     "rank-bm25>=0.2.2",
-    "pycaw>=20251023",
+    # pycaw is Windows-only (audio COM API) — installed via [windows] extra
+    # "pycaw>=20251023",  # moved to optional-dependencies.windows
     # Search (DDG web results)
     "duckduckgo-search>=8.0.0",
     # ML (SVM category classifier for tool routing)
@@ -92,7 +93,6 @@ dependencies = [
     "opentelemetry-exporter-otlp>=1.42.1",
     "opentelemetry-instrumentation-fastapi>=0.63b1",
     "ddgs>=9.14.4",
-    "textual>=8.2.7",
 ]
 
 [project.optional-dependencies]
@@ -146,8 +146,15 @@ llm = [
     "openai>=1.0.0",
 ]
 
+# Windows-only audio controls (pycaw uses COM APIs unavailable on Linux/macOS)
+# Install on Windows: pip install "amadeus-ai[windows]"
+windows = [
+    "pycaw>=20251023",
+    "comtypes>=1.4.0",
+]
+
 [project.scripts]
-amadeus = "src.api.server:main"
+amadeus = "src.transports.fastapi_transport:app"
 
 [project.urls]
 Homepage = "https://github.com/adityatawde9699/Amadeus-AI"

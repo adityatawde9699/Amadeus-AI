@@ -1,6 +1,6 @@
 <div align="center">
 
-# Amadeus AI v3.2.2
+# Amadeus AI v3.2.3
 
 **A secure autonomous AI operating layer built on Clean Architecture — autonomous tool execution, long-horizon goal tracking, and multi-transport messaging unified under a single service layer.**
 

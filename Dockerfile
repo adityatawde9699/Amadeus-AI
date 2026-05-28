@@ -30,7 +30,7 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir ".[voice,llm]"
+    pip install --no-cache-dir .
 
 # -----------------------------------------------------------------------------
 # STAGE 2: Model Cache
@@ -41,25 +41,7 @@ FROM builder AS model_cache
 
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Pre-bake faster-whisper 'small' model (~460MB)
-# libgomp1 is required for faster-whisper CPU inference
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgomp1 \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN python -c "\
-from faster_whisper import WhisperModel; \
-print('Downloading Whisper small model...'); \
-WhisperModel('small', device='cpu', compute_type='int8'); \
-print('Whisper model pre-baked successfully.')" || \
-    echo "WARNING: Whisper pre-bake failed (faster-whisper not installed). Will download at startup."
-
-# Pre-fetch Edge TTS voice list (tiny HTTP call, cached in aiohttp)
-RUN python -c "\
-import asyncio, edge_tts; \
-asyncio.run(edge_tts.list_voices()); \
-print('Edge TTS voice list cached.')" || \
-    echo "WARNING: Edge TTS voice list pre-fetch failed. Will fetch at runtime."
+# (model_cache stage: add any pre-bake steps here when packages are added to pyproject.toml)
 
 # -----------------------------------------------------------------------------
 # STAGE 3: Production Runtime
@@ -114,5 +96,6 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 
 EXPOSE 8000
 
-# Run Alembic migrations then start the server
-CMD ["sh", "-c", "python -m alembic upgrade head 2>/dev/null || true && uvicorn src.api.server:app --host 0.0.0.0 --port 8000 --workers 1"]
+CMD ["uvicorn", "src.transports.fastapi_transport:app", \
+     "--host", "0.0.0.0", "--port", "8000", \
+     "--workers", "1", "--log-level", "info"]

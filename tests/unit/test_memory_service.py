@@ -19,12 +19,12 @@ from src.infra.memory_service import MemoryResult, QdrantMemoryService
 # ===========================================================================
 
 
-def _mock_settings(chroma_enabled: bool = True) -> MagicMock:
+def _mock_settings(memory_enabled: bool = True) -> MagicMock:
     """Build a minimal Settings mock."""
     s = MagicMock()
-    s.CHROMA_ENABLED = chroma_enabled
-    s.CHROMA_PERSIST_DIR = "/tmp/test_chroma"
-    s.CHROMA_COLLECTION_NAME = "test_memory"
+    s.MEMORY_ENABLED = memory_enabled
+    s.MEMORY_PERSIST_DIR = "/tmp/test_vector_db"
+    s.MEMORY_COLLECTION_NAME = "test_memory"
     s.MEMORY_EMBED_MODEL = "models/embedding-001"
     s.GEMINI_API_KEY = "fake-api-key"
     return s
@@ -38,16 +38,16 @@ def _mock_settings(chroma_enabled: bool = True) -> MagicMock:
 class TestQdrantMemoryServiceInit:
     """Verify service boots up correctly."""
 
-    def test_disabled_when_chroma_not_enabled(self) -> None:
-        """Service stays disabled when CHROMA_ENABLED=False."""
-        settings = _mock_settings(chroma_enabled=False)
+    def test_disabled_when_memory_not_enabled(self) -> None:
+        """Service stays disabled when MEMORY_ENABLED=False."""
+        settings = _mock_settings(memory_enabled=False)
         with patch("src.infra.memory_service.QdrantMemoryService._setup"):
             svc = QdrantMemoryService.__new__(QdrantMemoryService)
             svc._settings = settings
             svc._enabled = False
             svc._initialized = False
 
-        assert svc._enabled is False
+        assert svc.is_enabled is False
 
     def test_graceful_degradation_on_import_error(self) -> None:
         """Service disables itself when qdrant_client is not installed."""

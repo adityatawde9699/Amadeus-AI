@@ -96,14 +96,19 @@ def open_program(
         try:
             if platform.system() == "Windows":
                 try:
-                    os.startfile(path)
+                    os.startfile(path)  # type: ignore[attr-defined]
                 except (FileNotFoundError, OSError):
                     subprocess.Popen([path], shell=False)
                 return f"Opening {target_app}..."
         except Exception:
             pass  # fall through to registry
 
-    app_exec = app_registry.get_executable(target_app, score_cutoff=65)
+    # Direct $PATH lookup — fastest and most precise route
+    direct = shutil.which(lower)
+    if direct:
+        app_exec = direct
+    else:
+        app_exec = app_registry.get_executable(target_app, score_cutoff=75)
     if not app_exec:
         return (
             f"Cannot find '{target_app}' on this system. "
@@ -115,17 +120,37 @@ def open_program(
     try:
         if platform.system() == "Windows":
             try:
-                os.startfile(app_exec)
+                os.startfile(app_exec)  # type: ignore[attr-defined]
             except (FileNotFoundError, OSError):
                 subprocess.Popen([app_exec], shell=False)
         elif platform.system() == "Darwin":
             # On Mac, app_exec from registry is absolute path to .app bundle
             subprocess.Popen(["open", app_exec])
         elif platform.system() == "Linux":
-            # On Linux, app_exec is often the stem of the .desktop file
-            subprocess.Popen(
-                ["gtk-launch", app_exec], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-            )
+            # Tier 1: Check if app_exec is directly in $PATH (most reliable)
+            resolved = shutil.which(app_exec)
+            if resolved:
+                subprocess.Popen(
+                    [resolved],
+                    start_new_session=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            else:
+                # Tier 2: Try app_exec as-is (may be an absolute path from Exec=)
+                try:
+                    subprocess.Popen(
+                        app_exec.split(),
+                        start_new_session=True,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                except (FileNotFoundError, PermissionError) as exc:
+                    return (
+                        f"Could not launch '{target_app}': {exc}. "
+                        "Try running `scan_system_applications` to rebuild the app list."
+                    )
+
         else:
             return f"Unsupported operating system: {platform.system()}"
 

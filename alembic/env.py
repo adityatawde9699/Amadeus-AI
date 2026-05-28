@@ -76,7 +76,10 @@ def do_run_migrations(connection: Connection) -> None:
             context.run_migrations()
     finally:
         if dialect_name == "postgresql":
-            connection.execute(sa.text("SELECT pg_advisory_unlock(42925)"))
+            try:
+                connection.execute(sa.text("SELECT pg_advisory_unlock(42925)"))
+            except Exception:
+                pass
 
 
 
@@ -94,6 +97,7 @@ async def run_async_migrations() -> None:
 
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
+        await connection.commit()
 
     await connectable.dispose()
 

@@ -222,10 +222,10 @@ class Settings(BaseSettings):
     # =========================================================================
     MEMORY_SUMMARIZATION_THRESHOLD: int = Field(default=10, ge=3, le=100)
 
-    # Vector / Long-term semantic memory (ChromaDB)
-    CHROMA_ENABLED: bool = True
-    CHROMA_PERSIST_DIR: str = "./data/chroma_db"
-    CHROMA_COLLECTION_NAME: str = "amadeus_memory"
+    # Vector / Long-term semantic memory (Qdrant)
+    MEMORY_ENABLED: bool = True
+    MEMORY_PERSIST_DIR: str = "./data/vector_db"
+    MEMORY_COLLECTION_NAME: str = "amadeus_memory"
     MEMORY_EMBED_MODEL: str = "models/embedding-001"  # Gemini embedding model
     SEMANTIC_ROUTER_THRESHOLD: float = Field(default=0.30, ge=0.0, le=1.0)
 
