@@ -40,16 +40,32 @@ class CircuitBreaker:
         self.failure_count = 0
         self.last_failure_time = 0.0
         self._lock = asyncio.Lock()
+        self._half_open_probe_in_progress = False
 
     async def call(self, func: Callable[..., Awaitable[T]], *args: Any, **kwargs: Any) -> T:
         """Execute func through the circuit breaker."""
-        async with self._lock:
-            if self.state == CircuitState.OPEN:
-                if time.time() - self.last_failure_time > self.recovery_timeout:
-                    self.state = CircuitState.HALF_OPEN
-                    logger.info("CircuitBreaker '%s' moving to HALF_OPEN state.", self.name)
-                else:
-                    raise CircuitBreakerOpenException(f"Circuit '{self.name}' is OPEN.")
+        if self.state == CircuitState.OPEN:
+            async with self._lock:
+                if self.state == CircuitState.OPEN:
+                    if time.time() - self.last_failure_time > self.recovery_timeout:
+                        self.state = CircuitState.HALF_OPEN
+                        self._half_open_probe_in_progress = True
+                        logger.info("CircuitBreaker '%s' moving to HALF_OPEN state.", self.name)
+                    else:
+                        raise CircuitBreakerOpenException(f"Circuit '{self.name}' is OPEN.")
+                elif self.state == CircuitState.HALF_OPEN:
+                    if self._half_open_probe_in_progress:
+                        raise CircuitBreakerOpenException(
+                            f"Circuit '{self.name}' is HALF_OPEN; probe already running."
+                        )
+                    self._half_open_probe_in_progress = True
+        elif self.state == CircuitState.HALF_OPEN:
+            async with self._lock:
+                if self._half_open_probe_in_progress:
+                    raise CircuitBreakerOpenException(
+                        f"Circuit '{self.name}' is HALF_OPEN; probe already running."
+                    )
+                self._half_open_probe_in_progress = True
 
         try:
             result = await func(*args, **kwargs)
@@ -60,11 +76,13 @@ class CircuitBreaker:
         # Success - reset
         if self.state != CircuitState.CLOSED:
             async with self._lock:
-                self.state = CircuitState.CLOSED
-                self.failure_count = 0
-                logger.info("CircuitBreaker '%s' CLOSED. Recovered.", self.name)
-                if self.event_bus:
-                    await self.event_bus.emit("circuit.closed", {"circuit": self.name})
+                if self.state != CircuitState.CLOSED:
+                    self.state = CircuitState.CLOSED
+                    self.failure_count = 0
+                    self._half_open_probe_in_progress = False
+                    logger.info("CircuitBreaker '%s' CLOSED. Recovered.", self.name)
+                    if self.event_bus:
+                        await self.event_bus.emit("circuit.closed", {"circuit": self.name})
 
         return result
 
@@ -72,9 +90,14 @@ class CircuitBreaker:
         async with self._lock:
             self.failure_count += 1
             self.last_failure_time = time.time()
+            self._half_open_probe_in_progress = False
             if self.state == CircuitState.HALF_OPEN or self.failure_count >= self.failure_threshold:
                 if self.state != CircuitState.OPEN:
                     self.state = CircuitState.OPEN
-                    logger.warning("CircuitBreaker '%s' OPENED after %d failures.", self.name, self.failure_count)
+                    logger.warning(
+                        "CircuitBreaker '%s' OPENED after %d failures.",
+                        self.name,
+                        self.failure_count,
+                    )
                     if self.event_bus:
                         await self.event_bus.emit("circuit.opened", {"circuit": self.name})

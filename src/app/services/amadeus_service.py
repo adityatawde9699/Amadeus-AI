@@ -41,6 +41,8 @@ from src.core.domain.models import PermissionProfile
 from src.infra.memory_service import QdrantMemoryService
 from src.transports.telegram_transport import TelegramTransport
 from src.infra.tools.base import ToolExecutor
+from src.infra.queue.manager import QueueManager
+from src.app.services.messaging_service import MessagingService
 
 
 if TYPE_CHECKING:
@@ -81,7 +83,6 @@ class AmadeusService:
         self.model_name: str = self.settings.GEMINI_MODEL
         self._conversation_repo = conversation_repo
         self.goal_repository = goal_repository
-        self._conversation_managers: dict[str, ConversationManager] = {}
 
         # ── LLM Router ────────────────────────────────────────────────
         if llm_router:
@@ -98,6 +99,14 @@ class AmadeusService:
 
         # ── Tool Executor ─────────────────────────────────────────────
         self.tool_executor = ToolExecutor()
+
+        # ── Task Queue ────────────────────────────────────────────────
+        self.queue_manager = QueueManager(redis_url=self.settings.REDIS_URL)
+
+        # ── Messaging Service ──────────────────────────────────────────
+        # Note: Telegram transport is often initialized after AmadeusService
+        # because of the circular dependency with runtime.
+        self.messaging = MessagingService()
 
 
 
@@ -158,6 +167,7 @@ class AmadeusService:
     async def initialize(self) -> None:
         """Async startup: warm memory service and hydrate conversation cache from DB."""
         await self.memory_service.initialize()
+        await self.queue_manager.initialize()
         if not self._semantic_router.is_ready:
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, self._semantic_router.build_index)
@@ -498,12 +508,7 @@ class AmadeusService:
             await manager.add(
                 "assistant", message, metadata={"outbound": True, "platform": platform}
             )
-            if platform.lower() == "telegram":
-                adapter = TelegramTransport(runtime=None)
-                await adapter.send_message(int(user_id), message)
-                return True
-            logger.error("Unsupported outbound platform: %s", platform)
-            return False
+            return await self.messaging.send_message(user_id, message, platform=platform)
         except Exception:
             logger.error(
                 "Failed to send outbound message to %s on %s", user_id, platform, exc_info=True
@@ -515,16 +520,8 @@ class AmadeusService:
     # ------------------------------------------------------------------
 
     async def _get_conversation_manager(self, session_id: str) -> ConversationManager:
-        manager = self._conversation_managers.get(session_id)
-        if manager is None:
-            manager = ConversationManager(session_id=session_id, repo=self._conversation_repo)
-            self._conversation_managers[session_id] = manager
-        # PC-03: Only hydrate from DB once per manager instance.
-        # Subsequent calls reuse the in-memory cache (already up-to-date because
-        # add() writes through). Avoids a DB round-trip on every handle_command().
-        if not getattr(manager, "_db_loaded", False):
-            await manager.load_from_db()
-            manager._db_loaded = True  # type: ignore[attr-defined]
+        manager = ConversationManager(session_id=session_id, repo=self._conversation_repo)
+        await manager.load_from_db()
         return manager
 
     def _load_api_keys(self) -> None:
@@ -537,25 +534,32 @@ class AmadeusService:
         self.model_name = self.settings.GEMINI_MODEL
         logger.info("Gemini API configured with model: %s", self.model_name)
 
-    def _make_llm_generate(self) -> Callable[[str], Awaitable[str]] | None:
+    def _make_llm_generate(self) -> Callable[..., Awaitable[str]] | None:
         """Build an async LLM generate closure for the AgentOrchestrator."""
         if getattr(self, "llm_router", None) is None and not (hasattr(self, "client") and self.client):
             return None
 
-        async def _generate(prompt: str) -> str:
+        async def _generate(prompt: str, **kwargs: Any) -> str:
+            structured = kwargs.get("structured", False)
+            complexity = kwargs.get("complexity", "high")
+            
             router = getattr(self, "llm_router", None)
             if router is not None:
-                response, _ = await router.generate(prompt, complexity="high")
+                response, _ = await router.generate(
+                    prompt, complexity=complexity, structured=structured
+                )
                 return response
 
             loop = asyncio.get_running_loop()
             if self.client is None or self.settings.LOCAL_ONLY_MODE:
                 raise ValueError("Gemini client unavailable and no LLMRouter configured.")
+            
+            # Simple fallback for Gemini if router is missing
             response = await loop.run_in_executor(
                 None,
-                lambda: self.client.models.generate_content(  # type: ignore[union-attr]
+                lambda: self.client.models.generate_content(
                     model=self.model_name,
-                    contents=prompt,
+                    contents=prompt + ("\n\nIMPORTANT: Respond ONLY with a valid JSON object." if structured else ""),
                 ),
             )
             return str(response.text) if hasattr(response, "text") else str(response)

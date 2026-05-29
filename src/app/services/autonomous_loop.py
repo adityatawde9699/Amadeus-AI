@@ -55,18 +55,47 @@ class AutonomousObservationLoop:
         """Main background loop."""
         while self._running:
             try:
-                # Wait for the interval
-                await asyncio.sleep(self.interval_minutes * 60)
+                # 1. Check System Health
+                await self._check_system_health()
 
-                # During the cycle, we trigger a background thought for each active session.
-                # In a real app we'd load active user session IDs from the database.
+                # 2. Trigger Observations for sessions
                 for s_id in self.session_ids:
                     await self._trigger_observation(s_id)
+                
+                # Wait for the interval
+                await asyncio.sleep(self.interval_minutes * 60)
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error("Error in autonomous loop: %s", e, exc_info=True)
                 await asyncio.sleep(60)  # Backoff on error
+
+    async def _check_system_health(self) -> None:
+        """Monitor system resources and alert if critical."""
+        try:
+            from src.infra.tools.monitor_tools import get_system_status
+            status = get_system_status()
+            
+            alerts = []
+            if status.cpu_usage > 90:
+                alerts.append(f"CRITICAL: CPU usage is at {status.cpu_usage}%!")
+            if status.memory_usage > 90:
+                alerts.append(f"CRITICAL: Memory usage is at {status.memory_usage}%!")
+            if status.disk_usage > 95:
+                alerts.append(f"CRITICAL: Disk space is almost full ({status.disk_usage}% used)!")
+            if status.battery_percent is not None and status.battery_percent < 10 and not status.is_charging:
+                alerts.append(f"CRITICAL: Battery is extremely low ({status.battery_percent}%)!")
+                
+            if alerts and self.session_ids:
+                logger.warning("System health alerts detected: %s", alerts)
+                from src.container import global_container
+                svc = global_container.amadeus_service()
+                
+                alert_msg = "⚠️ **System Health Alert**\n\n" + "\n".join(alerts)
+                # Notify the first session (typically the master user)
+                await svc.send_outbound_message(self.session_ids[0], "telegram", alert_msg)
+        except Exception as e:
+            logger.error("Failed to check system health: %s", e)
 
     async def _trigger_observation(self, session_id: str) -> None:
         """Trigger the agent to observe its state."""

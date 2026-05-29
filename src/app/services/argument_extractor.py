@@ -109,7 +109,7 @@ class ArgumentExtractor:
         try:
             assert self._llm_router is not None
             raw_text, provider = await self._llm_router.generate(
-                prompt=extraction_prompt, complexity="low"
+                prompt=extraction_prompt, complexity="low", structured=True
             )
             logger.debug("LLM arg extracted by %s for %s", provider, tool_name)
 
@@ -171,7 +171,7 @@ class ArgumentExtractor:
         try:
             if self._llm_router:
                 raw_text, _ = await self._llm_router.generate(
-                    prompt=extraction_prompt, complexity="normal"
+                    prompt=extraction_prompt, complexity="normal", structured=True
                 )
                 clean = self._strip_fences(raw_text)
                 parsed = json.loads(clean)
@@ -198,7 +198,7 @@ class ArgumentExtractor:
         try:
             if self._llm_router:
                 raw_text, _ = await self._llm_router.generate(
-                    prompt=extraction_prompt, complexity="normal"
+                    prompt=extraction_prompt, complexity="normal", structured=True
                 )
                 clean = self._strip_fences(raw_text)
                 parsed = json.loads(clean)

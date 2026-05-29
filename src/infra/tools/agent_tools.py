@@ -217,6 +217,146 @@ def get_agent_tools() -> list[Any]:
             logger.exception("Failed to list active goals: %s", e)
             return f"Error: {e}"
 
+    @tool(
+        name="manage_plugins",
+        description="List, add, or remove plugins for Amadeus. Use this to extend your own capabilities. Actions: 'list', 'add', 'remove'.",
+        category=ToolCategory.SYSTEM,
+        parameters={
+            "action": {"type": "string", "description": "Action to perform: 'list', 'add', 'remove'"},
+            "plugin_name": {"type": "string", "description": "Name of the plugin file (e.g., 'my_tool.py')", "default": ""},
+            "content": {"type": "string", "description": "Content of the plugin file (for 'add' action)", "default": ""},
+        },
+        requires_confirmation=True,
+    )
+    async def manage_plugins(action: str, plugin_name: str = "", content: str = "", **kwargs: Any) -> str:
+        """Manage Amadeus plugins."""
+        from src.core.config import get_settings
+        from pathlib import Path
+        
+        settings = get_settings()
+        plugins_dir = settings.BASE_DIR / "plugins"
+        plugins_dir.mkdir(parents=True, exist_ok=True)
+        
+        if action == "list":
+            plugins = list(plugins_dir.glob("*.py"))
+            if not plugins:
+                return "No plugins found in the plugins directory."
+            return "Available plugins:\n" + "\n".join(f"- {p.name}" for p in plugins)
+            
+        if action == "add":
+            if not plugin_name or not content:
+                return "Error: plugin_name and content are required for 'add' action."
+            if not plugin_name.endswith(".py"):
+                plugin_name += ".py"
+            
+            plugin_path = plugins_dir / plugin_name
+            plugin_path.write_text(content, encoding="utf-8")
+            
+            # Trigger re-discovery
+            from src.container import get_tool_registry
+            registry = get_tool_registry()
+            registry.discover_plugins(plugins_dir)
+            
+            return f"Successfully added plugin: {plugin_name}. New tools have been registered."
+            
+        if action == "remove":
+            if not plugin_name:
+                return "Error: plugin_name is required for 'remove' action."
+            if not plugin_name.endswith(".py"):
+                plugin_name += ".py"
+                
+            plugin_path = plugins_dir / plugin_name
+            if not plugin_path.exists():
+                return f"Error: Plugin {plugin_name} not found."
+                
+            plugin_path.unlink()
+            return f"Successfully removed plugin: {plugin_name}. Note: Registered tools from this plugin will persist until restart."
+            
+        return f"Unknown action: {action}"
+
+    @tool(
+        name="search_codebase",
+        description="Search through the Amadeus-AI codebase to understand your own implementation. Useful for self-improvement or debugging.",
+        category=ToolCategory.SYSTEM,
+        parameters={
+            "query": {"type": "string", "description": "Text pattern to search for"},
+            "file_pattern": {"type": "string", "description": "File pattern to filter (e.g., '*.py')", "default": "*"},
+        },
+    )
+    async def search_codebase(query: str, file_pattern: str = "*", **kwargs: Any) -> str:
+        """Search the codebase."""
+        from src.core.config import get_settings
+        import subprocess
+        import shlex
+        
+        settings = get_settings()
+        try:
+            # Use grep to search (ripgrep if available, fallback to grep)
+            cmd = f"grep -r -l --include='{file_pattern}' '{query}' {settings.BASE_DIR / 'src'}"
+            args = shlex.split(cmd)
+            result = subprocess.run(args, capture_output=True, text=True, timeout=10)
+            
+            if result.returncode != 0:
+                return f"No matches found for '{query}' in {file_pattern}."
+                
+            files = result.stdout.strip().split("\n")
+            return f"Found '{query}' in {len(files)} files:\n" + "\n".join(f"- {f}" for f in files[:10])
+        except Exception as e:
+            return f"Error searching codebase: {e}"
+
+    @tool(
+        name="decompose_goal",
+        description="Breaks down a high-level goal into smaller, actionable sub-tasks. Useful for complex projects.",
+        category=ToolCategory.PRODUCTIVITY,
+        parameters={
+            "goal_id": {"type": "integer", "description": "The ID of the parent goal to decompose."},
+        },
+    )
+    async def decompose_goal(goal_id: int, **kwargs: Any) -> str:
+        """Decompose a goal into tasks."""
+        try:
+            from src.container import get_amadeus_service
+            svc = get_amadeus_service()
+            if not svc.goal_repository:
+                return "Goal repository is not available."
+
+            goal = await svc.goal_repository.get_by_id(goal_id)
+            if not goal:
+                return f"Goal #{goal_id} not found."
+
+            # Use LLM to generate sub-tasks
+            prompt = f"""You are Amadeus. Break down the following goal into 3-5 actionable sub-tasks.
+Goal: {goal.title}
+Description: {goal.description}
+
+Respond ONLY with a list of tasks, one per line.
+Tasks:"""
+            llm_generate = svc._make_llm_generate()
+            if not llm_generate:
+                return "LLM not available for decomposition."
+            
+            response = await llm_generate(prompt)
+            tasks = [line.strip("- ").strip() for line in response.strip().split("\n") if line.strip()]
+            
+            if not tasks:
+                return "Failed to generate sub-tasks."
+
+            from src.infra.persistence.repositories.task_repository import SQLAlchemyTaskRepository
+            from src.core.domain.models import Task
+            
+            # This is a bit tricky due to repository access, but let's assume we can add them
+            # For simplicity in this tool, we'll just return the suggested tasks.
+            # A more complete implementation would save them to the DB linked to the goal.
+            
+            lines = [f"Decomposition for Goal #{goal_id} ('{goal.title}'):"]
+            for i, task_text in enumerate(tasks, 1):
+                lines.append(f"{i}. {task_text}")
+                
+            return "\n".join(lines)
+        except Exception as e:
+            logger.exception("Failed to decompose goal: %s", e)
+            return f"Error: {e}"
+
     return [
         schedule_future_task._tool_metadata,
         store_core_memory._tool_metadata,
@@ -224,4 +364,7 @@ def get_agent_tools() -> list[Any]:
         create_goal._tool_metadata,
         update_goal._tool_metadata,
         list_active_goals._tool_metadata,
+        manage_plugins._tool_metadata,
+        search_codebase._tool_metadata,
+        decompose_goal._tool_metadata,
     ]

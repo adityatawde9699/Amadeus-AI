@@ -15,9 +15,11 @@ Usage:
 """
 
 import importlib
+import inspect
 import logging
 import pkgutil
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 from src.core.domain.models import ToolDefinition
@@ -110,9 +112,8 @@ class ToolRegistry:
         Returns:
             List of tools in the category
         """
-        if isinstance(category, str):
-            category = ToolCategory(category)
-        return [t for t in self._tools.values() if t.category == category]
+        cat_str = category.value if isinstance(category, ToolCategory) else str(category)
+        return [t for t in self._tools.values() if t.category == cat_str or t.category.value == cat_str]
 
     def get_by_names(self, names: list[str]) -> list[Tool]:
         """
@@ -213,7 +214,7 @@ class ToolRegistry:
         return [t.to_definition() for t in tools]
 
     # =========================================================================
-    # AUTO-DISCOVERY
+    # AUTO-DISCOVERY & PLUGINS
     # =========================================================================
 
     def discover_tools(self, package_name: str = "src.infra.tools") -> int:
@@ -232,8 +233,14 @@ class ToolRegistry:
 
         try:
             package = importlib.import_module(package_name)
+            
+            # pkgutil.iter_modules only works if the package has a __path__
+            package_path = getattr(package, "__path__", None)
+            if not package_path:
+                logger.warning("Package %s has no __path__, cannot discover tools", package_name)
+                return 0
 
-            for _, module_name, _ in pkgutil.iter_modules(package.__path__):
+            for _, module_name, _ in pkgutil.iter_modules(package_path):
                 if module_name.startswith("_"):
                     continue  # Skip private modules
 
@@ -246,6 +253,20 @@ class ToolRegistry:
                         if hasattr(obj, "_tool_metadata"):
                             self.register(obj._tool_metadata)
                             count += 1
+                        # Support for build_* or get_* functions that return list of Tools
+                        elif (name.startswith("build_") or name.startswith("get_")) and callable(obj):
+                            try:
+                                # Only call if it doesn't require arguments or has defaults
+                                sig = inspect.signature(obj)
+                                if all(p.default != inspect.Parameter.empty for p in sig.parameters.values()):
+                                    result = obj()
+                                    if isinstance(result, list):
+                                        for item in result:
+                                            if hasattr(item, "name") and hasattr(item, "function"):
+                                                self.register(item)
+                                                count += 1
+                            except Exception:
+                                pass # Skip if it fails (likely requires args)
 
                 except Exception as e:
                     logger.exception("Error loading module %s: %s", module_name, e)
@@ -254,6 +275,68 @@ class ToolRegistry:
             logger.exception("Error discovering tools from %s: %s", package_name, e)
 
         logger.info("Discovered %d tools from %s", count, package_name)
+        return count
+
+    def discover_plugins(self, plugins_dir: str | Path) -> int:
+        """
+        Discover and register tools from a plugins directory.
+        
+        Each .py file or subdirectory with __init__.py in the directory is treated as a plugin.
+        
+        Args:
+            plugins_dir: Path to the plugins directory
+            
+        Returns:
+            Number of tools discovered
+        """
+        import sys
+        from pathlib import Path
+        
+        plugins_path = Path(plugins_dir).resolve()
+        if not plugins_path.exists():
+            logger.warning("Plugins directory %s does not exist", plugins_path)
+            return 0
+            
+        # Add plugins directory to sys.path so we can import from it
+        if str(plugins_path) not in sys.path:
+            sys.path.insert(0, str(plugins_path))
+            
+        count = 0
+        
+        # Scan for .py files or directories with __init__.py
+        for path in plugins_path.iterdir():
+            if path.name.startswith("_"):
+                continue
+                
+            module_name = None
+            if path.is_file() and path.suffix == ".py":
+                module_name = path.stem
+            elif path.is_dir() and (path / "__init__.py").exists():
+                module_name = path.name
+                
+            if module_name:
+                try:
+                    module = importlib.import_module(module_name)
+                    importlib.reload(module) # Ensure fresh load
+                    
+                    # 1. Check for register_tools(registry) hook
+                    if hasattr(module, "register_tools") and callable(module.register_tools):
+                        module.register_tools(self)
+                        # We don't know exactly how many were registered via the hook
+                        # so we'll re-count later or just trust the hook.
+                        logger.info("Executed register_tools hook for plugin: %s", module_name)
+                    
+                    # 2. Look for @tool decorated functions
+                    for name in dir(module):
+                        obj = getattr(module, name)
+                        if hasattr(obj, "_tool_metadata"):
+                            self.register(obj._tool_metadata)
+                            count += 1
+                            
+                except Exception as e:
+                    logger.exception("Error loading plugin %s: %s", module_name, e)
+                    
+        logger.info("Discovered %d tools from plugins directory: %s", count, plugins_dir)
         return count
 
     # =========================================================================

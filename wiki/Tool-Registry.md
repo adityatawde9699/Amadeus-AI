@@ -1,6 +1,6 @@
 # Tool Registry
 
-Amadeus ships with **60+ tools** across seven categories. New tools can be added in `src/infra/tools/` following the `@tool` decorator pattern — see [[Development-Guide#adding-a-tool]].
+Amadeus ships with **70+ tools** across seven categories. New tools can be added in `src/infra/tools/` following the `@tool` decorator pattern — see [[Development-Guide#adding-a-tool]].
 
 ---
 
@@ -34,7 +34,8 @@ Amadeus ships with **60+ tools** across seven categories. New tools can be added
 | `get_memory_usage` | RAM used / total |
 | `get_disk_usage` | Disk % with free space |
 | `get_battery_info` | Battery %, charging status, time remaining |
-| `get_network_info` | Bytes sent / received |
+| `get_network_info` | Basic network status, IP, and hostname |
+| `ping_host` | Check latency and connectivity to a remote host |
 | `get_system_uptime` | Time since last boot |
 | `get_running_processes` | Top N processes by memory |
 | `get_gpu_stats` | GPU load, VRAM, temperature |
@@ -42,13 +43,15 @@ Amadeus ships with **60+ tools** across seven categories. New tools can be added
 | `check_system_alerts` | Threshold-based warnings |
 | `get_full_system_report` | All metrics in one report |
 
-### Application Control
+### OS & Application Control
 
 | Tool | Confirmation? | Description |
 |---|---|---|
 | `open_program` | ❌ | Launch an app (fuzzy match via AppRegistry) |
-| `scan_system_applications` | ❌ | Rebuild the app registry cache |
+| `launch_app` | ✅ | Start any local app by name or path |
 | `terminate_program` | ✅ | Kill a process by name |
+| `terminate_process` | ✅ | Forcefully kill a process by name or PID |
+| `scan_system_applications` | ❌ | Rebuild the app registry cache |
 | `take_screenshot` | ❌ | Capture and save screen to Downloads |
 | `set_volume` | ❌ | Set system volume 0–100 |
 | `get_volume` | ❌ | Query current volume |
@@ -80,10 +83,23 @@ Amadeus ships with **60+ tools** across seven categories. New tools can be added
 | `create_note` | Titled note with content |
 | `list_notes` | All notes |
 | `get_note` | Read note by ID or title match |
+| `decompose_goal` | Break down a complex goal into actionable sub-tasks |
 | `start_pomodoro` | 25-min focus timer (persisted in DB) |
 | `stop_pomodoro` | Cancel active pomodoro session |
 | `pomodoro_status` | Elapsed time, cycles completed today |
 | `schedule_future_task` | APScheduler-backed delayed agent execution |
+
+---
+
+## Agentic & Developer Tools
+
+| Tool | Confirmation? | Description |
+|---|---|---|
+| `manage_plugins` | ✅ | List, add, or remove runtime plugins |
+| `search_codebase` | ❌ | Grep-based search through Amadeus implementation |
+| `execute_python_script` | ✅ | Secure sandbox (Docker/Local) with NO internet access |
+| `store_core_memory` | ❌ | Explicitly write to long-term semantic memory |
+| `forget_core_memory` | ✅ | Remove a specific semantic memory by ID |
 
 ---
 
@@ -111,23 +127,6 @@ All sandboxed to `DATA_DIR/agent_workspace/`. Path traversal attempts are blocke
 | `fs_read_file` | ❌ | Read a text file (5,000 char limit) |
 | `fs_write_file` | ✅ | Create or overwrite a file |
 | `fs_search_files` | ❌ | Glob search within workspace |
-
----
-
-## Developer Tools
-
-| Tool | Confirmation? | Description |
-|---|---|---|
-| `execute_python_script` | ✅ | Docker sandbox — `--network=none`, `--memory=128m`, `--cpus=0.5`, non-root, auto-removed |
-
-The sandbox runs `python:3.10-slim` containers. The script is mounted read-only, stdout/stderr is captured, and the container is auto-removed on completion.
-
-**Limits:**
-- Max execution time: **15 seconds** (configurable via `TOOL_TIMEOUTS`)
-- Memory: `128m`
-- CPU: `0.5` cores
-- Network: disabled (`--network=none`)
-- User: non-root
 
 ---
 

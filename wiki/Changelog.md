@@ -4,6 +4,31 @@ Full version history. For detailed commit-level changes, see [CHANGELOG.md](http
 
 ---
 
+## v4.0.0 — Cognitive Core & Autonomous Systems Edition *(2026-05-29)*
+
+### Architecture
+- **Cognitive Core** — Replaced implicit ReAct loops with a deterministic async state machine.
+- **Explicit Execution Graphs** — Tasks are now decomposed into persistent `Plan`, `PlanStep`, `Observation`, and `Reflection` models.
+- **Dynamic Plugin System** — Tools can now be hot-loaded from a `plugins/` directory without core code changes.
+- **Durable Episodic Memory** — Every plan step, tool outcome, and agent reflection is persisted in SQL for audit and learning.
+
+### Security & Safety
+- **Tool Policy Engine** — Centralized gatekeeper that evaluates `RiskLevel` and `PermissionProfile` before any tool execution.
+- **Local Sandbox** — Multiprocessing-based Python executor for Docker-free environments; auto-detects Docker and falls back gracefully.
+- **Protected Processes** — Policy engine blocks termination of critical system processes (explorer.exe, etc.).
+
+### Features
+- **Self-Aware Tools** — Added `manage_plugins` (add/remove capabilities at runtime) and `search_codebase` (agent can inspect its own logic).
+- **Network Diagnostic Suite** — New tools for IP discovery, host pinging, and connectivity checks.
+- **Proactive Health Monitoring** — Autonomous loop now detects and alerts on critical CPU, RAM, and Battery events.
+- **Structured LLM Mode** — Routing hint that strictly enforces JSON output for high-precision tool argument extraction.
+
+### Reliability
+- **Verification Layer** — Explicit state for verifying tool outputs before proceeding to next plan steps.
+- **Async Queue Manager** — Offloads long-running tool executions to background Redis-backed workers.
+
+---
+
 ## v3.2.1 — Security Hardening & Observability Edition *(2026-04-30)*
 
 ### Security

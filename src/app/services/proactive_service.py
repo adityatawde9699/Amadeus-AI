@@ -7,9 +7,12 @@ proactively check for tasks, reminders, or system alerts and send notifications.
 """
 
 import logging
+import uuid
+import asyncio
 from datetime import datetime
 
 from src.core.config import get_settings
+from src.core.domain.models import PermissionProfile
 
 
 logger = logging.getLogger(__name__)
@@ -32,7 +35,8 @@ async def run_proactive_checks() -> None:
         logger.info("No MASTER users configured. Skipping proactive checks.")
         return
 
-    from src.app.services.amadeus_service import AmadeusService
+    from src.container import global_container
+    from src.core.domain.context import RequestContext
 
     current_time = datetime.now().strftime("%I:%M %p on %A, %B %d")
 
@@ -42,8 +46,15 @@ async def run_proactive_checks() -> None:
         try:
             # We use the user_id as the session_id to maintain conversation context for that user
             # just as the webhooks do.
-            service = AmadeusService(session_id=user_id, auto_start_orchestrator=False)
-            await service.initialize()
+            service = global_container.amadeus_service()
+            context = RequestContext(
+                request_id=str(uuid.uuid4()),
+                session_id=user_id,
+                user_id=user_id,
+                permissions=PermissionProfile.SYSTEM_FULL,
+                trace_id=str(uuid.uuid4()),
+                cancellation_token=asyncio.Event(),
+            )
 
             # The prompt to trigger analysis and action
             prompt = (
@@ -56,7 +67,7 @@ async def run_proactive_checks() -> None:
             )
 
             # Submitting it as a background event processes it via the agent Orchestrator internally
-            await service.handle_background_event(prompt)
+            await service.handle_background_event(prompt, context=context)
 
         except Exception as e:
             logger.error("Error during proactive check for %s: %s", platform_name, e, exc_info=True)

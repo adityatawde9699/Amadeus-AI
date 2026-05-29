@@ -506,6 +506,92 @@ def list_open_apps(**kwargs: Any) -> str:
 # =============================================================================
 
 
+@tool(
+    name="terminate_process",
+    description=(
+        "Forcefully terminates a running process by its name or PID. "
+        "Use this to close unresponsive apps or stop background tasks. "
+        "Trigger: 'kill chrome', 'stop process 1234', 'close unresponsive app', 'terminate notepad'"
+    ),
+    category=ToolCategory.OS_CONTROL,
+    parameters={
+        "process_name": {
+            "type": "string",
+            "description": "Name of the process (e.g., 'chrome.exe') or PID.",
+        }
+    },
+    requires_confirmation=True,
+)
+def terminate_process(process_name: str, **kwargs: Any) -> str:
+    """Terminate a process by name or PID."""
+    import psutil
+    
+    try:
+        # Check if it's a PID
+        if process_name.isdigit():
+            pid = int(process_name)
+            proc = psutil.Process(pid)
+            proc.terminate()
+            return f"Process with PID {pid} ({proc.name()}) has been terminated."
+            
+        # Search by name
+        terminated_count = 0
+        for proc in psutil.process_iter(['pid', 'name']):
+            if process_name.lower() in proc.info['name'].lower():
+                proc.terminate()
+                terminated_count += 1
+                
+        if terminated_count > 0:
+            return f"Successfully terminated {terminated_count} process(es) matching '{process_name}'."
+        return f"No processes found matching '{process_name}'."
+    except Exception as e:
+        return f"Error terminating process: {e}"
+
+
+@tool(
+    name="launch_app",
+    description=(
+        "Launches an application by name or path. "
+        "On Windows, it can use the 'start' command for registered apps. "
+        "Trigger: 'open calculator', 'start notepad', 'launch vscode', 'run chrome'"
+    ),
+    category=ToolCategory.OS_CONTROL,
+    parameters={
+        "app_name": {
+            "type": "string",
+            "description": "Name of the app or full path to executable.",
+        }
+    },
+    requires_confirmation=True,
+)
+def launch_app(app_name: str, **kwargs: Any) -> str:
+    """Launch an application."""
+    import os
+    import subprocess
+    
+    if platform.system() == "Windows":
+        try:
+            # Try to start using shell 'start' command which handles PATH and associations
+            subprocess.Popen(["cmd", "/c", "start", "", app_name], shell=True)
+            return f"Attempting to launch '{app_name}'..."
+        except Exception as e:
+            return f"Failed to launch '{app_name}': {e}"
+    elif platform.system() == "Darwin":
+        try:
+            subprocess.Popen(["open", "-a", app_name])
+            return f"Attempting to launch '{app_name}' on macOS..."
+        except Exception as e:
+            return f"Failed to launch '{app_name}': {e}"
+    elif platform.system() == "Linux":
+        try:
+            subprocess.Popen([app_name], start_new_session=True)
+            return f"Attempting to launch '{app_name}' on Linux..."
+        except Exception as e:
+            return f"Failed to launch '{app_name}': {e}"
+            
+    return f"Launch app not supported on {platform.system()}."
+
+
 def get_system_control_tools() -> list[Tool]:
     """Get all system control tools."""
     return [
@@ -514,4 +600,6 @@ def get_system_control_tools() -> list[Tool]:
         set_brightness._tool_metadata,  # type: ignore[attr-defined]
         take_screenshot._tool_metadata,  # type: ignore[attr-defined]
         list_open_apps._tool_metadata,  # type: ignore[attr-defined]
+        terminate_process._tool_metadata,  # type: ignore[attr-defined]
+        launch_app._tool_metadata,  # type: ignore[attr-defined]
     ]

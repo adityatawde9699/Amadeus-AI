@@ -13,7 +13,8 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
 from src.core.exceptions import ConfigurationError, LLMConnectionError, LLMResponseError
-from src.core.interfaces.llm import LLMAdapter
+from src.core.interfaces.services import ILLMService
+from src.core.domain.models import ToolDefinition, ToolExecutionResult
 
 
 if TYPE_CHECKING:
@@ -23,7 +24,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class LlamaCppAdapter(LLMAdapter):
+class LlamaCppAdapter(ILLMService):
     """
     Adapter for running local GGUF models directly via llama-cpp-python.
 
@@ -191,7 +192,8 @@ class LlamaCppAdapter(LLMAdapter):
         prompt: str,
         context: "ConversationContext | None" = None,
         temperature: float = 0.7,
-        max_tokens: int | None = 2048,
+        max_tokens: int | None = None,
+        **kwargs: Any,
     ) -> str:
         """
         Generate a full response from the local Llama model.
@@ -269,7 +271,7 @@ class LlamaCppAdapter(LLMAdapter):
         prompt: str,
         context: "ConversationContext | None" = None,
         temperature: float = 0.7,
-        max_tokens: int | None = 2048,
+        max_tokens: int | None = None,
     ) -> AsyncIterator[str]:
         """
         Stream response tokens from Llama one-by-one safely into the async loop.
@@ -324,17 +326,12 @@ class LlamaCppAdapter(LLMAdapter):
         finally:
             task.cancel()
 
-    # =========================================================================
-    # LLM ADAPTER INTERFACE METHODS
-    # =========================================================================
-
-    def get_provider_name(self) -> str:
-        return "LlamaCpp"
-
-    def get_capabilities(self) -> dict[str, Any]:
-        return {
-            "streaming": True,
-            "function_calling": False,
-            "vision": False,
-            "local": True,
-        }
+    async def generate_with_tools(
+        self,
+        prompt: str,
+        tools: list[ToolDefinition],
+        context: "ConversationContext | None" = None,
+    ) -> tuple[str | None, ToolExecutionResult | None]:
+        """LlamaCpp doesn't support native function calling — fallback to text."""
+        text = await self.generate_response(prompt, context)
+        return text, None
