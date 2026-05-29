@@ -13,6 +13,7 @@ Usage:
 """
 
 import logging
+import shlex
 import subprocess
 from typing import Any
 
@@ -26,12 +27,36 @@ _sandbox = None
 
 
 def _get_sandbox():  # noqa: ANN202
-    """Lazy-init the DockerSandboxExecutor so import never fails if Docker is absent."""
+    """Lazy-init the sandbox executor. Prefer Docker if available, fallback to Local."""
     global _sandbox  # noqa: PLW0603
     if _sandbox is None:
-        from src.infra.sandbox.executor import DockerSandboxExecutor
-
-        _sandbox = DockerSandboxExecutor()
+        from src.core.config import get_settings
+        settings = get_settings()
+        
+        # Check if user explicitly requested local mode or if we should try Docker first
+        sandbox_mode = getattr(settings, "SANDBOX_MODE", "auto").lower()
+        
+        if sandbox_mode == "local":
+            from src.infra.sandbox.local_executor import LocalSandboxExecutor
+            _sandbox = LocalSandboxExecutor()
+            logger.info("Using Local (Multiprocessing) Sandbox Executor.")
+        elif sandbox_mode == "docker":
+            from src.infra.sandbox.executor import DockerSandboxExecutor
+            _sandbox = DockerSandboxExecutor()
+            logger.info("Using Docker Sandbox Executor.")
+        else:
+            # Auto-detect: Try Docker, fallback to Local
+            try:
+                import docker
+                client = docker.from_env()
+                client.ping()
+                from src.infra.sandbox.executor import DockerSandboxExecutor
+                _sandbox = DockerSandboxExecutor()
+                logger.info("Auto-detected Docker: Using Docker Sandbox Executor.")
+            except Exception:
+                from src.infra.sandbox.local_executor import LocalSandboxExecutor
+                _sandbox = LocalSandboxExecutor()
+                logger.info("Docker unavailable: Falling back to Local Sandbox Executor.")
     return _sandbox
 
 
@@ -43,9 +68,9 @@ def _get_sandbox():  # noqa: ANN202
 @tool(
     name="execute_python_script",
     description=(
-        "Executes a Python script in a secure, sandboxed Docker container with NO internet access. "
+        "Executes a Python script in a secure sandbox (Docker or Local) with NO internet access. "
         "The script must be self-contained (Python standard library ONLY — no pip packages). "
-        "Returns stdout on success or detailed error output on failure. Requires Docker Desktop running. "
+        "Returns stdout on success or detailed error output on failure. "
         "Use this for: writing and running code, computing with Python, data analysis, complex calculations, "
         "generating sequences (Fibonacci, primes, etc.), file processing, algorithm implementation, "
         "or any task that requires actually executing code. "
@@ -105,7 +130,7 @@ def execute_python_script(code: str | None = None, **kwargs: Any) -> str:
 @tool(
     name="terminal_cmd",
     description=(
-        "Executes a raw shell command directly on the host OS (PowerShell on Windows, bash on Linux/Mac). "
+        "Executes a host OS command directly without shell expansion. "
         "Has a 15-second timeout. Useful for network diagnostics (ping, ipconfig, nslookup), "
         "system info (systeminfo, hostname), or quick file operations. Requires confirmation. "
         "Trigger: 'run command', 'ping google.com', 'what is my IP', 'show network info'"
@@ -120,15 +145,18 @@ def execute_python_script(code: str | None = None, **kwargs: Any) -> str:
     requires_confirmation=True,
 )
 def terminal_cmd(command: str | None = None, **kwargs: Any) -> str:
-    """Execute a shell command on the host OS."""
+    """Execute a command on the host OS without invoking a shell."""
     cmd = command or kwargs.get("cmd", "")
     if not cmd or not cmd.strip():
         return "Error: No command provided."
     
     try:
+        args = shlex.split(cmd)
+        if not args:
+            return "Error: No command provided."
         result = subprocess.run(
-            cmd,
-            shell=True,
+            args,
+            shell=False,
             capture_output=True,
             text=True,
             timeout=15,

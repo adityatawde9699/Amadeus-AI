@@ -454,98 +454,103 @@ class QdrantMemoryService:
                 return []
     
             # --- Qdrant query_points (qdrant-client >= 1.8 API) ---
-        try:
-            import math
-
-            qr = await self._circuit_breaker.call(
-                self._client.query_points,
-                collection_name=self._settings.MEMORY_COLLECTION_NAME,
-                query=embedding,
-                limit=top_k * 2,  # Fetch more to allow for re-ranking
-                with_payload=True,
-            )
-            results = qr.points
-
-            memories: list[MemoryResult] = []
-            now = datetime.now(UTC)
-            tau_seconds = 7 * 24 * 3600  # 7 days for recency decay
-
-            for hit in results:
-                payload = hit.payload or {}
-
-                # --- Tiered Ranking Logic ---
-                similarity = hit.score
-
-                # Filter by similarity threshold
-                if similarity < 0.65:
-                    continue
-
-                importance = payload.get("importance", 0.5)
-                subtype = payload.get("subtype", "interaction")
-
-                # Calculate recency decay
-                timestamp_str = payload.get("timestamp", "")
-                recency_decay = 0.0
-                if timestamp_str and subtype != "identity":
-                    try:
-                        mem_time = datetime.fromisoformat(timestamp_str)
-                        if mem_time.tzinfo is None:
-                            mem_time = mem_time.replace(tzinfo=UTC)
-                        time_delta = (now - mem_time).total_seconds()
-                        recency_decay = math.exp(-max(0, time_delta) / tau_seconds)
-                    except Exception:
-                        recency_decay = 0.5
-                elif subtype == "identity":
-                    importance = 1.0
-                    recency_decay = 1.0  # Never decays
-
-                # Access frequency boost
-                access_count = payload.get("access_count", 0)
-                access_boost = min(0.1, access_count * 0.01)
-
-                weighted_score = (0.6 * similarity) + (0.25 * importance) + (0.15 * recency_decay) + access_boost
-
-                memories.append(
-                    MemoryResult(
-                        session_id=payload.get("session_id", ""),
-                        role=payload.get("role", "unknown"),
-                        text=payload.get("text", ""),
-                        timestamp=timestamp_str,
-                        distance=similarity,
-                        type=payload.get("type", "memory"),
-                        subtype=subtype,
-                        importance=importance,
-                        source=payload.get("source", "user"),
-                        score=weighted_score,
-                    )
-                )
-
-            # Sort by weighted score descending and take top_k
-            memories.sort(key=lambda x: x.score, reverse=True)
-            memories = memories[:top_k]
-            
-            span.set_attribute("memory.retrieved_count", len(memories))
-            logger.debug("Qdrant: retrieved %d weighted memories (L1 miss).", len(memories))
-            
-            # Fire and forget task to increment access_count for these memories
-            if memories:
-                asyncio.create_task(self._increment_access_counts([m.text for m in memories]))
-                
-            return memories
-
-        except CircuitBreakerOpenException:
-            logger.warning("Qdrant circuit is OPEN. Skipping retrieve.")
-            return []
-        except Exception as exc:
-            logger.warning("Qdrant search failed (client type=%s): %s", type(self._client), exc)
-            # P7-Chaos01: Increment memory error counter for Prometheus alerting
             try:
-                from src.infra.metrics import amadeus_memory_errors_total
-                amadeus_memory_errors_total.labels(operation="search").inc()
-            except Exception:
-                pass
-            span.record_exception(exc)
-            return []
+                import math
+
+                qr = await self._circuit_breaker.call(
+                    self._client.query_points,
+                    collection_name=self._settings.MEMORY_COLLECTION_NAME,
+                    query=embedding,
+                    limit=top_k * 2,  # Fetch more to allow for re-ranking
+                    with_payload=True,
+                )
+                results = qr.points
+
+                memories: list[MemoryResult] = []
+                now = datetime.now(UTC)
+                tau_seconds = 7 * 24 * 3600  # 7 days for recency decay
+
+                for hit in results:
+                    payload = hit.payload or {}
+
+                    # --- Tiered Ranking Logic ---
+                    similarity = hit.score
+
+                    # Filter by similarity threshold
+                    if similarity < 0.65:
+                        continue
+
+                    importance = payload.get("importance", 0.5)
+                    subtype = payload.get("subtype", "interaction")
+
+                    # Calculate recency decay
+                    timestamp_str = payload.get("timestamp", "")
+                    recency_decay = 0.0
+                    if timestamp_str and subtype != "identity":
+                        try:
+                            mem_time = datetime.fromisoformat(timestamp_str)
+                            if mem_time.tzinfo is None:
+                                mem_time = mem_time.replace(tzinfo=UTC)
+                            time_delta = (now - mem_time).total_seconds()
+                            recency_decay = math.exp(-max(0, time_delta) / tau_seconds)
+                        except Exception:
+                            recency_decay = 0.5
+                    elif subtype == "identity":
+                        importance = 1.0
+                        recency_decay = 1.0  # Never decays
+
+                    # Access frequency boost
+                    access_count = payload.get("access_count", 0)
+                    access_boost = min(0.1, access_count * 0.01)
+
+                    weighted_score = (
+                        (0.6 * similarity)
+                        + (0.25 * importance)
+                        + (0.15 * recency_decay)
+                        + access_boost
+                    )
+
+                    memories.append(
+                        MemoryResult(
+                            session_id=payload.get("session_id", ""),
+                            role=payload.get("role", "unknown"),
+                            text=payload.get("text", ""),
+                            timestamp=timestamp_str,
+                            distance=similarity,
+                            type=payload.get("type", "memory"),
+                            subtype=subtype,
+                            importance=importance,
+                            source=payload.get("source", "user"),
+                            score=weighted_score,
+                        )
+                    )
+
+                # Sort by weighted score descending and take top_k
+                memories.sort(key=lambda x: x.score, reverse=True)
+                memories = memories[:top_k]
+
+                span.set_attribute("memory.retrieved_count", len(memories))
+                logger.debug("Qdrant: retrieved %d weighted memories (L1 miss).", len(memories))
+
+                # Fire and forget task to increment access_count for these memories
+                if memories:
+                    asyncio.create_task(self._increment_access_counts([m.text for m in memories]))
+
+                return memories
+
+            except CircuitBreakerOpenException:
+                logger.warning("Qdrant circuit is OPEN. Skipping retrieve.")
+                return []
+            except Exception as exc:
+                logger.warning("Qdrant search failed (client type=%s): %s", type(self._client), exc)
+                # P7-Chaos01: Increment memory error counter for Prometheus alerting
+                try:
+                    from src.infra.metrics import amadeus_memory_errors_total
+                    amadeus_memory_errors_total.labels(operation="search").inc()
+                except Exception:
+                    pass
+                span.record_exception(exc)
+                return []
 
     async def clear_session(self, session_id: str) -> int:
         """
@@ -655,33 +660,31 @@ class QdrantMemoryService:
     async def _increment_access_counts(self, texts: list[str]) -> None:
         """Increment access_count for retrieved memories (fire-and-forget).
 
-        Uses scroll() with a payload filter instead of a zero-vector query
-        to reliably locate the correct points without semantic ambiguity.
+        Uses one scroll() payload filter for all retrieved texts instead of
+        one scroll per memory.
         """
-        if not self._enabled or not self._initialized:
+        if not self._enabled or not self._initialized or not texts:
             return
 
         try:
-            from qdrant_client.models import FieldCondition, Filter, MatchValue
+            from qdrant_client.models import FieldCondition, Filter, MatchAny
 
-            for text in texts:
-                # scroll() with a filter gives us exact matches — no embedding needed
-                results, _ = await self._client.scroll(
+            unique_texts = list(dict.fromkeys(texts))
+            results, _ = await self._client.scroll(
+                collection_name=self._settings.MEMORY_COLLECTION_NAME,
+                scroll_filter=Filter(
+                    must=[FieldCondition(key="text", match=MatchAny(any=unique_texts))]
+                ),
+                limit=len(unique_texts),
+                with_payload=True,
+            )
+            for point in results:
+                current_count = (point.payload or {}).get("access_count", 0)
+                await self._client.set_payload(
                     collection_name=self._settings.MEMORY_COLLECTION_NAME,
-                    scroll_filter=Filter(
-                        must=[FieldCondition(key="text", match=MatchValue(value=text))]
-                    ),
-                    limit=1,
-                    with_payload=True,
+                    payload={"access_count": current_count + 1},
+                    points=[point.id],
                 )
-                if results:
-                    point = results[0]
-                    current_count = (point.payload or {}).get("access_count", 0)
-                    await self._client.set_payload(
-                        collection_name=self._settings.MEMORY_COLLECTION_NAME,
-                        payload={"access_count": current_count + 1},
-                        points=[point.id],
-                    )
         except Exception as exc:
             logger.debug("Failed to increment access counts: %s", exc)
 

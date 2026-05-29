@@ -147,6 +147,7 @@ Guidelines:
         context: ConversationContext | None = None,
         temperature: float = 0.7,
         max_tokens: int | None = None,
+        **kwargs: Any,
     ) -> str:
         """Generate a text response using Gemini.
 

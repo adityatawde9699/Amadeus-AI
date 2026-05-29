@@ -18,7 +18,7 @@ import enum
 from datetime import datetime
 
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import Index, String, Text
+from sqlalchemy import Float, ForeignKey, Index, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -67,6 +67,29 @@ class EventStatusDB(enum.StrEnum):
     ACTIVE = "active"
     CANCELLED = "cancelled"
     COMPLETED = "completed"
+
+
+class CognitivePlanStatusDB(enum.StrEnum):
+    """Cognitive execution plan status enum."""
+
+    DRAFT = "draft"
+    READY = "ready"
+    RUNNING = "running"
+    BLOCKED = "blocked"
+    FAILED = "failed"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+class CognitiveStepStatusDB(enum.StrEnum):
+    """Cognitive execution step status enum."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    VERIFYING = "verifying"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    SKIPPED = "skipped"
 
 
 # =============================================================================
@@ -313,6 +336,139 @@ class MessageORM(Base):
 
 
 # =============================================================================
+# COGNITIVE RUNTIME MODELS
+# =============================================================================
+
+
+class CognitivePlanORM(Base):
+    """Durable execution plan for cognitive runtime tasks."""
+
+    __tablename__ = "cognitive_plans"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    request_id: Mapped[str] = mapped_column(String(64), index=True)
+    session_id: Mapped[str] = mapped_column(String(256), index=True)
+    user_id: Mapped[str] = mapped_column(String(256), index=True)
+    goal_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    original_task: Mapped[str] = mapped_column(Text)
+    status: Mapped[CognitivePlanStatusDB] = mapped_column(
+        SAEnum(CognitivePlanStatusDB),
+        default=CognitivePlanStatusDB.DRAFT,
+        index=True,
+    )
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    final_output: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now(), index=True)
+    updated_at: Mapped[datetime | None] = mapped_column(
+        server_default=func.now(),
+        onupdate=func.now(),
+        index=True,
+    )
+
+    __table_args__ = (
+        Index("idx_cognitive_plan_session_status", "session_id", "status"),
+        Index("idx_cognitive_plan_request_status", "request_id", "status"),
+    )
+
+
+class CognitivePlanStepORM(Base):
+    """Durable execution step within a cognitive plan."""
+
+    __tablename__ = "cognitive_plan_steps"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    plan_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("cognitive_plans.id", ondelete="CASCADE"),
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(256))
+    description: Mapped[str] = mapped_column(Text)
+    tool: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    args: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[CognitiveStepStatusDB] = mapped_column(
+        SAEnum(CognitiveStepStatusDB),
+        default=CognitiveStepStatusDB.PENDING,
+        index=True,
+    )
+    dependencies: Mapped[list] = mapped_column(JSON, default=list)
+    risk_level: Mapped[str] = mapped_column(String(32), default="low", index=True)
+    max_retries: Mapped[int] = mapped_column(Integer, default=3)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    started_at: Mapped[datetime | None] = mapped_column(nullable=True, index=True)
+    completed_at: Mapped[datetime | None] = mapped_column(nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now(), index=True)
+    updated_at: Mapped[datetime | None] = mapped_column(
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index("idx_cognitive_step_plan_status", "plan_id", "status"),
+        Index("idx_cognitive_step_tool_status", "tool", "status"),
+    )
+
+
+class CognitiveObservationORM(Base):
+    """Durable observation from a tool, model, verifier, or external event."""
+
+    __tablename__ = "cognitive_observations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    plan_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("cognitive_plans.id", ondelete="CASCADE"),
+        index=True,
+    )
+    step_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("cognitive_plan_steps.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    source: Mapped[str] = mapped_column(String(128), index=True)
+    content: Mapped[str] = mapped_column(Text)
+    success: Mapped[bool] = mapped_column(default=True, index=True)
+    observation_metadata: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now(), index=True)
+
+    __table_args__ = (
+        Index("idx_cognitive_observation_plan_created", "plan_id", "created_at"),
+        Index("idx_cognitive_observation_step_created", "step_id", "created_at"),
+    )
+
+
+class CognitiveReflectionORM(Base):
+    """Durable verifier/reflection result for a plan step."""
+
+    __tablename__ = "cognitive_reflections"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    plan_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("cognitive_plans.id", ondelete="CASCADE"),
+        index=True,
+    )
+    step_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("cognitive_plan_steps.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    analysis: Mapped[str] = mapped_column(Text)
+    suggested_action: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    is_dead_end: Mapped[bool] = mapped_column(default=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now(), index=True)
+
+    __table_args__ = (
+        Index("idx_cognitive_reflection_plan_created", "plan_id", "created_at"),
+        Index("idx_cognitive_reflection_dead_end", "is_dead_end", "created_at"),
+    )
+
+
+# =============================================================================
 # POMODORO MODELS
 # =============================================================================
 
@@ -417,6 +573,5 @@ class ConversationSummaryORM(Base):
 
     def __repr__(self) -> str:
         return f"<ConversationSummary(id={self.id}, msgs={self.messages_summarized})>"
-
 
 

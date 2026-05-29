@@ -1,6 +1,25 @@
 # Core Systems
 
-The five core systems that power Amadeus's intelligence and safety.
+The core systems that power Amadeus's intelligence and safety.
+
+---
+
+## Cognitive Core
+
+**File:** `src/runtime/cognitive/core.py`
+
+The central state machine that governs the lifecycle of every task. It replaces implicit chat loops with explicit, auditable, and resumable state transitions.
+
+### Execution Lifecycle
+
+1. **RECEIVED**: Task is accepted and a unique `request_id` is assigned.
+2. **PLANNING**: The `PlanEngine` decomposes the task into a graph of `PlanSteps`.
+3. **EXECUTING**: Ready steps are dispatched to the `ToolExecutor` or LLM.
+4. **VERIFYING**: Results are checked against safety and completion criteria.
+5. **REFLECTING**: The agent evaluates progress and decides to proceed, replan, or finish.
+6. **DONE**: Final output is synthesized and returned.
+
+Every state transition and observation is persisted as **Episodic Memory**, enabling restart recovery and long-term behavioral audit.
 
 ---
 
@@ -133,14 +152,6 @@ The `AgentOrchestrator` runs a **background worker loop** that pulls tasks off a
 | `ReActAgent` (general) | 4 | Everything else + multi-step reasoning |
 
 Routing between sub-agents uses the legacy SVM classifier if `Model/router_classifier.joblib` exists, falling back to keyword heuristics.
-
-### Cycle Detection
-
-The orchestrator tracks recently executed `(action, frozenset(args))` tuples to detect and terminate repetitive tool-call loops — preventing runaway execution and performance degradation.
-
-### Learning Step
-
-After each agent run, entity/relationship triples are extracted from the interaction and stored in the Knowledge Graph.
 
 ---
 

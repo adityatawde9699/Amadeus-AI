@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from src.infra.tools.confirmation import ConfirmationCallback
 
 from src.core.domain.models import PermissionProfile, ToolDefinition, ToolExecutionResult
+from src.infra.tools.policy import ToolPolicyEngine, ToolPolicyViolation
 
 
 logger = logging.getLogger(__name__)
@@ -94,6 +95,8 @@ class ToolCapability:
     requires_network: bool = False
     modifies_filesystem: bool = False
     modifies_system_state: bool = False
+    sandbox_required: bool = False
+
 
 # =============================================================================
 # TOOL DATACLASS
@@ -104,15 +107,6 @@ class ToolCapability:
 class Tool:
     """
     Enhanced tool definition with metadata and execution support.
-
-    Attributes:
-        name: Unique identifier for the tool
-        function: The callable to execute
-        description: Human-readable description for LLM
-        category: Tool category for organization
-        parameters: Parameter schema for LLM function calling
-        requires_confirmation: Whether to ask user before executing
-        is_async: Auto-detected from function signature
     """
 
     name: str
@@ -274,17 +268,6 @@ def tool(
 class ToolExecutor:
     """
     Handles safe execution of tools with error handling and retries.
-
-    Parameters
-    ----------
-    max_retries:
-        Number of retry attempts for transient errors.
-    retry_delay:
-        Seconds to wait between retry attempts.
-    confirmation_callback:
-        HITL gate invoked before any tool that has ``requires_confirmation=True``.
-        If ``None`` and a destructive tool is called, execution is **denied by
-        default** (fail-safe behaviour).
     """
 
     def __init__(
@@ -299,6 +282,12 @@ class ToolExecutor:
         # CQ-04: Bounded deque prevents unbounded memory growth in long-running daemons.
 
         self.execution_history: deque[dict] = deque(maxlen=500)
+
+        # Policy engine to enforce execution bounds
+        from src.core.config import get_settings
+        self.policy_engine = ToolPolicyEngine(
+            is_development_mode=getattr(get_settings(), "ENVIRONMENT", "production") == "development"
+        )
 
     async def execute(
         self,
@@ -318,6 +307,29 @@ class ToolExecutor:
             ToolExecutionResult with success status and result/error
         """
         start_time = datetime.now()
+
+        # ------------------------------------------------------------------
+        # NEW: TOOL POLICY ENGINE GATE
+        # ------------------------------------------------------------------
+        try:
+            from src.core.domain.context import RequestContext
+            import uuid
+            # Mock context if none provided (for legacy compatibility)
+            mock_ctx = RequestContext(
+                request_id=str(uuid.uuid4()),
+                session_id="executor",
+                user_id="executor",
+                permissions=permission_profile
+            )
+            self.policy_engine.evaluate(tool, args, mock_ctx)
+        except ToolPolicyViolation as e:
+            logger.warning("Tool Policy Violation for %s: %s", tool.name, e)
+            return ToolExecutionResult(
+                tool_name=tool.name,
+                success=False,
+                error_message=f"Execution denied by security policy: {e}",
+                execution_time_ms=(datetime.now() - start_time).total_seconds() * 1000,
+            )
 
         # ------------------------------------------------------------------
         # HARD SECURITY GATE

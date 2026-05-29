@@ -15,8 +15,13 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from src.core.domain.models import PomodoroSession, PomodoroState
-from src.core.interfaces.repositories import IPomodoroRepository, ITaskRepository
+from src.core.domain.models import Note, PomodoroSession, PomodoroState, Reminder
+from src.core.interfaces.repositories import (
+    INoteRepository,
+    IPomodoroRepository,
+    IReminderRepository,
+    ITaskRepository,
+)
 from src.infra.tools.base import Tool, ToolCategory, tool
 
 
@@ -261,6 +266,150 @@ def build_pomodoro_tools(pomodoro_repo: IPomodoroRepository) -> list[Tool]:
             description="Check Pomodoro session status. Trigger: 'pomodoro status', 'how much time left'",
             category=ToolCategory.TASK_MANAGER,
             function=pomodoro_status,
+        ),
+    ]
+
+
+# =============================================================================
+# NOTE / REMINDER TOOL FACTORIES (SOLID — injected repositories)
+# =============================================================================
+
+
+def build_note_tools(note_repo: INoteRepository) -> list[Tool]:
+    """Factory: creates note tools with an injected repository."""
+
+    async def create_note(
+        title: str | None = None, content: str | None = None, **kwargs: Any
+    ) -> str:
+        note_title = title or kwargs.get("name") or "Untitled Note"
+        note_content = content or kwargs.get("text") or ""
+        try:
+            created = await note_repo.create(Note(title=note_title, content=note_content))
+            return f"📝 Note created: '{note_title}' (ID: {created.id})"
+        except Exception as e:
+            logger.exception("create_note failed: %s", e)
+            return f"Error creating note: {e}"
+
+    async def list_notes(**kwargs: Any) -> str:
+        try:
+            notes = await note_repo.get_recent(limit=15)
+            if not notes:
+                return "No notes found."
+            lines = [f"Notes ({len(notes)}):"]
+            for n in notes:
+                date_str = n.created_at.strftime("%m/%d") if n.created_at else ""
+                lines.append(f"  📝 [{n.id}] {n.title} ({date_str})")
+            return "\n".join(lines)
+        except Exception as e:
+            logger.exception("list_notes failed: %s", e)
+            return f"Error listing notes: {e}"
+
+    async def get_note(identifier: str | None = None, **kwargs: Any) -> str:
+        target = identifier or kwargs.get("id") or kwargs.get("title")
+        if not target:
+            return "Error: No note identifier provided."
+        try:
+            note = None
+            if str(target).isdigit():
+                note = await note_repo.get_by_id(int(target))
+            if not note:
+                matches = await note_repo.search(str(target))
+                note = matches[0] if matches else None
+            if not note:
+                return f"Note '{target}' not found."
+            return f"📝 {note.title}\n{'─' * 30}\n{note.content}"
+        except Exception as e:
+            logger.exception("get_note failed: %s", e)
+            return f"Error getting note: {e}"
+
+    return [
+        Tool(
+            name="create_note",
+            description="Create a new note. Trigger: 'create note', 'take note', 'new note'",
+            category=ToolCategory.TASK_MANAGER,
+            function=create_note,
+            parameters={
+                "title": {"type": "string", "description": "Note title"},
+                "content": {"type": "string", "description": "Note content"},
+            },
+        ),
+        Tool(
+            name="list_notes",
+            description="List all notes. Trigger: 'show notes', 'my notes'",
+            category=ToolCategory.TASK_MANAGER,
+            function=list_notes,
+        ),
+        Tool(
+            name="get_note",
+            description="Get a specific note by ID or title. Trigger: 'read note', 'show note'",
+            category=ToolCategory.TASK_MANAGER,
+            function=get_note,
+            parameters={"identifier": {"type": "string", "description": "Note ID or title"}},
+        ),
+    ]
+
+
+def build_reminder_tools(reminder_repo: IReminderRepository) -> list[Tool]:
+    """Factory: creates reminder tools with an injected repository."""
+
+    async def add_reminder(
+        title: str | None = None, time: str | None = None, **kwargs: Any
+    ) -> str:
+        reminder_title = title or kwargs.get("text") or kwargs.get("message")
+        reminder_time = time or kwargs.get("when") or kwargs.get("at")
+        if not reminder_title:
+            return "Error: No reminder title provided."
+        try:
+            from dateparser import parse as parse_date
+
+            parsed_time = parse_date(reminder_time) if reminder_time else None
+        except ImportError:
+            parsed_time = None
+        parsed_time = parsed_time or datetime.now(UTC)
+
+        try:
+            created = await reminder_repo.create(
+                Reminder(title=reminder_title, time=parsed_time)
+            )
+            time_str = created.time.strftime("%Y-%m-%d %H:%M")
+            return f"⏰ Reminder set: '{reminder_title}' at {time_str}"
+        except Exception as e:
+            logger.exception("add_reminder failed: %s", e)
+            return f"Error adding reminder: {e}"
+
+    async def list_reminders(**kwargs: Any) -> str:
+        try:
+            reminders = await reminder_repo.get_active()
+            if not reminders:
+                return "No active reminders."
+            lines = [f"⏰ Reminders ({len(reminders)}):"]
+            for r in reminders[:10]:
+                time_str = r.time.strftime("%m/%d %H:%M") if r.time else "?"
+                lines.append(f"  [{r.id}] {r.title} - {time_str}")
+            return "\n".join(lines)
+        except Exception as e:
+            logger.exception("list_reminders failed: %s", e)
+            return f"Error listing reminders: {e}"
+
+    return [
+        Tool(
+            name="add_reminder",
+            description="Create a reminder. Trigger: 'remind me', 'set reminder'",
+            category=ToolCategory.TASK_MANAGER,
+            function=add_reminder,
+            parameters={
+                "title": {"type": "string", "description": "Reminder title"},
+                "time": {
+                    "type": "string",
+                    "description": "When (e.g. 'in 1 hour', 'tomorrow 9am')",
+                },
+            },
+        ),
+        Tool(
+            name="list_reminders",
+            description="List all reminders. Trigger: 'show reminders', 'my reminders'",
+            category=ToolCategory.TASK_MANAGER,
+            function=list_reminders,
         ),
     ]
 

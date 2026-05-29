@@ -321,6 +321,12 @@ class Settings(BaseSettings):
     POMODORO_CYCLES_BEFORE_LONG_BREAK: int = Field(default=4, ge=1, le=10)
 
     # =========================================================================
+    # SANDBOX
+    # =========================================================================
+    # "docker" for containerized, "local" for multiprocessing, "auto" for auto-detect
+    SANDBOX_MODE: Literal["docker", "local", "auto"] = "auto"
+
+    # =========================================================================
     # PRODUCTIVITY: CALENDAR
     # =========================================================================
     CALENDAR_DEFAULT_EVENT_DURATION: int = Field(default=60, ge=5, le=480)

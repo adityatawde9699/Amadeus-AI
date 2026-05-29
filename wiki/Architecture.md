@@ -21,11 +21,12 @@ Amadeus follows **Clean Architecture** with strict layer separation. Dependencie
                       │  Depends()
 ┌─────────────────────▼────────────────────────────┐
 │       APPLICATION LAYER  (src/app/)              │
-│  AmadeusService · AgentOrchestrator              │
+│  AmadeusService · CognitiveCore · PlanEngine     │
 │  ConversationManager · ToolDispatcher            │
 │  ArgumentExtractor · ResponseComposer            │
 │  AutonomousObservationLoop                       │
-└─────────────────────┬────────────────────────────┘
+└─────────────────────▼────────────────────────────┘
+
                       │
          ┌────────────┴────────────┐
          │                        │

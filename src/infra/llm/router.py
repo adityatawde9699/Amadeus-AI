@@ -235,6 +235,7 @@ class LLMRouter:
         complexity: str = "normal",
         temperature: float = 0.7,
         max_tokens: int | None = None,
+        structured: bool = False,
     ) -> tuple[str, str]:
         """
         Generate a response using the best available provider.
@@ -242,27 +243,21 @@ class LLMRouter:
         Args:
             prompt:     The user prompt.
             context:    ConversationContext (optional).
-            complexity: Routing hint — one of:
-                        ``"auto"``   Score the prompt and choose the best tier.
-                        ``"simple"`` Force local-only (llama_cpp / ollama).
-                        ``"normal"`` Local first, cloud fallback (default).
-                        ``"high"``   Skip local models, use cloud directly.
-            temperature: Sampling temperature (0 = deterministic, 1 = creative).
+            complexity: Routing hint.
+            temperature: Sampling temperature.
             max_tokens:  Max output tokens.
-
-        Returns:
-            Tuple of (response_text, provider_name_used)
-
-        Raises:
-            LLMRateLimitError: All providers at or beyond their daily limit.
+            structured:  True if the output MUST be valid JSON.
         """
         self._reset_if_new_day()
-
-        # ── Complexity resolution ────────────────────────────────────────────
-        # ── Complexity resolution ────────────────────────────────────────────
-        # Complexity is now explicitly managed by the caller based on triage.
-        effective_complexity = complexity
-        logger.info("LLMRouter: effective_complexity=%r", effective_complexity)
+        
+        # If structured is True, ensure complexity is at least 'normal'
+        effective_complexity = "normal" if structured and complexity == "simple" else complexity
+        
+        # If structured is True, inject JSON instruction if not present
+        if structured and "JSON" not in prompt.upper():
+            prompt += "\n\nIMPORTANT: Respond ONLY with a valid JSON object."
+            
+        logger.info("LLMRouter: effective_complexity=%r structured=%r", effective_complexity, structured)
 
         # ── Build provider priority list ─────────────────────────────────────
         if effective_complexity == "high" and not self._local_only_mode:

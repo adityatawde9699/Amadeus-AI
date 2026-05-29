@@ -18,6 +18,9 @@ from src.core.config import get_settings
 from src.infra.cache.cache_service import CacheService
 from src.infra.llm.router import LLMRouter
 from src.infra.search.search_router import SearchRouter
+from src.infra.queue.manager import QueueManager
+from src.app.services.messaging_service import MessagingService
+from src.infra.messaging.email_adapter import EmailAdapter
 from src.infra.tools.confirmation import ConfirmationCallback
 
 
@@ -99,8 +102,17 @@ def _build_tool_registry() -> ToolRegistry:
         from src.infra.persistence.repositories.pomodoro_repository import (
             SQLAlchemyPomodoroRepository,
         )
+        from src.infra.persistence.repositories.note_repository import SQLAlchemyNoteRepository
+        from src.infra.persistence.repositories.reminder_repository import (
+            SQLAlchemyReminderRepository,
+        )
         from src.infra.persistence.repositories.task_repository import SQLAlchemyTaskRepository
-        from src.infra.tools.productivity_tools import build_pomodoro_tools, build_task_tools
+        from src.infra.tools.productivity_tools import (
+            build_note_tools,
+            build_pomodoro_tools,
+            build_reminder_tools,
+            build_task_tools,
+        )
 
         class _SessionProxy:
             def __init__(self, repo_cls: type) -> None:
@@ -116,12 +128,18 @@ def _build_tool_registry() -> ToolRegistry:
 
         task_repo = _SessionProxy(SQLAlchemyTaskRepository)
         pomodoro_repo = _SessionProxy(SQLAlchemyPomodoroRepository)
+        note_repo = _SessionProxy(SQLAlchemyNoteRepository)
+        reminder_repo = _SessionProxy(SQLAlchemyReminderRepository)
 
         for t in build_task_tools(task_repo):  # type: ignore[arg-type]
             registry.register(t)
         for t in build_pomodoro_tools(pomodoro_repo):  # type: ignore[arg-type]
             registry.register(t)
-        logger.info("Registered repository-injected tools (task, pomodoro)")
+        for t in build_note_tools(note_repo):  # type: ignore[arg-type]
+            registry.register(t)
+        for t in build_reminder_tools(reminder_repo):  # type: ignore[arg-type]
+            registry.register(t)
+        logger.info("Registered repository-injected tools (task, pomodoro, note, reminder)")
     except Exception as e:
         logger.exception("Error registering injected tools: %s", e)
 
@@ -129,8 +147,8 @@ def _build_tool_registry() -> ToolRegistry:
         from src.infra.tools.filesystem_tools import build_filesystem_tools
         from src.infra.tools.info_tools import get_info_tools
         from src.infra.tools.monitor_tools import get_monitor_tools
-        from src.infra.tools.productivity_tools import get_productivity_tools
         from src.infra.tools.system_tools import get_system_tools
+        from src.infra.tools.network_tools import get_network_tools
 
         for tool in get_info_tools():
             registry.register(tool)
@@ -138,7 +156,7 @@ def _build_tool_registry() -> ToolRegistry:
             registry.register(tool)
         for tool in get_monitor_tools():
             registry.register(tool)
-        for tool in get_productivity_tools():
+        for tool in get_network_tools():
             registry.register(tool)
         for tool in build_filesystem_tools():
             registry.register(tool)
@@ -191,6 +209,17 @@ def _build_tool_registry() -> ToolRegistry:
             logger.warning("Failed to register email_tools: %s", e)
 
         logger.info("Tool registry initialized with %d tools", len(registry))
+
+        # ── Plugin Discovery ───────────────────────────────────────────
+        try:
+            settings = get_settings()
+            plugins_dir = settings.BASE_DIR / "plugins"
+            if plugins_dir.exists():
+                plugin_count = registry.discover_plugins(plugins_dir)
+                if plugin_count > 0:
+                    logger.info("Discovered %d tools from plugins directory", plugin_count)
+        except Exception as e:
+            logger.warning("Failed to discover plugins: %s", e)
 
     except Exception as e:
         logger.exception("Error initializing tool registry: %s", e)
@@ -300,6 +329,13 @@ class Container(containers.DeclarativeContainer):
     llm_router = providers.Singleton(_build_llm_router)
     search_router = providers.Singleton(_build_search_router)
 
+    queue_manager = providers.Singleton(QueueManager)
+    email_adapter = providers.Singleton(EmailAdapter)
+    messaging_service = providers.Singleton(
+        MessagingService,
+        email_adapter=email_adapter,
+    )
+
     amadeus_service = providers.Singleton(
         AmadeusService,
         settings=settings,
@@ -339,6 +375,14 @@ def get_llm_router() -> LLMRouter:
 
 def get_search_router() -> SearchRouter:
     return global_container.search_router()
+
+
+def get_queue_manager() -> QueueManager:
+    return global_container.queue_manager()
+
+
+def get_messaging_service() -> MessagingService:
+    return global_container.messaging_service()
 
 
 def inject_confirmation_callback(confirmation_callback: ConfirmationCallback) -> None:

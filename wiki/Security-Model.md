@@ -2,7 +2,7 @@
 
 Amadeus is designed with defence-in-depth across authentication, network isolation, secret management, prompt injection resistance, and tool execution safety.
 
-> **v3.2.1** hardened all six critical audit findings. See [CHANGELOG.md](https://github.com/adityatawde9699/Amadeus-AI/blob/main/CHANGELOG.md) for details.
+> **v4.0.0** introduced the centralized **Tool Policy Engine** for deterministic safety gates.
 
 ---
 
@@ -16,7 +16,29 @@ Amadeus is designed with defence-in-depth across authentication, network isolati
 | Redis fallback | If Redis is unreachable at startup, rate limiter falls back to in-memory storage (v3.2.1+) |
 | RBAC | `admin` / `user` / `guest` roles enforced per route |
 
-**Guest-tier users** are placed in `READ_ONLY` profile — all `requires_confirmation=True` tools are hard-blocked regardless of any callback override.
+---
+
+## Tool Policy Engine (v4.0.0+)
+
+**File:** `src/infra/tools/policy.py`
+
+The `ToolExecutor` now passes every request through a deterministic policy layer before execution. This engine evaluates the tool's `RiskLevel` against the active `PermissionProfile`.
+
+### Risk Levels
+
+| Level | Description | Example Tools |
+|---|---|---|
+| `LOW` | Read-only, safe local operations | `get_time`, `list_tasks`, `get_cpu_usage` |
+| `MEDIUM` | Modifies local non-system state | `add_task`, `set_volume`, `create_note` |
+| `HIGH` | Network external or sensitive local | `send_email`, `web_search`, `delete_file` |
+| `CRITICAL` | System destructive or code execution | `terminate_process`, `execute_python_script` |
+
+### Policy Enforcement
+
+- **READ_ONLY Profile**: Automatically blocks all `HIGH` and `CRITICAL` tools. Blocks any tool with `modifies_filesystem=True` or `modifies_system_state=True`.
+- **Destructive Guard**: Ensures tools tagged as `CRITICAL` always have the `requires_confirmation` flag set.
+- **Process Protection**: Explicitly blocks attempts to terminate protected system processes (e.g., `explorer.exe`, `kernel`).
+- **Argument Tokenization**: Inspects shell commands for forbidden tokens like `rm -rf /` or `mkfs`.
 
 ---
 
@@ -31,17 +53,6 @@ MASTER_TELEGRAM_CHAT_ID=123456789,987654321
 ```
 
 Messages from any other `chat_id` receive `"Unauthorized."` and are dropped before processing.
-
-### SEC-02 — WhatsApp HMAC Verification (v3.2.1+)
-
-Every `POST /api/v1/webhooks/whatsapp` verifies the `X-Hub-Signature-256` header:
-
-```python
-expected = "sha256=" + hmac.new(WHATSAPP_APP_SECRET, body, sha256).hexdigest()
-# Forged payloads → HTTP 403
-```
-
-Set `WHATSAPP_APP_SECRET=<your Meta App Secret>` in `.env`.
 
 ---
 
@@ -65,7 +76,6 @@ This prevents users from injecting LLM directives via Telegram, WhatsApp, or the
 - **GitGuardian pre-commit hook** scans for leaked secrets before every commit.
 - **SEC-06 (v3.2.1+)**: `SECRET_KEY` auto-generates a cryptographically-secure 32-byte ephemeral key at startup if not set. A `WARNING` is logged urging operators to set a persistent key.
 - **IPC Token (v3.2.1+)**: `data/ipc_secret.token` (`chmod 600`). Corruption (non-UTF-8, empty, OS error) is caught specifically; a `CRITICAL` log entry names the file path and warns that connected IPC clients will need to re-authenticate before regenerating.
-- `WHATSAPP_APP_SECRET`: Required for SEC-02 HMAC verification. Set in `.env`.
 
 ---
 
@@ -76,7 +86,7 @@ This prevents users from injecting LLM directives via Telegram, WhatsApp, or the
 Destructive tools require explicit approval with a **60-second timeout** (auto-deny on timeout):
 
 ```
-terminate_program · delete_file · execute_python_script
+terminate_process · terminate_program · delete_file · execute_python_script
 fs_write_file · send_outlook_email · send_email · send_slack_message
 ```
 
@@ -91,19 +101,17 @@ SEARCH_ALLOWED_DIRS=/home/user/Documents,/home/user/Downloads
 
 Path traversal attempts (e.g. `../../etc/passwd`) return `"Access denied: path …"` without touching the filesystem.
 
-### Code Execution Sandbox
+### Code Execution Sandbox (v4.0.0+)
 
-`execute_python_script` runs in a Docker container with:
+Amadeus supports both Docker and a lightweight local sandbox. Set `SANDBOX_MODE` in `.env`:
 
-| Constraint | Value |
-|---|---|
-| Network | `--network=none` (fully isolated) |
-| Memory | `--memory=128m` |
-| CPU | `--cpus=0.5` |
-| User | Non-root |
-| Lifecycle | Auto-removed on completion |
-| Timeout | 15 seconds |
-| Image | `python:3.10-slim` |
+| Mode | Technology | Best For |
+|---|---|---|
+| `docker` | Ephemeral Containers | High-security, Linux-based production |
+| `local` | Multiprocessing | Windows, restricted environments, development |
+| `auto` | Auto-detect | Default: prefers Docker, falls back to local |
+
+The local sandbox uses **Restricted Globals** (disabling `__import__`, `open`, `eval`) and runs code in a separate process for isolation.
 
 ---
 
@@ -127,10 +135,8 @@ Both data services are internal to the `amadeus-network` Docker bridge. There is
 | Request tracing | `request_id` UUID attached to every request; returned as `X-Request-ID` header |
 | Sensitive data | API keys, raw prompts, auth tokens are **never logged** (OWASP-hardened) |
 | Log files | `data/logs/amadeus.log` (rotating, 10 MB, 5 backups) |
-| Security scan | `bandit -r src/ -ll` — **0 HIGH findings** enforced in CI |
-| CVE audit | `pip-audit` — **0 actionable HIGH CVEs** |
-| Metrics | `/api/v1/metrics` includes `amadeus_memory_errors_total{operation}` for Qdrant failure visibility |
-| Known limitation | `/api/v1/metrics` is unauthenticated (SEC-07) — restrict at network/proxy layer in production |
+| Metrics | `/api/v1/metrics` includes `amadeus_tool_executions_total` for per-tool result breakdown |
+| Episodic Memory | Every plan step and reflection is stored in the database for post-hoc behavioral audit. |
 
 ---
 

@@ -16,17 +16,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from src.api.middleware.authentication import verify_jwt_token
-from src.infra.messaging.email_adapter import EmailAdapter
-from src.transports.telegram_transport import TelegramTransport
+from src.container import get_messaging_service
+from src.app.services.messaging_service import MessagingService
 
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/messaging", tags=["Messaging"])
-
-# Singletons — lazy-initialized from settings
-_telegram = TelegramTransport()
-_email = EmailAdapter()
 
 
 # =============================================================================
@@ -76,6 +72,7 @@ class StatusResponse(BaseModel):
 async def send_message(
     req: SendMessageRequest,
     _token: dict = Depends(verify_jwt_token),
+    messaging: MessagingService = Depends(get_messaging_service),
 ) -> SendMessageResponse:
     """
     Dispatch an outbound message to Telegram, WhatsApp, or Email.
@@ -84,31 +81,12 @@ async def send_message(
     endpoint to admin-role tokens via the RequireAdmin dependency.
     """
     try:
-        if req.channel == "telegram":
-            if not _telegram.is_ready:
-                raise HTTPException(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail="Telegram adapter is not configured (TELEGRAM_BOT_TOKEN missing)",
-                )
-            success = await _telegram.send_message(int(req.to), req.message)
-
-        elif req.channel == "email":
-            if not _email.is_configured:
-                raise HTTPException(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail="Email adapter is not configured",
-                )
-            success = await _email.send_email(
-                to=req.to,
-                subject=req.subject or "Message from Amadeus",
-                body=req.message,
-            )
-
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unknown channel: {req.channel}",
-            )
+        success = await messaging.send_message(
+            recipient_id=req.to,
+            text=req.message,
+            platform=req.channel,
+            subject=req.subject
+        )
 
         return SendMessageResponse(
             success=success,
@@ -116,8 +94,6 @@ async def send_message(
             detail="sent" if success else "delivery_failed",
         )
 
-    except HTTPException:
-        raise
     except ValueError as e:
         # e.g. int("not-a-number") for Telegram chat_id
         raise HTTPException(
@@ -137,12 +113,14 @@ async def send_message(
     response_model=StatusResponse,
     summary="Check which messaging channels are configured and ready",
 )
-async def messaging_status() -> StatusResponse:
+async def messaging_status(
+    messaging: MessagingService = Depends(get_messaging_service),
+) -> StatusResponse:
     """
     Returns a real-time readiness check for each messaging channel.
     Does NOT require authentication — useful for health dashboards.
     """
     return StatusResponse(
-        telegram=_telegram.is_ready,
-        email=_email.is_configured,
+        telegram=messaging.telegram.is_ready if messaging.telegram else False,
+        email=messaging.email.is_configured if messaging.email else False,
     )
