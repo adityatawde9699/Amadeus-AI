@@ -1,8 +1,8 @@
 <div align="center">
 
-# Amadeus AI v3.2.3
+# Amadeus AI v4.0.0
 
-**A secure autonomous AI operating layer built on Clean Architecture — autonomous tool execution, long-horizon goal tracking, and multi-transport messaging unified under a single service layer.**
+**A secure autonomous AI operating layer built on Clean Architecture — featuring a plan-driven cognitive runtime, persistent execution graphs, and a dynamic plugin system for local devices.**
 
 [![CI Pipeline](https://github.com/adityatawde9699/Amadeus-AI/actions/workflows/main.yml/badge.svg)](https://github.com/adityatawde9699/Amadeus-AI/actions)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
@@ -11,7 +11,7 @@
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
 > **Tech Stack:**
-> `Python 3.11+` · `FastAPI` · `SQLAlchemy 2.0` · `Groq (Llama 3.3)` · `Gemini` · `Redis` · `Qdrant` · `PostgreSQL` · `JWT Auth` · `Telegram` · `Docker` · `sentence-transformers` · `llama-cpp-python` · `huggingface_hub`
+> `Python 3.11+` · `FastAPI` · `SQLAlchemy 2.0` · `Groq (Llama 3.3)` · `Gemini` · `Redis` · `Qdrant` · `PostgreSQL` · `JWT Auth` · `Telegram` · `Docker` · `sentence-transformers` · `llama-cpp-python`
 
 </div>
 
@@ -23,63 +23,47 @@ Building a secure autonomous AI operating layer that is both capable and safe in
 
 | Pain Point | Reality |
 |---|---|
-| **Single-provider lock-in** | Most assistants fail completely when a rate limit exhausts. There is no built-in fallback chain across providers. |
-| **No offline / privacy mode** | Cloud-only inference means every message leaves the machine. Local GGUF/Ollama options require manual wiring. |
-| **No authentication boundary** | Open-source chatbot backends expose all endpoints without auth, making them unsafe to run on any networked machine. |
-| **Prompt injection via messaging** | WhatsApp/Telegram bots accept arbitrary text — nothing prevents a user from injecting `Action: delete_file` into the ReAct loop. |
-| **No tool execution safety** | Tool-calling agents can traverse the filesystem, exfiltrate files, or execute arbitrary code without any confirmation gate. |
-| **No production observability** | No structured logging, no per-tool latency metrics, no health probes — impossible to operate or debug in production. |
-| **No messaging channel auth** | Any Telegram user who knows the bot token can control the daemon. WhatsApp webhooks accept forged payloads. |
-| **Memory amnesia** | Assistants lose context between sessions. Semantic search over past conversations requires custom infrastructure that most projects skip. |
+| **Brittle Agent Loops** | Standard ReAct loops are fragile and lose state. There is no explicit execution graph to audit or resume. |
+| **Monolithic Capabilities** | Adding new tools requires modifying core code. There is no standard for hot-loading third-party plugins. |
+| **No Execution Policy** | Tool-calling agents often lack a deterministic security layer to block high-risk actions based on user permissions. |
+| **Docker Dependency** | Most sandboxes require Docker. There is often no lightweight local alternative for restricted environments. |
+| **No offline / privacy mode** | Cloud-only inference means every message leaves the machine. Local GGUF options are often secondary. |
+| **Memory amnesia** | Assistants lose context between sessions. Semantic search over past conversations is often unimplemented. |
 
 ---
 
 ## 2. What is Amadeus?
 
-**Amadeus is a secure autonomous AI operating layer** — a persistent FastAPI backend that acts as the execution layer for autonomous operations. It is not a chatbot UI, not a thin wrapper around a single LLM, and not a prompt-engineering framework.
+**Amadeus is a secure autonomous AI operating layer** — a persistent cognitive runtime that acts as the execution layer for autonomous operations. It is not just a chatbot; it is a **headless daemon** designed to plan, act, verify, and remember.
 
 It is a **clean-architecture system** with the following defining properties:
 
-### Multi-Transport Architecture
-Requests arrive via three independent transport modules — `fastapi_transport.py` (HTTP/WebSocket), `telegram_transport.py` (Telegram Bot), and `cli_transport.py` (direct CLI) — all sharing a single `AmadeusService` singleton through the DI container.
+### Cognitive Core Architecture
+Replaces implicit chat loops with a deterministic **async state machine**. Every task is decomposed into an explicit execution graph (`Plan` → `PlanStep` → `Observation` → `Reflection`), allowing Amadeus to pause, audit, resume, and recover from failures.
 
-### Autonomous Agent Loop
-Every request enters a **ReAct (Reason + Act) agent loop** managed by `AgentOrchestrator`. The agent reasons, selects a tool, executes it, observes the result, and iterates — generating natural language only when sufficient information is gathered. Cycle detection, HITL confirmation gates, and tool execution timeouts guard against runaway loops.
+### Dynamic Plugin System
+Amadeus features a **hot-pluggable tool architecture**. New capabilities can be added by simply dropping `.py` files into the `plugins/` directory. The agent can even **manage its own plugins** at runtime, writing and registering new tools autonomously.
 
-### Multi-LLM Provider Router
-A **priority-ordered fallback chain** routes inference requests:
+### Tool Execution Policy Engine
+A centralized **security gatekeeper** evaluates every tool call. It maps tools to `RiskLevels` (LOW to CRITICAL) and enforces `PermissionProfiles` (READ_ONLY vs SYSTEM_FULL), ensuring the agent never crosses safety boundaries without explicit authorization.
+
+### Local-First & Cloud-Fallback
+A **priority-ordered fallback chain** routes inference:
 ```
 LlamaCpp (local GGUF) → Groq (Llama 3.3 70B) → Gemini 2.5 Flash
 ```
-Each provider tracks a **Redis-backed daily quota counter**. When a provider exhausts its quota or fails, the router falls back automatically. `LOCAL_ONLY_MODE=true` disables all cloud providers.
+`LOCAL_ONLY_MODE=true` ensures 100% privacy by disabling all cloud providers.
 
-### Local Model Management
-`ModelManager` (`src/infra/model_manager.py`) resolves and auto-downloads models into `Model/`:
-- **Embed models**: saved to `Model/embed/<name>/` via `snapshot_download`
-- **GGUF files**: downloaded from any HuggingFace repo via `hf_hub_download`
-Configured entirely via `.env` — no manual file management required.
-
-### 53 Sandboxed Tools
+### 70+ Sandboxed Tools
 Amadeus executes a categorised registry spanning:
-- **System**: volume, brightness, screenshots, hardware monitoring
-- **Filesystem**: read, write, copy, move, search — all sandboxed to `SEARCH_ALLOWED_DIRS`
-- **Productivity**: tasks, reminders, notes, Pomodoro, calendar
-- **Information**: weather, news, Wikipedia, web search, math, time
-- **Communication**: Telegram, Email
-- **Goals**: `create_goal`, `update_goal`, `list_active_goals`
+- **System Control**: launch apps, terminate processes, volume, brightness, screenshots
+- **Network**: diagnostics, IP discovery, host pinging
+- **Filesystem**: sandboxed read/write/copy/move/search
+- **Productivity**: goals, tasks, reminders, notes, Pomodoro
+- **Agentic**: `manage_plugins`, `search_codebase`, `decompose_goal`
 
-### Tiered Semantic Memory
-Conversation context stored via Qdrant persistent vector store with `all-MiniLM-L6-v2` (384-dim) embeddings. A NumPy ring-buffer Flash Cache (L1, 100 entries) intercepts Qdrant for recently-accessed memories.
-
-### Long-Horizon Goal Tracking
-`GoalRepository` persists multi-step objectives across sessions in PostgreSQL. The agent can create, update, and list active goals as part of its normal tool loop, enabling it to maintain context over long-running projects.
-
-### Defence-in-Depth Security
-- **SEC-01**: Prompt injection resistance — `<user_task>` XML boundaries + `[BLOCKED:TOKEN]` neutralisation
-- **SEC-03**: Telegram `MASTER_TELEGRAM_CHAT_ID` allowlist
-- **HITL**: All destructive tools require explicit user confirmation (60-second timeout)
-- **Filesystem sandboxing**: All path operations enforce `SEARCH_ALLOWED_DIRS`
-- **JWT RBAC**: Per-route role enforcement
+### Persistent Episodic Memory
+Every plan, step, tool result, and reflection is persisted in PostgreSQL. This allows for a complete behavioral audit and enables the agent to learn from past successes and failures.
 
 ---
 
@@ -89,124 +73,37 @@ Amadeus solves each pain point with a concrete, implemented mechanism:
 
 | Pain Point | Amadeus Solution |
 |---|---|
-| Single-provider lock-in | 3-provider fallback chain with Redis daily quota tracking |
-| No offline mode | LlamaCpp first in the chain; `LOCAL_ONLY_MODE=true` disables all cloud providers |
-| No authentication | JWT Bearer on all protected routes, RBAC roles, per-user rate limiting |
-| Prompt injection | `<user_task>` XML boundary + `[BLOCKED:TOKEN]` neutralisation (SEC-01) |
-| Tool execution safety | HITL confirmation gate + `SEARCH_ALLOWED_DIRS` path validation |
-| Memory amnesia | Persistent memory via Qdrant with idempotent deduplication |
-| No long-horizon context | GoalRepository tracks multi-step objectives across sessions |
-| Model scatter | ModelManager downloads and organises all models into `Model/` |
+| Brittle Agent Loops | **Cognitive Core** async state machine with explicit execution graphs |
+| Monolithic Capabilities | **Dynamic Plugin System** for hot-loading tools from `plugins/` |
+| No Execution Policy | **Tool Policy Engine** enforcing risk levels and permissions |
+| Docker Dependency | **Dual Sandbox**: epemeral Docker containers OR local multiprocessing |
+| No offline mode | LlamaCpp priority; `LOCAL_ONLY_MODE=true` for 100% privacy |
+| Memory amnesia | Persistent SQL episodic memory + Qdrant semantic long-term memory |
 
 ---
 
 ## 4. Features
 
-### Conversational AI
-- Multi-LLM routing: **LlamaCpp (local GGUF)** → Groq (Llama 3.3 70B) → Gemini 2.5 Flash
-- **100% Local Inference**: `SLM_MODEL_PATH` loads a GGUF model directly via `llama-cpp-python` — zero network calls, zero API cost, full conversation memory
-- **Local Server Option**: `LOCAL_ONLY_MODE` for complete offline privacy and zero-cost inference.
-- **Redis-backed daily quota tracking** per provider — shared across all workers, auto-expires at midnight
-- **Semantic long-term memory** via Qdrant vector search (`all-mpnet-base-v2` 768-dim embeddings) — top-3 relevant memories injected into the agent prompt on every request
-- Persistent conversation memory with configurable context window
-- Concurrent request limiting (`asyncio.Semaphore` — default 20 simultaneous chats)
-
-### Messaging & Channels
-- **Inbound webhooks** — Telegram Bot API
-- **Outbound messaging dispatch** — `POST /api/v1/messaging/send` routes to Telegram or Email from one endpoint
-- Email send/receive via SMTP (`aiosmtplib`) and IMAP (`imap_tools`)
-- `GET /api/v1/messaging/status` — live readiness check for all configured channels
+### Autonomous Agent Lifecycle
+- **Plan-Driven Reasoning**: Decomposes complex tasks into actionable sub-goals before execution.
+- **Self-Reflection**: Evaluates tool outputs and adapts plans if an action fails or returns an error.
+- **Durable State**: Process restarts do not wipe active tasks; the episodic memory retains full context.
+- **Proactive Health Watcher**: Background loop monitors system resources (CPU, RAM, Battery) and alerts the user proactively.
 
 ### Tool Execution Engine
-**Information tools:**
-- Current weather (OpenWeatherMap API)
-- Top news headlines (NewsAPI)
-- Wikipedia lookup with fallback search
-- Web search via tiered SearchRouter (DuckDuckGo → Tavily)
-- Date/time queries, unit conversions (temperature, length), math calculator
-- Timer, greeting
-
-**Productivity tools:**
-- Task management (create, list, complete, summarize)
-- Pomodoro timer (start, stop, status)
-- Notes (create, list, retrieve)
-- Reminders (set, list — with natural language time parsing via `dateparser`)
-
-**System & monitoring tools:**
-- System Controls (set/get volume, screen brightness, take screenshots, list open apps)
-- Hardware monitoring (CPU, memory, disk, battery) with configurable alert thresholds
-
-### Semantic Tool Routing (Zero-Training)
-- **UnifiedSemanticRouter** (`src/app/services/semantic_router.py`) — single-stage embedding-based triage; replaces the legacy sklearn SVM + TF-IDF pipeline entirely
-- **Model**: `sentence-transformers/all-mpnet-base-v2` (768-dim, CPU-only, no retraining required)
-- **Mechanism**: Tool descriptions + intent anchors are embedded once and persisted to `Model/semantic_tool_embeddings.npz`. At query time, the user message is embedded and cosine-compared against the full matrix in a single NumPy `matmul` — **sub-10 ms on any CPU**, zero LLM calls
-- **Hot-pluggable**: New tools registered in `ToolRegistry` are automatically re-embedded on the next startup via MD5 fingerprint cache invalidation — no retraining, no CI step
-- **Routing outcomes**: `tool` (dispatches named tool) · `conversational` (local LLM prose) · `cloud_escalation` (routes to cloud LLM for high-complexity reasoning)
-- **Threshold**: Configurable cosine similarity threshold (default `0.30`); queries below threshold fall back to `conversational`
+- **70+ Built-in Tools** across categories: OS Control, Network, Filesystem, Productivity, and Research.
+- **Human-in-the-Loop (HITL)**: Destructive or high-risk actions (e.g., `terminate_process`) require explicit user approval.
+- **Multi-Sandbox Support**: Runs untrusted code in Docker containers or an isolated local process.
 
 ### Omni-Workspace RAG (Hybrid Search)
-- **WorkspaceIndexer** (`src/infra/workspace_indexer.py`) — hybrid BM25 + dense vector retrieval
-- **Dual retrieval**: `all-mpnet-base-v2` dense embeddings + BM25Okapi lexical search, fused via Reciprocal Rank Fusion (k=60)
-- **Exact-match recall**: Code-aware BM25 tokenizer preserves identifiers (`AUTH_UUID_7392`, port numbers, error codes) that dense embeddings miss
-- **Incremental builds**: Only re-embeds files whose mtime or MD5 hash changed — subsequent runs take seconds
-- **RAM-safe**: `max_chunks=15_000` default (≈66 MB total) with `mmap_mode='r'` loading — designed for 4 GB machines
-- **Context-augmented chunking**: File-level metadata (imports, globals, headings) prepended to encoder input — display snippets stay clean
-- **Workspace Search Tool** (`search_workspace`): Amadeus tool enabling autonomous semantic search over the local project repository
-- **CLI**: `python scripts/index_workspace.py --root C:\Users\ASUS\Downloads --max-chunks 15000`
+- **WorkspaceIndexer**: Hybrid BM25 + dense vector retrieval over local project files.
+- **Context-Augmented Chunking**: Metadata enrichment for high-precision retrieval of code and documentation.
+- **search_workspace Tool**: Enables the agent to search its own codebase or local projects to answer technical questions.
 
-### API & Security
-- **Permission Profiles**: Supports `READ_ONLY` and `SYSTEM_FULL` JWT claims to explicitly block destructive tool executions on unprivileged accounts.
-- **Human-in-the-Loop (HITL) Validation**: Destructive or communicative actions pause agent execution, providing detailed **Action Previews** before waiting for human approval (60-second timeout, auto-deny).
-- **Isolated Filesystem Sandbox**: `copy_file`, `move_file`, and `create_folder` validate all resolved paths against `SEARCH_ALLOWED_DIRS` via `_assert_in_allowed_dirs()`. Path traversal attempts return `"Access denied"` without touching the filesystem.
-- **Agent Queue Backpressure**: The orchestrator enforces strict concurrency limits via `maxsize`, safely shedding excess loads with `HTTP 429` (Too Many Requests).
-- **IPC Authentication**: Background RPC calls require an `X-IPC-Token` to prevent unauthenticated local access loops.
-- **SEC-01 — Prompt Injection Resistance**: User input is wrapped in `<user_task>` XML tags; ReAct control tokens (`Action:`, `Thought:`, etc.) embedded in user text are neutralised with `[BLOCKED:TOKEN]` markers before reaching the LLM.
-- **SEC-03 — Telegram Authorization**: `MASTER_TELEGRAM_CHAT_ID` allowlist enforced on every incoming message. Unauthorized `chat_id` values receive `"Unauthorized."` and are dropped.
-- **SEC-06 — Secure SECRET_KEY**: Auto-generates a cryptographically-secure ephemeral key at startup if `SECRET_KEY` is not configured. Warns operators loudly. No more `"fallback"` literal.
-- JWT Bearer authentication on all protected routes (`/chat`, `/tasks`, `/voice`, `/messaging`)
-- Per-user JWT rate limiting (`slowapi`) with Redis storage + IP fallback; falls back to in-memory storage gracefully if Redis is unreachable.
-- **OWASP-hardened logs** — no API keys, no raw user prompts, no auth tokens in any log statement
-- Request audit logging middleware (unique request IDs, latency headers, client IP)
-- **Bandit security scan**: 0 HIGH severity findings in CI — enforced as gate
-- **pip-audit**: 0 actionable HIGH CVEs (1 known false positive for `ecdsa` permanently ignored)
-- Prometheus metrics endpoint (`/api/v1/metrics`)
-- Sentry error tracking integration
-
-### Caching (Redis)
-- LLM responses: 1-hour TTL — deduplicates identical prompts
-- **LLM daily usage quotas**: `llm_usage:{provider}:{date}` — 86400s TTL, shared across workers
-- TTS audio: 24-hour TTL — common phrases reuse synthesized audio bytes
-- Tool results (stateless only): 5-minute TTL (weather, system stats)
-- Web search results: 30-minute TTL (DDG, Tavily)
-- Graceful fallback if Redis is unavailable
-
-### Observability (Prometheus — `/api/v1/metrics`)
-
-| Metric | Type | Description |
-|--------|------|-------------|
-| `amadeus_llm_calls_total{provider}` | Counter | Total LLM calls per provider |
-| `amadeus_tool_calls_total{tool_name}` | Counter | Per-tool invocation count |
-| `amadeus_tool_duration_seconds{tool_name,success}` | Histogram | Per-tool execution latency (10 buckets, 0.01s–30s) |
-| `amadeus_tool_executions_total{tool_name,result}` | Counter | Per-tool result breakdown (success/failure/timeout/denied) |
-| `amadeus_memory_errors_total{operation}` | Counter | Qdrant upsert/search failure count |
-| `amadeus_cache_hit_rate` | Gauge | Cache hit % (updated on every cache hit) |
-| `amadeus_llm_cost_usd` | Gauge | Estimated LLM spend in USD |
-| HTTP latency histograms | Histogram | P50/P95/P99 per route via `prometheus-fastapi-instrumentator` |
-
-**Health Probes (new in v3.2.1):**
-
-| Endpoint | Auth | Purpose |
-|---|---|---|
-| `GET /health` | None | Basic liveness — always 200 while the process is running |
-| `GET /api/v1/health/live` | None | Liveness probe for container orchestrators (Kubernetes, Docker Compose) |
-| `GET /api/v1/health/ready` | None | Readiness probe — checks DB + Redis + Qdrant + LLM router; returns 503 with per-dependency map if any fail |
-
-### CI/CD & Deployment
-- GitHub Actions pipeline: lint (ruff — 100% clean), format check, strict type check (mypy), bandit (0 HIGH gate), pip-audit
-- Automated test run with real PostgreSQL + Redis service containers
-- **`train-model` CI job**: auto-generates semantic tool embeddings for the `SemanticToolRouter` when tool metadata changes; commits updated `.npz` artifacts to ensure zero cold-start latency in production.
-- **Coverage threshold: 80%** enforced in both CI (`--cov-fail-under=80`) and locally via `pyproject.toml`
-- Staging deploy to Railway on `develop` branch merge
+### Security & Safety
+- **Prompt Injection Resistance**: `<user_task>` XML boundaries + control token neutralization.
+- **Authorization Guard**: Telegram chat ID allowlists and WhatsApp HMAC verification.
+- **Secure Secret Handling**: Auto-generated ephemeral keys and persistent secret tokens with strict file permissions.
 
 ---
 

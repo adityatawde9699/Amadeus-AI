@@ -7,6 +7,32 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [4.0.0] — 2026-05-29
+
+### Architecture
+- **Cognitive Core:** Replaced implicit ReAct loops with a deterministic async state machine. The system now transitions through `RECEIVED`, `PLANNING`, `EXECUTING`, `VERIFYING`, `REFLECTING`, and `DONE` states.
+- **Explicit Execution Graphs:** Introduced `Plan`, `PlanStep`, `Observation`, and `Reflection` domain models. Tasks are now decomposed into persistent, auditable, and resumable data structures.
+- **Dynamic Plugin System:** Tools can now be hot-loaded from a `plugins/` directory. Supports both `@tool` decorator discovery and explicit `register_tools` hooks.
+- **Durable Episodic Memory:** Implemented `SQLAlchemyCognitiveRepository` to persist every stage of the cognitive lifecycle in PostgreSQL.
+
+### Security & Safety
+- **Tool Policy Engine:** Centralized security layer that evaluates `RiskLevel` and `PermissionProfile` before any tool execution.
+- **Local Sandbox:** Added `LocalSandboxExecutor` using Python's `multiprocessing` for Docker-free environments. Auto-detects Docker and falls back gracefully.
+- **Protected Processes:** Policy engine now explicitly blocks termination of critical system processes (e.g., `explorer.exe`).
+- **Network Diagnostics:** New tools `get_network_info` and `ping_host` for system transparency.
+
+### Features
+- **Agent Self-Awareness:** Added `manage_plugins` (agent can add its own tools) and `search_codebase` (agent can inspect its own implementation).
+- **Proactive Monitoring:** Enhanced autonomous loop to monitor CPU, RAM, and Battery health, proactively alerting the user on critical events.
+- **Structured LLM Mode:** Updated `LLMRouter` to support a `structured` parameter, strictly enforcing JSON output for high-precision argument extraction.
+- **Unified Messaging:** Centralized `MessagingService` managing Telegram and Email transports.
+
+### Reliability
+- **Verification State:** Dedicated lifecycle stage for verifying tool outputs against success criteria.
+- **Circuit Breaker Integration:** Enhanced tool dispatcher with circuit breakers to prevent cascading failures during API outages.
+
+---
+
 ## [3.2.2] — 2026-05-27
 
 ### Architecture

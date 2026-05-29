@@ -4,11 +4,10 @@
 
 | Version | Supported |
 |---------|-----------|
-| 3.2.x   | ✅ Active support |
-| 3.1.x   | ⚠️ Security patches only — upgrade recommended |
-| 3.0.x   | ⚠️ Security patches only — please upgrade |
+| 4.0.x   | ✅ Active support |
+| 3.2.x   | ⚠️ Security patches only — upgrade recommended |
+| 3.1.x   | ❌ End of life |
 | 2.x     | ❌ End of life |
-| 1.x     | ❌ End of life |
 
 ---
 
@@ -43,48 +42,41 @@ Disclosing security issues publicly before a fix is available puts all users at 
 
 ## Security Design Notes
 
+### Tool Policy Engine (v4.0.0+)
+- Centralized gatekeeper that evaluates every tool call before execution
+- Enforces `RiskLevel` (LOW, MEDIUM, HIGH, CRITICAL)
+- Enforces `PermissionProfile` (READ_ONLY sessions are blocked from mutating or high-risk tools)
+- Blocks termination of protected system processes
+- Sanitizes shell command arguments for forbidden tokens
+
+### Multi-Sandbox Execution (v4.0.0+)
+- **Docker Sandbox**: Ephemeral container with no network access, memory limits, and non-root user
+- **Local Sandbox**: Multiprocessing-based isolation with restricted globals (`__import__`, `open`, `eval` disabled)
+- Auto-detects Docker availability and falls back to local sandbox gracefully
+
 ### API Keys & Secrets
 - All API keys are loaded from environment variables — never hardcoded
 - `.env.prod`, `.env.staging` are gitignored — never commit real secrets
-- `SECRET_KEY` auto-generates a cryptographically-secure 32-byte ephemeral key at startup if not configured — a `WARNING` is logged urging operators to set a persistent value for production (v3.2.1+)
-- `IPC_SECRET_TOKEN` is a persistent stable token stored at `data/ipc_secret.token` with `chmod 600`. If the file is missing, empty, corrupt (non-UTF-8), or unreadable, a `CRITICAL` log entry is emitted before regenerating (v3.2.1+)
-- `WHATSAPP_APP_SECRET` is required for HMAC-SHA256 verification of WhatsApp webhooks (v3.2.1+)
-- `POSTGRES_PASSWORD` must be set in `.env` before production deployment — the default `amadeus_password` is a development placeholder only
+- `SECRET_KEY` auto-generates a cryptographically-secure 32-byte ephemeral key at startup if not configured
+- `IPC_SECRET_TOKEN` is a persistent stable token stored at `data/ipc_secret.token` with `chmod 600`.
 
 ### Authentication
 - JWT via `fastapi-users` with bcrypt password hashing
-- Rate limiting per user (JWT `sub` claim) with IP fallback via `slowapi`; falls back to in-memory storage if Redis is unreachable (v3.2.1+)
-- RBAC middleware: `RequireUser` role required for chat/voice/task endpoints
-- **SEC-03**: `MASTER_TELEGRAM_CHAT_ID` allowlist — messages from any other Telegram `chat_id` receive `"Unauthorized."` and are dropped before any processing (v3.2.1+)
-- **SEC-02**: `X-Hub-Signature-256` HMAC verification on every inbound WhatsApp webhook payload (v3.2.1+)
+- RBAC middleware: `RequireUser` role required for chat/task endpoints
+- **SEC-03**: `MASTER_TELEGRAM_CHAT_ID` allowlist — unauthorized Telegram senders are dropped
+- **SEC-02**: `X-Hub-Signature-256` HMAC verification on WhatsApp webhooks
 
 ### Network Isolation (Docker)
-- Redis (`6379`) and Postgres (`5432`) ports are **not exposed to the host** — both services are internal to the `amadeus-network` Docker bridge
+- Redis (`6379`) and Postgres (`5432`) ports are **not exposed to the host**
 - The API port (`8000`) is the only port exposed to the host
 
-### Tool Execution (HITL)
-- Destructive tool operations (file deletion, app launch) require user confirmation
-- Confirmation has a 60-second timeout before auto-deny
-- **Filesystem sandboxing (v3.2.1+)**: `copy_file`, `move_file`, and `create_folder` all resolve canonical paths and validate against `SEARCH_ALLOWED_DIRS` via `_assert_in_allowed_dirs()`. Path traversal (e.g. `../../etc/passwd`) returns `"Access denied"` without touching the filesystem.
-- Python sandbox execution runs in an ephemeral Docker container with `--network=none`, `--memory=256m`, `--cpus=0.5`
-
 ### Prompt Injection (v3.2.1+)
-- **SEC-01**: All user task text is wrapped in `<user_task>` XML boundary tags before being inserted into the ReAct prompt. ReAct control tokens (`Action:`, `Thought:`, `Action Input:`, `Observation:`, `FINISH`) found in user input are replaced with `[BLOCKED:TOKEN]` neutralisation markers, preventing LLM-assisted privilege escalation via messaging channels.
-
-### Memory & RAG
-- The Flash Memory Cache (L1) is in-process RAM only — never written to disk
-- Qdrant stores vector embeddings only — raw message text is stored in the payload
-- **Memory deduplication (v3.2.1+)**: Point IDs are content-based `uuid5(session_id:role:text)` — flooding identical messages now occupies one slot instead of N
-- Workspace index (`data/workspace_index/`) contains file path metadata and chunk content — gitignored by default
-
-### Local Model Privacy
-- When `SLM_MODEL_PATH` is set and `LOCAL_ONLY_MODE=true`, no data leaves the machine
-- Ollama and LlamaCpp adapters run entirely locally — no API calls made
+- **SEC-01**: User task text wrapped in `<user_task>` XML boundary tags. ReAct control tokens found in user input are neutralized with `[BLOCKED:TOKEN]` markers.
 
 ### Dependency Auditing
-- `pip-audit` runs on every CI push to check for known CVEs in dependencies
+- `pip-audit` runs on every CI push to check for known CVEs
 - Bandit static security analysis runs at `--severity-level high`
-- GitGuardian pre-commit hook scans for leaked secrets before every commit
+- GitGuardian pre-commit hook scans for leaked secrets
 
 ---
 
