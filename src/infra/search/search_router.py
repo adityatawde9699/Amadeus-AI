@@ -129,10 +129,44 @@ class SearchRouter:
                     data = await r.json()
                     extract = data.get("extract", "")
                     return extract[:800] if extract else ""
+                elif r.status == 404:
+                    return await self._wikipedia_search_fallback(subject)
             return ""
         except Exception as e:
             logger.debug("Wikipedia search failed: %s", type(e).__name__)
             return ""
+
+    async def _wikipedia_search_fallback(self, query: str) -> str:
+        """Fallback search using Wikipedia's search API for typos."""
+        search_api = "https://en.wikipedia.org/w/api.php"
+        params: dict[str, str | int] = {
+            "action": "query",
+            "list": "search",
+            "srsearch": query,
+            "format": "json",
+            "srlimit": 1,
+        }
+        headers = {"User-Agent": "AmadeusAI/2.0 (https://github.com/adityatawde9699/Amadeus-AI)"}
+        try:
+            session = await self._get_session()
+            async with session.get(
+                search_api, params=params, headers=headers, timeout=aiohttp.ClientTimeout(total=5)
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    results = data.get("query", {}).get("search", [])
+                    if results:
+                        title = results[0].get("title", "")
+                        snippet = (
+                            results[0]
+                            .get("snippet", "")
+                            .replace('<span class="searchmatch">', "")
+                            .replace("</span>", "")
+                        )
+                        return f"Wikipedia result for '{query}':\n{title}: {snippet}..."
+        except Exception as e:
+            logger.debug("Wikipedia fallback failed: %s", type(e).__name__)
+        return ""
 
     async def _ddg_search(self, query: str) -> str:
         """Search DuckDuckGo using the ddgs library.

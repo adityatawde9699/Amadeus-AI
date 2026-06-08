@@ -147,7 +147,8 @@ class Settings(BaseSettings):
     # SLM / llama_cpp Settings (Primary if SLM_MODEL_PATH is set)
     SLM_MODEL_PATH: str | None = None  # Absolute path to .gguf file (takes priority)
     SLM_THREADS: int = 2
-    SLM_CTX_SIZE: int = 2048
+    SLM_CTX_SIZE: int = 4096
+    SLM_QUANTIZE_KV_4BIT: bool = True  # 4-bit KV-cache quantization (cuts KV RAM ~75%)
 
     # =========================================================================
     # MODEL DIRECTORY & AUTO-DOWNLOAD

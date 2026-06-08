@@ -20,9 +20,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import uuid
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from opentelemetry import trace
 
 from google import genai
@@ -256,30 +257,87 @@ class AmadeusService:
         """
         lower_query = query.lower().strip()
 
+        # ── Priority 0: Identity exclusion (Prevents "Who are you" -> web search) ──
+        _IDENTITY_PHRASES = [
+            "who are you", "what are you", "your name", "who am i talking to",
+            "what's your name", "tell me about yourself", "who made you",
+            "who created you", "your creator",
+        ]
+        if any(p in lower_query for p in _IDENTITY_PHRASES):
+            logger.info("Triage override: Identity query detected, routing to conversational")
+            return "conversational", None
+
+        # ── Priority 0.5: URL Detection (Shared links -> fetch_webpage_content) ──
+        url_match = re.search(r"https?://[^\s]+", lower_query)
+        if url_match:
+            logger.info("Triage override: URL detected, routing to fetch_webpage_content")
+            return "tool", "fetch_webpage_content"
+
         # ── Priority 1: Factual knowledge override ──────────────────────────
-        # These always need a live web search, never a calculator or LLM guess.
-        _FACTUAL_PREFIXES = [
+        _WIKI_PREFIXES = [
             "who is", "who was", "who are", "who were",
             "what is", "what was", "what are", "what were",
             "where is", "where was", "when did", "when was",
-            "who won", "how many", "tell me about", "who created",
-            "who invented", "who founded", "who wrote",
+            "tell me about", "who created", "who invented",
+            "who founded", "who wrote",
         ]
-        if any(lower_query.startswith(p) for p in _FACTUAL_PREFIXES):
-            logger.info("Triage override: Factual query detected, routing to web_search")
+        _LIVE_PREFIXES = ["who won", "how many", "current score", "what happened"]
+        
+        # Exception: Weather should go to get_weather, not wikipedia/web
+        if "weather" in lower_query or "temperature" in lower_query:
+            pass
+        elif "news" in lower_query or "headlines" in lower_query:
+            logger.info("Triage override: News query detected, routing to get_news")
+            return "tool", "get_news"
+        elif any(lower_query.startswith(p) for p in _LIVE_PREFIXES):
+            logger.info("Triage override: Live query detected, routing to web_search")
             return "tool", "web_search"
+        elif any(lower_query.startswith(p) for p in _WIKI_PREFIXES):
+            logger.info("Triage override: Factual query detected, routing to wikipedia_search")
+            return "tool", "wikipedia_search"
 
-        # ── Priority 2: Sandbox execution override ──────────────────────────
+        # ── Priority 1.2: Sandbox execution override ──────────────────────────
         # Strong coding intent → always use execute_python_script.
         _SANDBOX_TRIGGERS = [
             "write and run", "write a python", "run python", "execute python",
             "run a script", "execute a script", "write a script",
             "write code and run", "compute with python", "calculate using python",
-            "run this code", "execute this code",
+            "run this code", "execute this code", "create a python", "create a script",
+            "generate python", "generate a script",
         ]
         if any(t in lower_query for t in _SANDBOX_TRIGGERS):
             logger.info("Triage override: Sandbox execution request detected, routing to execute_python_script")
             return "tool", "execute_python_script"
+
+        # ── Priority 1.3: App termination override ────────────────────────────
+        # "close X", "kill X", "stop X", "terminate X" → always terminate_program.
+        # The semantic router sometimes misses these short commands.
+        _TERMINATE_VERBS = ["close ", "kill ", "stop ", "terminate ", "end ", "quit ", "exit "]
+        _OPEN_VERBS = ["open ", "launch ", "start ", "run "]  # Exclude: "start recording" etc.
+        if any(lower_query.startswith(v) for v in _TERMINATE_VERBS):
+            logger.info("Triage override: App close/kill detected, routing to terminate_program")
+            return "tool", "terminate_program"
+        # Also catch mid-sentence patterns: "please close chrome", "can you kill vlc"
+        _TERMINATE_PATTERNS = [
+            "please close ", "please kill ", "please stop ", "please terminate ",
+            "can you close ", "can you kill ", "can you stop ",
+            "force close ", "force quit ", "force kill ",
+            "shut down ", "shutdown ",
+        ]
+        if any(p in lower_query for p in _TERMINATE_PATTERNS):
+            logger.info("Triage override: App close pattern detected, routing to terminate_program")
+            return "tool", "terminate_program"
+
+        # ── Priority 1.4: App open override ────────────────────────────────
+        # Mirror of the terminate override for opening apps.
+        if any(lower_query.startswith(v) for v in _OPEN_VERBS):
+            logger.info("Triage override: App open detected, routing to open_program")
+            return "tool", "open_program"
+
+        # ── Priority 1.5: Content Generation Detection ─────────────────────
+        if self._is_content_generation(lower_query):
+            logger.info("Triage override: Content generation detected, routing to content_generation")
+            return "content_generation", None
 
         # ── Default: semantic router ────────────────────────────────────────
         if self._semantic_router.is_ready:
@@ -288,6 +346,15 @@ class AmadeusService:
             intent_type, tool_name = "conversational", None
 
         return intent_type, tool_name
+
+    def _is_content_generation(self, lower_query: str) -> bool:
+        """Return True if the query asks to write/create long-form content."""
+        verbs = ["write", "compose", "create", "draft", "generate", "explain in detail"]
+        nouns = [
+            "essay", "article", "story", "poem", "code", "script", "program",
+            "letter", "email", "report", "summary", "paragraph", "post", "blog"
+        ]
+        return any(v in lower_query for v in verbs) and any(n in lower_query for n in nouns)
 
     async def _process_command_internal(
         self,
@@ -319,6 +386,16 @@ class AmadeusService:
             )
             return response, None
 
+        if intent_type == "content_generation":
+            logger.info("Triage: content generation")
+            response = await self._composer.compose_long_form(
+                user_input=user_input,
+                session_id=context.session_id,
+                context_summary=conversation_manager.get_context_summary(),
+                recent_history=conversation_manager.get_formatted_history(3),
+            )
+            return response, None
+
         # intent_type == "tool"
         actual_tool_name = tool_name or ""
         logger.info("Triage: tool=%s", actual_tool_name)
@@ -329,9 +406,18 @@ class AmadeusService:
                 actual_tool_name, args, context
             )
             if result.success:
-                prose = await self._composer.compose_tool_response(
-                    user_input, actual_tool_name, result.output
-                )
+                if actual_tool_name == "fetch_webpage_content":
+                    # Specialized summary for webpage content
+                    prose = await self._composer.compose_tool_response(
+                        user_input, 
+                        actual_tool_name, 
+                        result.output,
+                        instruction="Summarize the content of the webpage provided below. Be thorough but concise."
+                    )
+                else:
+                    prose = await self._composer.compose_tool_response(
+                        user_input, actual_tool_name, result.output
+                    )
                 return prose, actual_tool_name
             # P8: Don't return raw error strings directly to the user.
             # Wrap in a friendly prose response so the answer reads naturally

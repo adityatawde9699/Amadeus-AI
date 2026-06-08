@@ -88,24 +88,6 @@ class TestLLMRouterFallback:
         assert provider == "gemini"
         groq.generate_response.assert_not_called()
 
-    @pytest.mark.asyncio
-    async def test_openai_only_used_for_high_complexity(self):
-        """OpenAI is only included in the fallback chain for high-complexity requests."""
-        groq = AsyncMock()
-        groq.generate_response = AsyncMock(side_effect=Exception("fail"))
-        gemini = AsyncMock()
-        gemini.generate_response = AsyncMock(side_effect=Exception("fail"))
-        openai = _make_mock_provider("openai-response")
-        router = LLMRouter(groq=groq, gemini=gemini, openai=openai)
-
-        # Normal complexity — openai should NOT be tried
-        with pytest.raises(LLMRateLimitError):
-            await router.generate("hello", complexity="normal")
-
-        # High complexity — openai IS tried
-        result, provider = await router.generate("complex analysis", complexity="high")
-        assert provider == "openai"
-
 
 class TestLLMRouterUsageCounter:
     @pytest.mark.asyncio

@@ -371,6 +371,11 @@ class TelegramTransport:
             logger.error("Cannot send — Telegram bot not initialized")
             return False
 
+        # Guard against empty text — Telegram API rejects it (400 Bad Request).
+        if not text or not text.strip():
+            logger.warning("send_message called with empty text for chat_id=%s — using fallback", chat_id)
+            text = "I couldn't generate a response. Please try again."
+
         try:
             await self._bot.send_message(
                 chat_id=chat_id,

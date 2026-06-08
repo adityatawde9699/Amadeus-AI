@@ -28,6 +28,7 @@ import time
 
 from opentelemetry import trace
 from src.core.exceptions import LLMRateLimitError
+from src.core.interfaces.services import ILLMService
 from src.runtime.events import EventBus
 
 
@@ -166,7 +167,7 @@ class LLMRouter:
         event_bus: EventBus | None = None,
     ) -> None:
         self.event_bus = event_bus
-        self._providers: dict[str, object] = {}
+        self._providers: dict[str, ILLMService] = {}
         # LlamaCpp (SLM) is always first — locally prioritized
         if llama_cpp:
             self._providers["llama_cpp"] = llama_cpp
@@ -315,6 +316,17 @@ class LLMRouter:
                         "Skipping local model to avoid truncation.",
                         int(estimated_tokens),
                         self._LLAMA_CTX_LIMIT,
+                    )
+                    continue
+
+                # ── Skip local model for structured JSON calls ─────────────────
+                # Small local models (Qwen3-2B, Llama-1B) do not reliably output
+                # pure JSON — they prepend chain-of-thought prose and refuse the
+                # schema.  Route structured calls directly to cloud providers.
+                if structured and not self._local_only_mode:
+                    logger.debug(
+                        "LLMRouter: skipping llama_cpp for structured=True — "
+                        "routing to cloud provider for reliable JSON output."
                     )
                     continue
 
