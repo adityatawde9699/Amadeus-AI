@@ -268,6 +268,7 @@ def _build_llm_router() -> LLMRouter:
                 model_path=str(resolved_gguf),
                 threads=settings.SLM_THREADS,
                 context_length=settings.SLM_CTX_SIZE,
+                quantize_kv_4bit=settings.SLM_QUANTIZE_KV_4BIT,
             )
         except Exception as e:
             logger.exception("Failed to configure LlamaCppAdapter: %s", e)

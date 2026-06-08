@@ -136,8 +136,12 @@ def _build_registry_for_calibration() -> ToolRegistry:
     # Keep this import path lightweight so the script runs even when
     # optional API/server deps are not installed.
     from src.infra.tools.info_tools import get_info_tools
-    from src.infra.tools.monitor_tools import get_monitor_tools
-    from src.infra.tools.productivity_tools import get_productivity_tools
+    from src.infra.tools.productivity_tools import (
+        build_note_tools,
+        build_pomodoro_tools,
+        build_reminder_tools,
+        build_task_tools,
+    )
     from src.infra.tools.system_tools import get_system_tools
 
     for tool in get_info_tools():
@@ -146,7 +150,13 @@ def _build_registry_for_calibration() -> ToolRegistry:
         registry.register(tool)
     for tool in get_monitor_tools():
         registry.register(tool)
-    for tool in get_productivity_tools():
+    for tool in build_task_tools(None):  # type: ignore[arg-type]
+        registry.register(tool)
+    for tool in build_pomodoro_tools(None):  # type: ignore[arg-type]
+        registry.register(tool)
+    for tool in build_note_tools(None):  # type: ignore[arg-type]
+        registry.register(tool)
+    for tool in build_reminder_tools(None):  # type: ignore[arg-type]
         registry.register(tool)
     return registry
 

@@ -75,14 +75,17 @@ async def test_is_available_returns_false_when_file_missing() -> None:
 
 @pytest.mark.unit
 def test_build_messages_no_context() -> None:
-    """Without context, only the user message is in the list."""
+    """Without context, system message + user message are in the list."""
     msgs = LlamaCppAdapter._build_messages("Hello", context=None)
-    assert msgs == [{"role": "user", "content": "Hello"}]
+    assert msgs == [
+        {"role": "system", "content": LlamaCppAdapter._LOCAL_SYSTEM_PROMPT},
+        {"role": "user", "content": "Hello"}
+    ]
 
 
 @pytest.mark.unit
 def test_build_messages_with_context_history() -> None:
-    """With context, previous messages are prepended before the user turn."""
+    """With context, system prompt + previous messages are prepended."""
     msg1 = MagicMock()
     msg1.role = "user"
     msg1.content = "What is Python?"
@@ -97,6 +100,7 @@ def test_build_messages_with_context_history() -> None:
     msgs = LlamaCppAdapter._build_messages("Tell me more.", context=context)
 
     assert msgs == [
+        {"role": "system", "content": LlamaCppAdapter._LOCAL_SYSTEM_PROMPT},
         {"role": "user", "content": "What is Python?"},
         {"role": "assistant", "content": "Python is a programming language."},
         {"role": "user", "content": "Tell me more."},
@@ -105,10 +109,13 @@ def test_build_messages_with_context_history() -> None:
 
 @pytest.mark.unit
 def test_build_messages_context_with_no_messages_attr() -> None:
-    """Context objects without .messages don't crash — falls back to single turn."""
+    """Context objects without .messages don't crash — falls back to system + single turn."""
     context = MagicMock(spec=[])  # No .messages attribute
     msgs = LlamaCppAdapter._build_messages("Hi", context=context)
-    assert msgs == [{"role": "user", "content": "Hi"}]
+    assert msgs == [
+        {"role": "system", "content": LlamaCppAdapter._LOCAL_SYSTEM_PROMPT},
+        {"role": "user", "content": "Hi"}
+    ]
 
 
 # =============================================================================
@@ -171,8 +178,9 @@ async def test_generate_response_injects_context_history(adapter: LlamaCppAdapte
         await adapter.generate_response("Follow-up", context=context)
 
     sent_messages = fake_llm.create_chat_completion.call_args.kwargs["messages"]
-    assert sent_messages[0] == {"role": "user", "content": "Previous question"}
-    assert sent_messages[1] == {"role": "user", "content": "Follow-up"}
+    assert sent_messages[0] == {"role": "system", "content": LlamaCppAdapter._LOCAL_SYSTEM_PROMPT}
+    assert sent_messages[1] == {"role": "user", "content": "Previous question"}
+    assert sent_messages[2] == {"role": "user", "content": "Follow-up"}
 
 
 # =============================================================================
@@ -291,17 +299,6 @@ async def test_get_llm_skips_flash_attn_when_not_supported(
         return MagicMock()
 
     mock_llama_cls = MagicMock(side_effect=fake_llama_init)
-    # Simulate a Llama.__init__ that only has the basic params (no flash_attn)
-    basic_params = [
-        "self",
-        "model_path",
-        "n_threads",
-        "n_ctx",
-        "n_batch",
-        "use_mmap",
-        "use_mlock",
-        "verbose",
-    ]
 
     mock_module = MagicMock()
     mock_module.Llama = mock_llama_cls
@@ -319,3 +316,75 @@ async def test_get_llm_skips_flash_attn_when_not_supported(
     assert "flash_attn" not in captured_kwargs
     assert "type_k" not in captured_kwargs
     assert "type_v" not in captured_kwargs
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_get_llm_injects_4bit_kv_quantization_when_enabled(
+    model_path: str,
+) -> None:
+    """_get_llm() passes type_k and type_v as GGML_TYPE_Q4_0 when quantize_kv_4bit=True."""
+    from src.infra.llm.llama_cpp_adapter import GGML_TYPE_Q4_0
+
+    adapter = LlamaCppAdapter(
+        model_path=model_path, threads=1, context_length=512, quantize_kv_4bit=True,
+    )
+
+    captured_kwargs: dict[str, Any] = {}
+
+    def fake_llama_init(**kwargs: Any) -> MagicMock:
+        captured_kwargs.update(kwargs)
+        return MagicMock()
+
+    mock_llama_cls = MagicMock(side_effect=fake_llama_init)
+
+    mock_module = MagicMock()
+    mock_module.Llama = mock_llama_cls
+
+    import inspect as _inspect
+    # Simulate a build that supports type_k / type_v / flash_attn
+    fake_sig = _inspect.signature(
+        lambda model_path, n_threads, n_ctx, n_batch, use_mmap, use_mlock,
+               verbose, flash_attn, type_k, type_v: None
+    )
+
+    with patch.dict("sys.modules", {"llama_cpp": mock_module}):
+        with patch("inspect.signature", return_value=fake_sig):
+            await adapter._get_llm()
+
+    assert captured_kwargs["type_k"] == GGML_TYPE_Q4_0
+    assert captured_kwargs["type_v"] == GGML_TYPE_Q4_0
+    assert captured_kwargs["flash_attn"] is False  # still disabled by default
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_get_llm_skips_4bit_kv_when_disabled(
+    adapter: LlamaCppAdapter,
+) -> None:
+    """_get_llm() does NOT pass type_k/type_v when quantize_kv_4bit is False (default)."""
+    captured_kwargs: dict[str, Any] = {}
+
+    def fake_llama_init(**kwargs: Any) -> MagicMock:
+        captured_kwargs.update(kwargs)
+        return MagicMock()
+
+    mock_llama_cls = MagicMock(side_effect=fake_llama_init)
+
+    mock_module = MagicMock()
+    mock_module.Llama = mock_llama_cls
+
+    import inspect as _inspect
+    fake_sig = _inspect.signature(
+        lambda model_path, n_threads, n_ctx, n_batch, use_mmap, use_mlock,
+               verbose, flash_attn, type_k, type_v: None
+    )
+
+    with patch.dict("sys.modules", {"llama_cpp": mock_module}):
+        with patch("inspect.signature", return_value=fake_sig):
+            await adapter._get_llm()
+
+    # type_k / type_v should NOT be present since quantize_kv_4bit defaults to False
+    assert "type_k" not in captured_kwargs
+    assert "type_v" not in captured_kwargs
+

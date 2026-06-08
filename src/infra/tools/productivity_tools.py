@@ -28,17 +28,6 @@ from src.infra.tools.base import Tool, ToolCategory, tool
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
-# LEGACY DB SESSION HELPER (kept for backwards compat — will be deprecated)
-# The injected factory functions below are the preferred approach.
-# =============================================================================
-
-
-def _get_session() -> Any:
-    """Get async session — used by legacy bare-function tools."""
-    from src.infra.persistence.database import get_session
-
-    return get_session()
 
 
 # =============================================================================
@@ -366,6 +355,9 @@ def build_reminder_tools(reminder_repo: IReminderRepository) -> list[Tool]:
         except ImportError:
             parsed_time = None
         parsed_time = parsed_time or datetime.now(UTC)
+        # Strip tzinfo: the DB column is TIMESTAMP WITHOUT TIME ZONE.
+        if parsed_time.tzinfo is not None:
+            parsed_time = parsed_time.replace(tzinfo=None)
 
         try:
             created = await reminder_repo.create(
@@ -414,175 +406,3 @@ def build_reminder_tools(reminder_repo: IReminderRepository) -> list[Tool]:
     ]
 
 
-# =============================================================================
-# LEGACY BARE TOOLS (kept until container.py is fully migrated)
-# These use _get_session() directly and will be removed in Phase 4.
-# =============================================================================
-
-from sqlalchemy import select
-
-
-@tool(
-    name="create_note",
-    description="Create a new note. Trigger: 'create note', 'take note', 'new note'",
-    category=ToolCategory.TASK_MANAGER,
-    parameters={
-        "title": {"type": "string", "description": "Note title"},
-        "content": {"type": "string", "description": "Note content"},
-    },
-)
-async def create_note(title: str | None = None, content: str | None = None, **kwargs: Any) -> str:
-    note_title = title or kwargs.get("name") or "Untitled Note"
-    note_content = content or kwargs.get("text") or ""
-    try:
-        async with _get_session() as db:
-            from src.infra.persistence.orm_models import NoteORM
-
-            note = NoteORM(title=note_title, content=note_content)
-            db.add(note)
-            await db.commit()
-            await db.refresh(note)
-            return f"📝 Note created: '{note_title}' (ID: {note.id})"
-    except Exception as e:
-        logger.exception("create_note failed: %s", e)
-        return f"Error creating note: {e}"
-
-
-@tool(
-    name="list_notes",
-    description="List all notes. Trigger: 'show notes', 'my notes'",
-    category=ToolCategory.TASK_MANAGER,
-)
-async def list_notes(**kwargs: Any) -> str:
-    try:
-        async with _get_session() as db:
-            from src.infra.persistence.orm_models import NoteORM
-
-            stmt = select(NoteORM.id, NoteORM.title, NoteORM.created_at).order_by(
-                NoteORM.created_at.desc()
-            )
-            result = await db.execute(stmt)
-            notes = result.all()
-            if not notes:
-                return "No notes found."
-            lines = [f"Notes ({len(notes)}):"]
-            for n in notes[:15]:
-                date_str = n.created_at.strftime("%m/%d") if n.created_at else ""
-                lines.append(f"  📝 [{n.id}] {n.title} ({date_str})")
-            if len(notes) > 15:
-                lines.append(f"  ... and {len(notes) - 15} more")
-            return "\n".join(lines)
-    except Exception as e:
-        logger.exception("list_notes failed: %s", e)
-        return f"Error listing notes: {e}"
-
-
-@tool(
-    name="get_note",
-    description="Get a specific note by ID or title. Trigger: 'read note', 'show note'",
-    category=ToolCategory.TASK_MANAGER,
-    parameters={"identifier": {"type": "string", "description": "Note ID or title"}},
-)
-async def get_note(identifier: str | None = None, **kwargs: Any) -> str:
-    target = identifier or kwargs.get("id") or kwargs.get("title")
-    if not target:
-        return "Error: No note identifier provided."
-    try:
-        async with _get_session() as db:
-            from src.infra.persistence.orm_models import NoteORM
-
-            note = None
-            if str(target).isdigit():
-                result = await db.execute(select(NoteORM).where(NoteORM.id == int(target)))
-                note = result.scalars().first()
-            if not note:
-                result = await db.execute(select(NoteORM).where(NoteORM.title.ilike(f"%{target}%")))
-                note = result.scalars().first()
-            if not note:
-                return f"Note '{target}' not found."
-            return f"📝 {note.title}\n{'─' * 30}\n{note.content}"
-    except Exception as e:
-        logger.exception("get_note failed: %s", e)
-        return f"Error getting note: {e}"
-
-
-@tool(
-    name="add_reminder",
-    description="Create a reminder. Trigger: 'remind me', 'set reminder'",
-    category=ToolCategory.TASK_MANAGER,
-    parameters={
-        "title": {"type": "string", "description": "Reminder title"},
-        "time": {"type": "string", "description": "When (e.g. 'in 1 hour', 'tomorrow 9am')"},
-    },
-)
-async def add_reminder(title: str | None = None, time: str | None = None, **kwargs: Any) -> str:
-    reminder_title = title or kwargs.get("text") or kwargs.get("message")
-    reminder_time = time or kwargs.get("when") or kwargs.get("at")
-    if not reminder_title:
-        return "Error: No reminder title provided."
-    try:
-        from dateparser import parse as parse_date
-
-        parsed_time = parse_date(reminder_time) if reminder_time else None
-    except ImportError:
-        parsed_time = None
-    parsed_time = parsed_time or datetime.now(UTC)
-
-    try:
-        async with _get_session() as db:
-            from src.infra.persistence.orm_models import ReminderORM
-
-            reminder = ReminderORM(title=reminder_title, time=parsed_time)
-            db.add(reminder)
-            await db.commit()
-            await db.refresh(reminder)
-            time_str = parsed_time.strftime("%Y-%m-%d %H:%M")
-            return f"⏰ Reminder set: '{reminder_title}' at {time_str}"
-    except Exception as e:
-        logger.exception("add_reminder failed: %s", e)
-        return f"Error adding reminder: {e}"
-
-
-@tool(
-    name="list_reminders",
-    description="List all reminders. Trigger: 'show reminders', 'my reminders'",
-    category=ToolCategory.TASK_MANAGER,
-)
-async def list_reminders(**kwargs: Any) -> str:
-    try:
-        async with _get_session() as db:
-            from src.infra.persistence.orm_models import ReminderORM
-
-            stmt = (
-                select(ReminderORM.id, ReminderORM.title, ReminderORM.time, ReminderORM.status)
-                .where(ReminderORM.status == "active")
-                .order_by(ReminderORM.time.asc())
-            )
-            result = await db.execute(stmt)
-            reminders = result.all()
-            if not reminders:
-                return "No active reminders."
-            lines = [f"⏰ Reminders ({len(reminders)}):"]
-            for r in reminders[:10]:
-                time_str = r.time.strftime("%m/%d %H:%M") if r.time else "?"
-                lines.append(f"  [{r.id}] {r.title} - {time_str}")
-            return "\n".join(lines)
-    except Exception as e:
-        logger.exception("list_reminders failed: %s", e)
-        return f"Error listing reminders: {e}"
-
-
-# =============================================================================
-# TOOL COLLECTION
-# =============================================================================
-
-
-def get_productivity_tools() -> list[Tool]:
-    """Get legacy (session-injected) productivity tools."""
-    return [
-        create_note._tool_metadata,  # type: ignore[attr-defined]
-        list_notes._tool_metadata,  # type: ignore[attr-defined]
-        get_note._tool_metadata,  # type: ignore[attr-defined]
-        add_reminder._tool_metadata,  # type: ignore[attr-defined]
-        list_reminders._tool_metadata,  # type: ignore[attr-defined]
-    ]

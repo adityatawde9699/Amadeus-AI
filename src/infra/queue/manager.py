@@ -23,13 +23,37 @@ class QueueManager:
         self._settings = get_settings()
         self._redis_url = redis_url or self._settings.REDIS_URL
         self._pool = None
+        self._available = False
 
-    async def initialize(self) -> None:
+    @property
+    def is_available(self) -> bool:
+        """Return whether the Redis-backed queue is ready for jobs."""
+        return self._pool is not None and self._available
+
+    async def initialize(self, *, required: bool = False) -> None:
         """Initialize the Redis pool for enqueuing jobs."""
-        if self._pool is None:
+        if self._pool is not None:
+            self._available = True
+            return
+
+        try:
             redis_settings = RedisSettings.from_dsn(self._redis_url)
+            if not required:
+                redis_settings.conn_retries = 0
             self._pool = await create_pool(redis_settings)
+            self._available = True
             logger.info("QueueManager: Connected to Redis for background jobs.")
+        except Exception as e:
+            self._pool = None
+            self._available = False
+            message = (
+                "QueueManager: Redis unavailable (%s) - background jobs disabled. "
+                "Start Redis or set REDIS_URL to enable ARQ jobs."
+            )
+            if required:
+                logger.error(message, e)
+                raise RuntimeError("Background job queue requires Redis, but Redis is unavailable") from e
+            logger.warning(message, e)
 
     async def enqueue_tool(self, tool_name: str, args: dict[str, Any], context: RequestContext) -> str:
         """
@@ -39,7 +63,7 @@ class QueueManager:
             The job ID.
         """
         if self._pool is None:
-            await self.initialize()
+            await self.initialize(required=True)
             
         # Serialize RequestContext for the job
         context_dict = {
@@ -58,7 +82,7 @@ class QueueManager:
     async def get_job_result(self, job_id: str) -> Any:
         """Get the result of a background job."""
         if self._pool is None:
-            await self.initialize()
+            await self.initialize(required=True)
             
         job = self._pool.get_job(job_id)
         return await job.result()
@@ -68,3 +92,4 @@ class QueueManager:
         if self._pool is not None:
             await self._pool.close()
             self._pool = None
+            self._available = False

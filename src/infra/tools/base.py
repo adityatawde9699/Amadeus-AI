@@ -498,18 +498,47 @@ class ToolExecutor:
         )
 
     def _validate_args(self, tool: Tool, args: dict[str, Any]) -> dict[str, Any]:
-        """Validate and clean arguments for a tool.
+        """Validate, coerce types, and clean arguments for a tool.
 
         CQ-03: Embeds a '_validation_error' key when required parameters are
         missing. execute() checks for this sentinel and returns a
         ToolExecutionResult(success=False) so the caller sees a clear error
         instead of a cryptic TypeError from inside the tool function.
+
+        Type coercion: LLMs often return numeric arguments as strings
+        (e.g. ``limit: "5"``). We inspect the function signature's annotation
+        and coerce ``str → int | float | bool`` so tools that expect a Python
+        int do not crash with an AssertionError or TypeError at call time.
         """
         sig = inspect.signature(tool.function)
         valid_params = set(sig.parameters.keys())
 
         # Filter to only valid parameters
         cleaned = {k: v for k, v in args.items() if k in valid_params}
+
+        # ── Type coercion pass ────────────────────────────────────────────────
+        # LLMs frequently return numbers as strings.  Cast them to the
+        # annotated type so tools receive the correct Python type.
+        for param_name, param in sig.parameters.items():
+            if param_name not in cleaned:
+                continue
+            value = cleaned[param_name]
+            annotation = param.annotation
+            if annotation is inspect.Parameter.empty or not isinstance(value, str):
+                continue
+            try:
+                if annotation is int or annotation == "int":
+                    cleaned[param_name] = int(value)
+                elif annotation is float or annotation == "float":
+                    cleaned[param_name] = float(value)
+                elif annotation is bool or annotation == "bool":
+                    cleaned[param_name] = value.lower() not in ("false", "0", "no", "")
+            except (ValueError, TypeError):
+                # Leave the value as-is; the tool will surface the error itself
+                logger.debug(
+                    "_validate_args: could not coerce '%s'=%r to %s for tool '%s'",
+                    param_name, value, annotation, tool.name,
+                )
 
         # Check for required parameters
         # Exclude VAR_KEYWORD (**kwargs) and VAR_POSITIONAL (*args) — they are

@@ -5,7 +5,12 @@ Connects directly to a locally downloaded GGUF model via llama-cpp-python.
 This provides a 100% offline, privacy-first local experience.
 
 Designed to be used as the primary offline provider if SLM_MODEL_PATH is configured.
+
+Supports optional 4-bit KV-cache quantization (type_k / type_v) to reduce
+RAM usage during inference — especially useful for large context windows on
+memory-constrained machines.
 """
+
 
 import asyncio
 import logging
@@ -22,6 +27,77 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+# ── GGML quantization type constants ─────────────────────────────────────────
+# These mirror the ggml_type enum from llama.cpp.
+# We only reference the ones needed for 4-bit KV-cache quantization.
+GGML_TYPE_F16 = 1      # 16-bit float  (default KV cache type)
+GGML_TYPE_Q4_0 = 2     # 4-bit quantization  (symmetric, fastest)
+GGML_TYPE_Q4_1 = 3     # 4-bit quantization  (asymmetric, slightly better quality)
+GGML_TYPE_Q8_0 = 8     # 8-bit quantization  (good quality / size tradeoff)
+
+# ── Qwen3 / chain-of-thought stripping ──────────────────────────────────────────────
+import re as _re
+_THINK_TAG_RE = _re.compile(r"<think>[\s\S]*?</think>", _re.IGNORECASE)
+
+# Matches verbose thinking preambles that Qwen3 emits *outside* <think> tags,
+# e.g. "Let me think through this carefully." / "Thinking Process:" / numbered
+# analysis steps like "1.  **Analyze the Request:**" / meta-analysis like
+# "The user is asking me to..." / self-narration like "I need to...".
+_PREAMBLE_RE = _re.compile(
+    r"^(?:"
+    # "Let me think/work/analyze..."
+    r"(?:let me (?:think|work|analyze|break|reason|consider|figure|look)(?:[\s\S]*?(?:\n\n|\Z)))"
+    # "Thinking process:"
+    r"|(?:thinking process:?[\s\S]*?(?:\n\n|\Z))"
+    # "Okay, ..." / "Alright, ..."
+    r"|(?:(?:okay|alright|sure)(?:,| )[\s\S]*?(?:\n\n|\Z))"
+    # Numbered bold steps: "1.  **Analyze:**"
+    r"|(?:(?:\d+\.\s+\*\*[\s\S]*?(?:\n\n|\Z))+)"
+    # Meta-analysis: "The user is asking/wants/needs..."
+    r"|(?:the user (?:is|wants|needs|asked|seems|would)[\s\S]*?(?:\n\n|\Z))"
+    # Self-narration: "I need to/should/will/must..."
+    r"|(?:i (?:need to|should|will|must|have to|can|want to)[\s\S]*?(?:\n\n|\Z))"
+    # "Here's my/a/the ..."
+    r"|(?:here(?:'s| is) (?:my|a|the)[\s\S]*?(?:\n\n|\Z))"
+    # "First, I'll/let's/we need..."
+    r"|(?:first(?:,|ly)?\s[\s\S]*?(?:\n\n|\Z))"
+    r")",
+    _re.IGNORECASE | _re.MULTILINE,
+)
+
+# Matches numbered plain-text reasoning lines ("1. The user wants X\n2. I need to Y")
+# that appear as multi-line CoT without bold formatting.
+_NUMBERED_COT_RE = _re.compile(
+    r"^(?:\d+\.\s+(?:the user|i need|i should|i will|i must|i have to|i want to|check|analyze|compose|respond|this)[^\n]*\n?)+",
+    _re.IGNORECASE | _re.MULTILINE,
+)
+
+
+def _strip_think_tags(text: str) -> str:
+    """Remove Qwen3-style chain-of-thought content from model output.
+
+    Handles four variants:
+      1. Full tags:     <think>...reasoning...</think>\nFinal answer
+      2. Truncated:    ...reasoning...\n</think>\nFinal answer
+                       (model omits the opening tag; everything before </think> is CoT)
+      3. Untagged CoT: "Let me think through this carefully..." preambles that
+                       Qwen3 sometimes emits without wrapping in <think> tags.
+      4. Numbered CoT: "1. The user wants X\n2. I need to Y" style analysis.
+    """
+    # 1. Strip matched pairs first
+    cleaned = _THINK_TAG_RE.sub("", text)
+    # 2. If a lone </think> remains, strip everything before it (inclusive)
+    lone_close = cleaned.find("</think>")
+    if lone_close == -1:
+        lone_close = cleaned.lower().find("</think>")
+    if lone_close != -1:
+        cleaned = cleaned[lone_close + len("</think>"):]
+    # 3. Strip untagged thinking preambles
+    cleaned = _PREAMBLE_RE.sub("", cleaned)
+    # 4. Strip numbered CoT reasoning lines
+    cleaned = _NUMBERED_COT_RE.sub("", cleaned)
+    return cleaned.strip()
 
 
 class LlamaCppAdapter(ILLMService):
@@ -40,19 +116,23 @@ class LlamaCppAdapter(ILLMService):
         model_path: str,
         threads: int = 2,
         context_length: int = 2048,
+        quantize_kv_4bit: bool = False,
     ) -> None:
         self.model_path = model_path
         self.threads = threads
         self.context_length = context_length
+        self.quantize_kv_4bit = quantize_kv_4bit
         self._llm: Any | None = None
         self._lock = asyncio.Lock()
         # Set to True after a fatal decode failure so we stop trying until restart
         self._failed: bool = False
         logger.info(
-            "LlamaCppAdapter configured with model: %s (threads=%d, ctx=%d)",
+            "LlamaCppAdapter configured with model: %s "
+            "(threads=%d, ctx=%d, kv_4bit=%s)",
             self.model_path,
             self.threads,
             self.context_length,
+            self.quantize_kv_4bit,
         )
 
     async def _get_llm(self) -> Any:
@@ -82,24 +162,64 @@ class LlamaCppAdapter(ILLMService):
                     "verbose": False,
                 }
 
-                # flash_attn / type_k / type_v are only available in llama_cpp >= 0.2.56
-                # and only on some hardware builds. Guard them to stay version-safe.
+                # ── Optional parameters gated by version inspection ────────
+                # Some llama-cpp-python builds lack flash_attn / type_k / type_v.
+                # We only inject them when the installed version supports them.
                 import inspect
                 try:
-                    # Inspect the class directly to avoid MagicMock __init__ issues in tests
                     llama_sig = inspect.signature(Llama)
+
+                    # flash_attn — leave disabled on CPU by default
                     if "flash_attn" in llama_sig.parameters:
-                        init_kwargs["flash_attn"] = True
-                    if "type_k" in llama_sig.parameters:
-                        init_kwargs["type_k"] = 8  # q8_0 kv cache — less RAM
-                    if "type_v" in llama_sig.parameters:
-                        init_kwargs["type_v"] = 8
+                        init_kwargs["flash_attn"] = False
+
+                    # ── 4-bit KV-cache quantization ────────────────────────
+                    # When enabled, quantizes the key/value cache from FP16
+                    # to Q4_0.  Cuts KV-cache memory by ~75% at the cost of
+                    # a small quality loss — ideal for large context windows
+                    # on memory-constrained hardware.
+                    if self.quantize_kv_4bit:
+                        supports_type_k = "type_k" in llama_sig.parameters
+                        supports_type_v = "type_v" in llama_sig.parameters
+
+                        if supports_type_k and supports_type_v:
+                            init_kwargs["type_k"] = GGML_TYPE_Q4_0
+                            init_kwargs["type_v"] = GGML_TYPE_Q4_0
+                            logger.info(
+                                "4-bit KV-cache quantization ENABLED "
+                                "(type_k=Q4_0, type_v=Q4_0)"
+                            )
+                        else:
+                            missing = []
+                            if not supports_type_k:
+                                missing.append("type_k")
+                            if not supports_type_v:
+                                missing.append("type_v")
+                            logger.warning(
+                                "4-bit KV-cache quantization requested but "
+                                "llama-cpp-python build lacks param(s): %s. "
+                                "Falling back to FP16 KV cache.",
+                                ", ".join(missing),
+                            )
                 except ValueError:
-                    # If Llama is a compiled C-extension without a signature, fallback safely
                     logger.debug("Could not inspect Llama signature; using basic kwargs")
 
                 # Load model in a separate thread to avoid blocking event loop
-                self._llm = await asyncio.to_thread(Llama, **init_kwargs)
+                try:
+                    self._llm = await asyncio.to_thread(Llama, **init_kwargs)
+                except ValueError as e:
+                    if self.quantize_kv_4bit and ("type_k" in init_kwargs or "type_v" in init_kwargs):
+                        logger.warning(
+                            "Failed to initialize Llama with 4-bit KV cache (likely model/arch incompatible). "
+                            "Falling back to standard FP16 KV cache. Error: %s", e
+                        )
+                        # Remove quantization params and try again
+                        init_kwargs.pop("type_k", None)
+                        init_kwargs.pop("type_v", None)
+                        self._llm = await asyncio.to_thread(Llama, **init_kwargs)
+                    else:
+                        raise
+
                 logger.info("LlamaCpp initialized successfully.")
 
             except ImportError as exc:
@@ -133,13 +253,20 @@ class LlamaCppAdapter(ILLMService):
 
     # System prompt kept SHORT for a 1B model's limited context window.
     # The full identity template is used by cloud providers; this is the local-only version.
+    # /no_think disables Qwen3's chain-of-thought mode so it never emits <think> blocks.
     _LOCAL_SYSTEM_PROMPT = (
-        "You are Amadeus, an advanced AI assistant. "
-        "You are helpful, direct, and concise. "
-        "Always respond as Amadeus — never address the user as Amadeus. "
+        "/no_think "
+        "You are Amadeus, an advanced local AI assistant. "
+        "Be direct, intelligent, concise, and practical. "
+        "Prioritize accuracy over politeness. "
+        "Never reveal chain-of-thought, internal reasoning, hidden analysis, or step-by-step thinking. "
+        "Never output thoughts inside tags such as: <think>, <reason>, <analysis>, or similar. "
+        "Do not explain internal decision-making. "
+        "Output only the final answer. "
         "Keep responses plain text — no markdown formatting (no *, **, _, `, etc). "
         "Use numbered lists for structured output. "
-        "If you don't know something, say so honestly."
+        "If you don't know something, say: I don't know. "
+        "Never say 'The user is asking' or 'I need to' — just respond directly."
     )
 
     @staticmethod
@@ -239,7 +366,8 @@ class LlamaCppAdapter(ILLMService):
                     temperature=temperature,
                     stream=False,
                 )
-                return str(res["choices"][0]["message"]["content"]).strip()
+                raw = str(res["choices"][0]["message"]["content"]).strip()
+                return _strip_think_tags(raw)
 
             response_text = await asyncio.to_thread(_generate)
             logger.debug(
@@ -302,11 +430,31 @@ class LlamaCppAdapter(ILLMService):
                     temperature=temperature,
                     stream=True,
                 )
+                # Accumulate tokens; strip <think> blocks from the
+                # completed text before forwarding to avoid leaking CoT.
+                accumulated: list[str] = []
+                in_think_block = False
                 for chunk in stream:
                     choice = chunk.get("choices", [{}])[0]
                     delta = choice.get("delta", {})
                     token = delta.get("content", "")
-                    if token:
+                    if not token:
+                        continue
+                    accumulated.append(token)
+                    joined = "".join(accumulated)
+                    # Detect opening tag — enter suppression mode
+                    if "<think>" in joined.lower() and not in_think_block:
+                        in_think_block = True
+                    # Detect closing tag — flush only the text AFTER </think>
+                    if in_think_block and "</think>" in joined.lower():
+                        after = _THINK_TAG_RE.sub("", joined).strip()
+                        accumulated = [after]  # reset buffer to remainder
+                        in_think_block = False
+                        if after:
+                            loop.call_soon_threadsafe(queue.put_nowait, after)
+                        continue
+                    # Normal (non-think) token — emit immediately
+                    if not in_think_block:
                         loop.call_soon_threadsafe(queue.put_nowait, token)
             except Exception as e:
                 logger.error("Llama stream error: %s", e)

@@ -8,6 +8,7 @@ Inspired by OpenClaw's background routines.
 
 import asyncio
 import logging
+import uuid
 from datetime import datetime
 
 
@@ -73,24 +74,30 @@ class AutonomousObservationLoop:
     async def _check_system_health(self) -> None:
         """Monitor system resources and alert if critical."""
         try:
-            from src.infra.tools.monitor_tools import get_system_status
-            status = get_system_status()
-            
+            import psutil
+            import platform
+
+            cpu_usage = psutil.cpu_percent(interval=0.5)
+            mem = psutil.virtual_memory()
+            disk_path = "C:/" if platform.system() == "Windows" else "/"
+            disk = psutil.disk_usage(disk_path)
+            battery = psutil.sensors_battery()
+
             alerts = []
-            if status.cpu_usage > 90:
-                alerts.append(f"CRITICAL: CPU usage is at {status.cpu_usage}%!")
-            if status.memory_usage > 90:
-                alerts.append(f"CRITICAL: Memory usage is at {status.memory_usage}%!")
-            if status.disk_usage > 95:
-                alerts.append(f"CRITICAL: Disk space is almost full ({status.disk_usage}% used)!")
-            if status.battery_percent is not None and status.battery_percent < 10 and not status.is_charging:
-                alerts.append(f"CRITICAL: Battery is extremely low ({status.battery_percent}%)!")
-                
+            if cpu_usage > 90:
+                alerts.append(f"CRITICAL: CPU usage is at {cpu_usage:.1f}%!")
+            if mem.percent > 90:
+                alerts.append(f"CRITICAL: Memory usage is at {mem.percent:.1f}%!")
+            if disk.percent > 95:
+                alerts.append(f"CRITICAL: Disk space is almost full ({disk.percent:.1f}% used)!")
+            if battery is not None and battery.percent < 10 and not battery.power_plugged:
+                alerts.append(f"CRITICAL: Battery is extremely low ({battery.percent}%)!")
+
             if alerts and self.session_ids:
                 logger.warning("System health alerts detected: %s", alerts)
                 from src.container import global_container
                 svc = global_container.amadeus_service()
-                
+
                 alert_msg = "⚠️ **System Health Alert**\n\n" + "\n".join(alerts)
                 # Notify the first session (typically the master user)
                 await svc.send_outbound_message(self.session_ids[0], "telegram", alert_msg)
@@ -137,7 +144,20 @@ class AutonomousObservationLoop:
                 "important to notify the user about proactively, use tools to send an outbound message (like send_email or platform integrations). "
                 "If not, finish the task silently without bothering the user."
             )
+            # Build a minimal system-level RequestContext for the background event
+            from src.core.domain.context import RequestContext
+            from src.core.domain.models import PermissionProfile
+
+            bg_context = RequestContext(
+                request_id=str(uuid.uuid4()),
+                session_id=session_id,
+                user_id="system",
+                permissions=PermissionProfile.SYSTEM_FULL,
+                memory_scope="global",
+                trace_id=str(uuid.uuid4()),
+                cancellation_token=asyncio.Event(),
+            )
             # Submit to service as a background event
-            await svc.handle_background_event(prompt)
+            await svc.handle_background_event(prompt, bg_context)
         except Exception as e:
             logger.exception("Failed to run observation for session %s: %s", session_id, e)

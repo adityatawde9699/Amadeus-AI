@@ -187,6 +187,14 @@ TRAINING_DATA: dict[str, list[str]] = {
         "my name is", "remember my city is mumbai",
         "schedule a task in 30 minutes", "run this in the background later",
     ],
+    "content_generation": [
+        "write an essay about computers", "compose an article on AI",
+        "draft a letter to my boss", "create a story for kids",
+        "write a poem about nature", "generate a report summary",
+        "compose a blog post", "write a professional email",
+        "draft a proposal", "create a detailed explanation",
+        "write a script for a video", "compose a formal invitation",
+    ],
 }
 
 

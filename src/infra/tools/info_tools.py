@@ -193,7 +193,7 @@ async def get_weather_async(location: str = "India") -> str:
     },
 )
 async def get_news_async(
-    category: str | None = None, country: str | None = None, count: int | None = None
+    category: str | None = None, country: str | None = None, count: int = 5
 ) -> str:
     """Fetches top news headlines using NewsAPI."""
     api_key = settings.NEWS_API_KEY
@@ -202,7 +202,11 @@ async def get_news_async(
 
     category = category or "general"
     country = country or "in"
-    count = count or 5
+    # Ensure count is an integer (LLMs sometimes send strings)
+    try:
+        count = int(count)
+    except (TypeError, ValueError):
+        count = 5
 
     base_url = "https://newsapi.org/v2/top-headlines"
     params: dict[str, str | int] = {

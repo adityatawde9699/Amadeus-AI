@@ -18,6 +18,12 @@ import enum
 from datetime import datetime
 
 from sqlalchemy import Enum as SAEnum
+
+# Helper: tell SQLAlchemy to use the StrEnum .value (lowercase) for DB I/O
+# instead of .name (uppercase).  Without this, asyncpg sends e.g. 'WORKING'
+# when the PostgreSQL enum type expects 'working', causing
+# InvalidTextRepresentationError.
+_enum_values = lambda e: [m.value for m in e]  # noqa: E731
 from sqlalchemy import Float, ForeignKey, Index, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -116,7 +122,7 @@ class UserORM(SQLAlchemyBaseUserTable[int], Base):
 
     # RBAC Fields
     role: Mapped[UserRoleDB] = mapped_column(
-        SAEnum(UserRoleDB),
+        SAEnum(UserRoleDB, values_callable=_enum_values),
         default=UserRoleDB.GUEST,
     )
     tenant_id: Mapped[str | None] = mapped_column(String(36), index=True, nullable=True)
@@ -137,7 +143,7 @@ class TaskORM(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
     content: Mapped[str] = mapped_column(Text)
     status: Mapped[TaskStatusDB] = mapped_column(
-        SAEnum(TaskStatusDB),
+        SAEnum(TaskStatusDB, values_callable=_enum_values),
         default=TaskStatusDB.PENDING,
         index=True,
     )
@@ -165,7 +171,7 @@ class GoalORM(Base):
     title: Mapped[str] = mapped_column(String(256))
     description: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[GoalStatusDB] = mapped_column(
-        SAEnum(GoalStatusDB),
+        SAEnum(GoalStatusDB, values_callable=_enum_values),
         default=GoalStatusDB.ACTIVE,
         index=True,
     )
@@ -224,7 +230,7 @@ class ReminderORM(Base):
     time: Mapped[datetime] = mapped_column(index=True)
     description: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[ReminderStatusDB] = mapped_column(
-        SAEnum(ReminderStatusDB),
+        SAEnum(ReminderStatusDB, values_callable=_enum_values),
         default=ReminderStatusDB.ACTIVE,
         index=True,
     )
@@ -256,7 +262,7 @@ class CalendarEventORM(Base):
     all_day: Mapped[bool] = mapped_column(default=False)
     recurrence: Mapped[str] = mapped_column(String(64), default="")
     status: Mapped[EventStatusDB] = mapped_column(
-        SAEnum(EventStatusDB),
+        SAEnum(EventStatusDB, values_callable=_enum_values),
         default=EventStatusDB.ACTIVE,
         index=True,
     )
@@ -352,7 +358,7 @@ class CognitivePlanORM(Base):
     goal_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     original_task: Mapped[str] = mapped_column(Text)
     status: Mapped[CognitivePlanStatusDB] = mapped_column(
-        SAEnum(CognitivePlanStatusDB),
+        SAEnum(CognitivePlanStatusDB, values_callable=_enum_values),
         default=CognitivePlanStatusDB.DRAFT,
         index=True,
     )
@@ -388,7 +394,7 @@ class CognitivePlanStepORM(Base):
     tool: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     args: Mapped[dict] = mapped_column(JSON, default=dict)
     status: Mapped[CognitiveStepStatusDB] = mapped_column(
-        SAEnum(CognitiveStepStatusDB),
+        SAEnum(CognitiveStepStatusDB, values_callable=_enum_values),
         default=CognitiveStepStatusDB.PENDING,
         index=True,
     )
@@ -495,7 +501,7 @@ class PomodoroSessionORM(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
     state: Mapped[PomodoroStateDB] = mapped_column(
-        SAEnum(PomodoroStateDB),
+        SAEnum(PomodoroStateDB, values_callable=_enum_values),
         default=PomodoroStateDB.IDLE,
         index=True,
     )

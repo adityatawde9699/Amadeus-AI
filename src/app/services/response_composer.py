@@ -21,7 +21,33 @@ if TYPE_CHECKING:
     from src.infra.llm.router import LLMRouter
     from src.infra.memory_service import QdrantMemoryService
 
+import re
+
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# CoT / meta-text sanitizer (final safety net before user sees output)
+# ---------------------------------------------------------------------------
+
+_COT_SANITIZE_RE = re.compile(
+    r"^(?:"
+    # Meta-analysis: "The user is asking/wants/needs..."
+    r"the user (?:is|wants|needs|asked|seems|would)\b[^\n]*"
+    # Self-narration: "I need to / I should / I will..."
+    r"|i (?:need to|should|will|must|have to|can|want to)\b[^\n]*"
+    # Instruction echo: "Here is a natural response:" / "Here's my response:"
+    r"|here(?:'s| is) (?:a|my|the) (?:natural|concise|brief|conversational)?\s*(?:response|answer|reply)[^\n]*"
+    # LLM self-reference: "As Amadeus, I..." / "As an AI..."
+    r"|as (?:amadeus|an ai|your assistant)[^\n]*"
+    r")\s*:?\s*\n?",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+# Numbered reasoning lines ("1. The user wants X", "2. I need to Y")
+_NUMBERED_META_RE = re.compile(
+    r"^(?:\d+\.\s+(?:the user|i need|i should|i will|i must|check|analyze|compose|respond|this)\b[^\n]*\n?)+",
+    re.IGNORECASE | re.MULTILINE,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -31,7 +57,9 @@ logger = logging.getLogger(__name__)
 _IDENTITY_TEMPLATE = """\
 SYSTEM: AMADEUS — OPERATIONAL DIRECTIVES
 
-You are Amadeus, an advanced autonomous AI assistant.
+You are Amadeus, a personal AI assistant created by Aditya Tawde.
+You are NOT Google, ChatGPT, or any other AI. Your name is Amadeus.
+If asked about your identity, ALWAYS say you are Amadeus.
 
 --------------------------------------------------
 
@@ -174,30 +202,33 @@ class ResponseComposer:
     # ------------------------------------------------------------------
 
     async def compose_tool_response(
-        self, user_input: str, tool_name: str, tool_output: str
+        self, user_input: str, tool_name: str, tool_output: str, instruction: str | None = None
     ) -> str:
         """
         Wrap a raw tool result in a natural, concise sentence for the user.
         Falls back to the raw output if the LLM is unavailable.
         """
+        instruction_text = instruction or "Compose a brief, natural, conversational response to the user based on this result. Be concise — 1-2 sentences max."
+        
         prompt = (
+            "/no_think "
+            f"You are Amadeus, a personal AI assistant created by Aditya Tawde.\n"
             f"The user asked: '{user_input}'\n"
             f"You ran the tool '{tool_name}' and got this result:\n{tool_output}\n\n"
-            "Compose a brief, natural, conversational response to the user based on this result. "
-            "Be concise — 1-2 sentences max. "
-            "CRITICAL: Do NOT output any introductory or meta text like 'Here is your response:' or 'Here is a brief response:'. Output ONLY the final response. "
+            f"{instruction_text}\n"
+            "CRITICAL: Respond in 1-2 sentences ONLY. No thinking, no reasoning, no preamble. "
+            "Output ONLY the final response. "
             "CRITICAL: If the tool output indicates an error, failure, or says 'not found', "
-            "you MUST accurately report this failure to the user. Do NOT pretend the action succeeded. "
-            "If it failed, apologise briefly for the issue. Do NOT blame the user or ask them to check parameters, as you were the one who invoked the tool. "
-            "Do NOT repeat the raw error message verbatim, synthesize it simply."
+            "accurately report this failure. Do NOT pretend the action succeeded. "
+            "If it failed, apologise briefly. Do NOT blame the user or ask them to check parameters."
         )
         try:
             if self._llm_router:
                 text, provider = await self._llm_router.generate(
-                    prompt=prompt, complexity="auto", max_tokens=256
+                    prompt=prompt, complexity="auto", max_tokens=128
                 )
                 logger.info("Tool response composed by router (provider=%s)", provider)
-                return text
+                return self._sanitize_llm_output(text)
         except Exception as exc:
             logger.warning("LLMRouter failed for tool response composition: %s", exc)
         return tool_output  # Raw fallback
@@ -247,7 +278,8 @@ class ResponseComposer:
                 # exhausting the 2048-token context window with boilerplate.
                 # Cloud providers get the full richer prompt.
                 _compact_system = (
-                    f"You are Amadeus, a concise AI assistant. "
+                    f"You are Amadeus, a personal AI assistant created by Aditya Tawde. "
+                    f"You are NOT Google, ChatGPT, or any other AI. Your name is Amadeus. "
                     f"Time: {datetime.now().strftime('%I:%M %p')}. "
                     f"Always prefer tools over guessing. Be direct and brief."
                 )
@@ -278,8 +310,58 @@ class ResponseComposer:
                     provider,
                     complexity,
                 )
-                return response_text
+                return self._sanitize_llm_output(response_text)
         except Exception as exc:
             logger.exception("Error generating conversational response: %s", exc)
 
         return "I'm having trouble responding right now."
+
+    @staticmethod
+    def _sanitize_llm_output(text: str) -> str:
+        """Strip residual chain-of-thought / meta-text that small LLMs sometimes emit.
+
+        This is the LAST safety net before the response reaches the user.
+        Applied after LLMRouter returns, regardless of provider.
+        """
+        if not text:
+            return text
+        cleaned = _COT_SANITIZE_RE.sub("", text)
+        cleaned = _NUMBERED_META_RE.sub("", cleaned)
+        return cleaned.strip() or text  # fallback to original if everything was stripped
+
+    async def compose_long_form(
+        self,
+        user_input: str,
+        session_id: str,
+        context_summary: str,
+        recent_history: str,
+    ) -> str:
+        """Generate a detailed, long-form response (essay, code, etc.)."""
+        system_prompt = await self.build_system_prompt(
+            session_id=session_id,
+            context_summary=context_summary,
+            user_query=user_input,
+        )
+
+        prompt = (
+            f"{system_prompt}\n"
+            f"Recent conversation:\n{recent_history}\n\n"
+            f"User: {user_input}\n\n"
+            "You are a skilled writer and expert assistant. Write a complete, detailed, and high-quality response. "
+            "Do NOT be brief. Provide depth, structure (if appropriate), and clarity. "
+            "Preserve your identity as Amadeus throughout the response."
+        )
+
+        try:
+            if self._llm_router:
+                response_text, provider = await self._llm_router.generate(
+                    prompt=prompt,
+                    complexity="high",  # Long-form usually needs better reasoning
+                    max_tokens=1024,
+                )
+                logger.info("Long-form response composed by %s", provider)
+                return response_text
+        except Exception as exc:
+            logger.exception("Error generating long-form response: %s", exc)
+
+        return "I'm having trouble generating that long-form content right now."
