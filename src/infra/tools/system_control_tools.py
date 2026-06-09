@@ -572,7 +572,8 @@ def launch_app(app_name: str, **kwargs: Any) -> str:
     if platform.system() == "Windows":
         try:
             # Try to start using shell 'start' command which handles PATH and associations
-            subprocess.Popen(["cmd", "/c", "start", "", app_name], shell=True)
+            # Use 'cmd /c start' with explicit argument list — NO shell=True
+            subprocess.Popen(["cmd", "/c", "start", "", app_name])  # noqa: S603
             return f"Attempting to launch '{app_name}'..."
         except Exception as e:
             return f"Failed to launch '{app_name}': {e}"

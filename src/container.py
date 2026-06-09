@@ -396,7 +396,7 @@ async def shutdown_services() -> None:
     """Clean up container resources on shutdown."""
     logger.info("Shutting down resources...")
 
-    # Cleanly cancel the AgentOrchestrator background worker
+    # Cleanly shut down the LangGraph agent checkpointer
     try:
         amadeus = global_container.amadeus_service()
         await amadeus.shutdown()

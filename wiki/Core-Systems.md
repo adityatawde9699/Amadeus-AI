@@ -115,17 +115,17 @@ python scripts/index_workspace.py --root "~/Projects" --index-dir "data/my_index
 
 **File:** `src/infra/memory_service.py` — class `FlashMemoryCache`
 
-A **Tier-1 L1 cache** that intercepts `QdrantMemoryService.retrieve()` calls using in-process NumPy.
+A **Tier-1 L1 cache** that intercepts `TurbovecMemoryService.retrieve()` calls using in-process NumPy.
 
 | Property | Value |
 |---|---|
 | Capacity | 100 entries (ring buffer — oldest overwritten) |
 | Memory | 100 × 768 × 4 bytes ≈ **307 KB** |
 | Threshold | `cosine_similarity >= 0.85` → cache hit |
-| Latency | ~1 µs (single BLAS `@` multiply) vs ~5 ms Qdrant round-trip |
+| Latency | ~1 µs (single BLAS `@` multiply) vs ~1 ms Turbovec search |
 | Invalidation | `clear_conversation()` → `FlashMemoryCache.invalidate()` |
 
-When a new memory is stored via `QdrantMemoryService.store()`, its embedding is simultaneously pushed to the ring buffer. The next retrieval call checks the L1 cache first and only falls through to Qdrant on a miss.
+When a new memory is stored via `TurbovecMemoryService.store()`, its embedding is simultaneously pushed to the ring buffer. The next retrieval call checks the L1 cache first and only falls through to Turbovec on a miss.
 
 ---
 
@@ -133,7 +133,7 @@ When a new memory is stored via `QdrantMemoryService.store()`, its embedding is 
 
 **File:** `src/app/services/agent_loop.py`
 
-Amadeus runs a **ReAct (Reason + Act)** agent implemented as an async state machine over `asyncio.Queue`.
+Amadeus runs an **Agentic (Reason + Act)** agent implemented as a LangGraph state machine.
 
 ### State Machine
 
@@ -149,7 +149,7 @@ The `AgentOrchestrator` runs a **background worker loop** that pulls tasks off a
 |---|---|---|
 | `SystemAgent` | 3 | OS, volume, screenshots, process control |
 | `ResearchAgent` | 5 | Web search, news, weather, documents |
-| `ReActAgent` (general) | 4 | Everything else + multi-step reasoning |
+| `LangGraphAgent` (general) | 4 | Everything else + multi-step reasoning |
 
 Routing between sub-agents uses the legacy SVM classifier if `Model/router_classifier.joblib` exists, falling back to keyword heuristics.
 

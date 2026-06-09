@@ -1,0 +1,23 @@
+# Amadeus v5 Agent Definitions
+# Parsed at startup and injected into the LangGraph AmadeusGraph.
+
+agents:
+  system_operator:
+    description: "Handles filesystem, OS commands, and sandbox execution."
+    max_iterations: 3
+    tool_categories: [app_control, file_system, os_control]
+
+  researcher:
+    description: "Handles web search, document retrieval, and RAG queries."
+    max_iterations: 5
+    tool_categories: [web_research, weather]
+
+  communicator:
+    description: "Handles email, Telegram, and notification drafting."
+    max_iterations: 3
+    tool_categories: [communication]
+
+  general:
+    description: "Default generalist agent for multi-step tasks."
+    max_iterations: 4
+    tool_categories: []  # access to all tools

@@ -39,7 +39,7 @@ from src.core.config import Settings, get_settings
 from src.core.domain.context import RequestContext
 from src.core.domain.models import PermissionProfile
 
-from src.infra.memory_service import QdrantMemoryService
+from src.infra.turbovec_memory import TurbovecMemoryService
 from src.transports.telegram_transport import TelegramTransport
 from src.infra.tools.base import ToolExecutor
 from src.infra.queue.manager import QueueManager
@@ -60,7 +60,7 @@ class AmadeusService:
     Responsibilities (only these — nothing else):
       1. Wire sub-services at construction time.
       2. Accept user input via handle_command().
-      3. Route: multi-step → AgentOrchestrator, single-step → sub-services.
+      3. Route: multi-step → AmadeusGraph (LangGraph), single-step → sub-services.
       4. Persist conversation turns and long-term memories.
     """
 
@@ -111,11 +111,11 @@ class AmadeusService:
 
 
 
-        # ── Long-term Memory (Qdrant) ────────────────────────────
-        self.memory_service = QdrantMemoryService(settings=self.settings)
+        # ── Long-term Memory (Turbovec) ────────────────────────────
+        self.memory_service = TurbovecMemoryService(settings=self.settings)
 
         if self.memory_service.is_enabled:
-            logger.info("Tiered memory system ENABLED — Qdrant ready")
+            logger.info("Tiered memory system ENABLED — Turbovec ready")
         else:
             logger.info("Long-term memory DISABLED — operating with session-only context")
 
@@ -145,15 +145,15 @@ class AmadeusService:
             memory_service=self.memory_service,
         )
 
-        # ── Agent Orchestrator (multi-step) ───────────────────────────
-        from src.app.services.agent_loop import AgentOrchestrator
+        # ── LangGraph Agent (multi-step) ─────────────────────────────
+        from src.app.services.agent_loop import AmadeusGraph
 
         llm_generate = self._make_llm_generate()
-        self.orchestrator = AgentOrchestrator(
+        self.graph = AmadeusGraph(
             tool_registry=self.tool_registry,
             tool_executor=self.tool_executor,
             llm_generate=llm_generate,
-            auto_start=auto_start_orchestrator,
+            memory_service=self.memory_service,
         )
 
         logger.info(
@@ -447,7 +447,7 @@ class AmadeusService:
         """Return True only when the query clearly requires chaining 2+ distinct tools.
         
         Tightened to avoid routing single-tool queries that contain 'and' (e.g.
-        'Who is X and what did he do?') to the heavier AgentOrchestrator.
+        'Who is X and what did he do?') to the heavier LangGraph agent.
         Requires both a conjunction indicator AND evidence of 2 distinct tool categories.
         """
         lower = user_input.lower()
@@ -481,8 +481,8 @@ class AmadeusService:
         context: RequestContext,
     ) -> tuple[str, list[str]]:
         context_summary = conversation_manager.get_context_summary()
-        result = await self.orchestrator.execute(
-            task=user_input, context_summary=context_summary, context=context
+        result = await self.graph.ainvoke(
+            task=user_input, context=context, context_summary=context_summary,
         )
         if result.success:
             return result.final_answer, result.tools_used
@@ -584,8 +584,8 @@ class AmadeusService:
         await self.memory_service.clear_session(session_id)
 
     async def shutdown(self) -> None:
-        if hasattr(self, "orchestrator"):
-            await self.orchestrator.shutdown()
+        if hasattr(self, "graph"):
+            await self.graph.shutdown()
 
     async def send_outbound_message(self, user_id: str, platform: str, message: str) -> bool:
         try:
@@ -621,7 +621,7 @@ class AmadeusService:
         logger.info("Gemini API configured with model: %s", self.model_name)
 
     def _make_llm_generate(self) -> Callable[..., Awaitable[str]] | None:
-        """Build an async LLM generate closure for the AgentOrchestrator."""
+        """Build an async LLM generate closure for the LangGraph agent."""
         if getattr(self, "llm_router", None) is None and not (hasattr(self, "client") and self.client):
             return None
 

@@ -1,6 +1,6 @@
 <div align="center">
 
-# Amadeus AI v4.0.0
+# Amadeus AI v5.0.0-alpha
 
 **A secure autonomous AI operating layer built on Clean Architecture — featuring a plan-driven cognitive runtime, persistent execution graphs, and a dynamic plugin system for local devices.**
 
@@ -11,7 +11,7 @@
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
 > **Tech Stack:**
-> `Python 3.11+` · `FastAPI` · `SQLAlchemy 2.0` · `Groq (Llama 3.3)` · `Gemini` · `Redis` · `Qdrant` · `PostgreSQL` · `JWT Auth` · `Telegram` · `Docker` · `sentence-transformers` · `llama-cpp-python`
+> `Python 3.11+` · `FastAPI` · `SQLAlchemy 2.0` · `Groq (Llama 3.3)` · `Gemini` · `Redis` · `Turbovec` · `PostgreSQL` · `JWT Auth` · `Telegram` · `Docker` · `sentence-transformers` · `llama-cpp-python`
 
 </div>
 
@@ -38,8 +38,8 @@ Building a secure autonomous AI operating layer that is both capable and safe in
 
 It is a **clean-architecture system** with the following defining properties:
 
-### Cognitive Core Architecture
-Replaces implicit chat loops with a deterministic **async state machine**. Every task is decomposed into an explicit execution graph (`Plan` → `PlanStep` → `Observation` → `Reflection`), allowing Amadeus to pause, audit, resume, and recover from failures.
+### Cognitive Core Architecture (LangGraph)
+Replaces implicit chat loops with a deterministic **LangGraph async state machine**. Every task is decomposed into an explicit execution graph (`Plan` → `PlanStep` → `Observation` → `Reflection`), allowing Amadeus to pause, audit, resume, and recover from failures.
 
 ### Dynamic Plugin System
 Amadeus features a **hot-pluggable tool architecture**. New capabilities can be added by simply dropping `.py` files into the `plugins/` directory. The agent can even **manage its own plugins** at runtime, writing and registering new tools autonomously.
@@ -78,7 +78,7 @@ Amadeus solves each pain point with a concrete, implemented mechanism:
 | No Execution Policy | **Tool Policy Engine** enforcing risk levels and permissions |
 | Docker Dependency | **Dual Sandbox**: epemeral Docker containers OR local multiprocessing |
 | No offline mode | LlamaCpp priority; `LOCAL_ONLY_MODE=true` for 100% privacy |
-| Memory amnesia | Persistent SQL episodic memory + Qdrant semantic long-term memory |
+| Memory amnesia | Persistent SQL episodic memory + Turbovec semantic long-term memory |
 
 ---
 
@@ -115,7 +115,7 @@ Amadeus solves each pain point with a concrete, implemented mechanism:
 |-----------|---------|-------------|-------|
 | **Python** | 3.11 | 3.12 | 3.10 and below not supported |
 | **RAM** | 2 GB | 8 GB | 2 GB for API-only (no local model); 4–8 GB for local GGUF inference |
-| **Disk** | 3 GB | 10 GB | Includes Whisper `small` (~460 MB), Qdrant data, logs, and optional GGUF models (2–8 GB each) |
+| **Disk** | 3 GB | 10 GB | Includes Whisper `small` (~460 MB), Turbovec data, logs, and optional GGUF models (2–8 GB each) |
 | **CPU** | 4-core x86-64 | 8-core+ | Multi-core required for concurrent LlamaCpp inference; ARM64 (Apple M-series) also supported |
 | **GPU** | Not required | CUDA 11.8+ | Optional: faster Whisper STT; LlamaCpp `n_gpu_layers` offloading |
 | **OS** | Linux / macOS / Windows 10+ | Ubuntu 22.04 LTS | Windows supported; Linux recommended for production Docker deployments |
@@ -127,7 +127,7 @@ Amadeus solves each pain point with a concrete, implemented mechanism:
 | **PostgreSQL** | 15+ | Production | Conversation history, tasks, knowledge graph, user accounts |
 | **SQLite** | 3.35+ | Development only | Zero-config alternative to PostgreSQL (not suitable for multi-worker deployments) |
 | **Redis** | 6+ | Recommended | Rate limiting, LLM daily quota tracking, TTS + tool result caching. Falls back to in-memory if unavailable. |
-| **Qdrant** | 1.7+ | Recommended | Vector memory store for long-term semantic recall. Runs local file-based by default (no server needed). |
+| **Turbovec** | 0.7+ | Recommended | Vector memory store for long-term semantic recall. Runs local file-based by default (no server needed) with massive 4-bit compression. |
 | **Docker** | 24+ | Optional | Required only for the Python code-execution sandbox (`execute_python_script` tool) |
 
 ### LLM Model Requirements *(if using local inference)*
@@ -145,7 +145,7 @@ Amadeus solves each pain point with a concrete, implemented mechanism:
 ```
 Python 3.11 + 1 GB RAM + GROQ_API_KEY (free)
 ```
-Redis and Qdrant are optional — the daemon gracefully degrades without them.
+Redis and Turbovec are optional — the daemon gracefully degrades without them.
 
 ---
 
@@ -199,7 +199,6 @@ cp .env.example .env
 | `EMAIL_SMTP_PORT` | SMTP port (default: `587`) |
 | `EMAIL_ADDRESS` | Sender email address |
 | `EMAIL_APP_PASSWORD` | Email app password (Gmail: generate in Account settings) |
-| `QDRANT_URL` | Qdrant server URL for semantic memory (e.g. `http://localhost:6333`) |
 | `ENV` | `development` / `staging` / `production` |
 
 ### Option A — Local Installation (without Docker)
@@ -363,7 +362,7 @@ curl -N -H "Authorization: Bearer $TOKEN" \
 ### AI & LLM
 - **Groq API (Llama 3.3 70B)** — Cloud primary LLM (free tier)
 - **Google Generative AI (Gemini 2.5 Flash)** — Secondary cloud LLM
-- **Qdrant** — vector database for semantic long-term memory
+- **Turbovec** — vector database for semantic long-term memory
 - **LLMRouter** — Redis-backed daily-quota-aware routing engine with atomic `INCR`/`EXPIRE`
 - **SemanticToolRouter** — sentence-transformers based zero-training tool intent triaging
 - **WorkspaceIndexer** — hybrid BM25 + dense vector retrieval engine for project RAG
@@ -445,7 +444,7 @@ block-beta
     end
     block:datablock["💾 Data"]:1
       columns 1
-      T["PostgreSQL"] U["Redis Cache"] V["Qdrant Vectors"]
+      T["PostgreSQL"] U["Redis Cache"] V["Turbovec Vectors"]
       V2["Flash Memory Cache"]
     end
     block:svcblock["🛠️ Services"]:1
@@ -715,7 +714,7 @@ sequenceDiagram
   </td>
   <td width="25%">
     <table width="100%" cellspacing="0" cellpadding="6" border="0" style="background:#d0e8a8;border:1px solid #C0DD97;border-radius:6px;text-align:center">
-      <tr><td><strong style="font-size:12px;color:#173404">Qdrant</strong><br><span style="font-size:10px;color:#3B6D11">vector DB</span></td></tr>
+      <tr><td><strong style="font-size:12px;color:#173404">Turbovec</strong><br><span style="font-size:10px;color:#3B6D11">vector DB</span></td></tr>
     </table>
   </td>
 </tr></table>
@@ -969,7 +968,7 @@ Amadeus-AI/
 │       │   ├── llama_cpp_adapter.py
 │       │   ├── groq_adapter.py
 │       │   └── gemini_adapter.py
-│       ├── memory_service.py       # Qdrant + Flash Cache
+│       ├── memory_service.py       # Turbovec + Flash Cache
 │       ├── messaging/
 │       │   ├── telegram_adapter.py
 │       │   └── email_adapter.py
@@ -1008,7 +1007,7 @@ Amadeus-AI/
 | Application | `src/app/services/` | **Orchestrator** (`AmadeusService`) + focused sub-services: `ConversationManager`, `ArgumentExtractor`, `ToolDispatcher`, `ResponseComposer` |
 | Core | `src/core/` | Domain models, interfaces, config, exceptions — zero external deps |
 | Infrastructure | `src/infra/` | LLM adapters, DB, cache, memory, search, messaging, tools, `ModelManager` |
-| Data | — | PostgreSQL · Redis · Qdrant · Flash Cache |
+| Data | — | PostgreSQL · Redis · Turbovec · Flash Cache |
 
 ---
 
@@ -1144,7 +1143,7 @@ alembic upgrade head && uvicorn src.api.server:app --host 0.0.0.0 --port 8000 --
 - **Session isolation is caller-scoped**: The `AmadeusService` singleton reads `session_id` from the incoming request at the API layer. Concurrent requests with different session IDs are correctly isolated at the `ConversationManager` level, but share the same singleton service instance — full per-request instance isolation requires the DI container to be refactored to a request-scoped provider.
 - **Voice WebSocket — no auth on upgrade**: WebSocket JWT enforcement depends on the client handshake; the server accepts connections and errors downstream if the token is missing.
 - **Local TTS/STT resource usage**: Running `faster-whisper` (`small` model) and Edge TTS simultaneously on a single CPU core may cause response latency of 1–5 seconds per voice round-trip.
-- **Semantic memory — Qdrant must be running**: If `QDRANT_URL` is not configured or Qdrant is unreachable, memory retrieval is silently skipped — the agent continues without memories. The Flash Memory Cache (L1) provides a high-speed fallback for recent interactions.
+- **Semantic memory**: Turbovec runs entirely locally. If memory is disabled, retrieval is silently skipped — the agent continues without memories. The Flash Memory Cache (L1) provides a high-speed fallback for recent interactions.
 - **`calculate` tool uses `simpleeval` (eval RCE mitigated)**: The calculator sanitises input but does not support symbolic maths or matrix operations. Use `execute_python_script` for complex numerical workloads.
 
 ---

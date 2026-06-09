@@ -4,6 +4,14 @@ Full version history. For detailed commit-level changes, see [CHANGELOG.md](http
 
 ---
 
+## v5.0.0-alpha — LangGraph & Deep RAG Edition *(2026-06-09)*
+
+### Architecture
+- **Cognitive Core (Phase 1)** — Fully migrated to a deterministic `LangGraph` async state machine, resolving brittle ReAct loop parsing errors.
+- **Deep RAG Memory (Phase 2)** — Replaced Qdrant with `Turbovec` + `aiosqlite`. Achieved massive 4-bit quantization compression (up to 16x scale reduction) with zero penalties, while running entirely in-process.
+
+---
+
 ## v4.0.0 — Cognitive Core & Autonomous Systems Edition *(2026-05-29)*
 
 ### Architecture

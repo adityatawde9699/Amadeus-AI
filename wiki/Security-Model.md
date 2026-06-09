@@ -60,10 +60,10 @@ Messages from any other `chat_id` receive `"Unauthorized."` and are dropped befo
 
 ### SEC-01 (v3.2.1+)
 
-All user task text is sanitised before entering the ReAct prompt:
+All user task text is sanitised before entering the LangGraph prompt:
 
 1. Wrapped in `<user_task>...</user_task>` XML boundary tags
-2. ReAct control tokens found in the user input (`Action:`, `Thought:`, `Action Input:`, `Observation:`, `FINISH`) are replaced with `[BLOCKED:TOKEN]` markers
+2. LangGraph control tokens found in the user input (`Action:`, `Thought:`, `Action Input:`, `Observation:`, `FINISH`) are replaced with `[BLOCKED:TOKEN]` markers
 
 This prevents users from injecting LLM directives via Telegram, WhatsApp, or the HTTP API to make the agent execute arbitrary tools.
 
