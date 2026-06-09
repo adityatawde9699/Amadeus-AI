@@ -19,7 +19,6 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from src.core.config import Settings
     from src.infra.llm.router import LLMRouter
-    from src.infra.memory_service import QdrantMemoryService
 
 import re
 
@@ -146,7 +145,7 @@ class ResponseComposer:
         self,
         llm_router: LLMRouter | None,
         settings: Settings,
-        memory_service: QdrantMemoryService | None = None,
+        memory_service: Any | None = None,
     ) -> None:
         self._llm_router = llm_router
         self._settings = settings

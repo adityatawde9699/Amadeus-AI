@@ -35,7 +35,7 @@ Amadeus follows **Clean Architecture** with strict layer separation. Dependencie
 │  (src/core/)     │   │  (src/infra/)             │
 │                  │   │                           │
 │  Domain models   │   │  LLM adapters             │
-│  Interfaces/ABCs │   │  Qdrant memory service    │
+│  Interfaces/ABCs │   │  Turbovec memory service  │
 │  Exceptions      │   │  Redis / PostgreSQL        │
 │  Settings        │   │  Tools (53 registered)    │
 │                  │   │  ModelManager             │
@@ -59,18 +59,18 @@ Client (HTTP / Telegram / CLI)
   │
   ▼  2. AmadeusService.process_task() called with context
   │     ├─ Check Redis LLM response cache (1 h TTL)
-  │     ├─ Retrieve top-3 semantic memories from Qdrant
+  │     ├─ Retrieve top-3 semantic memories from Turbovec
   │     └─ Dispatch to AgentOrchestrator queue
   │
   ▼  3. AgentOrchestrator routes by ML intent (SVM → keyword fallback)
   │     Selects: general / system / research agent
   │
-  ▼  4. ReActAgent loop (max 4 iterations)
+  ▼  4. LangGraph State Machine (max 4 iterations)
   │     ├─ Thought → LLMRouter.generate()
   │     ├─ Tool call → ToolExecutor (HITL gate for destructive ops)
   │     └─ Observation → next iteration or FINISH
   │
-  ▼  5. Response stored in PostgreSQL + Qdrant → returned to transport
+  ▼  5. Response stored in PostgreSQL + Turbovec → returned to transport
 ```
 
 ---
@@ -138,8 +138,8 @@ Amadeus uses a two-tier active memory system:
 
 | Tier | Technology | Purpose | Latency |
 |---|---|---|---|
-| **L1 Flash Cache** | NumPy float32 ring buffer (100 entries, ~307 KB RAM) | Intercepts Qdrant for recently-accessed memories | ~1 µs |
-| **L2 Qdrant (Semantic)** | `all-MiniLM-L6-v2` 384-dim vectors + cosine similarity | Long-term cross-session recall with recency/importance weighting | ~5 ms |
+| **L1 Flash Cache** | NumPy float32 ring buffer (100 entries, ~307 KB RAM) | Intercepts Turbovec for recently-accessed memories | ~1 µs |
+| **L2 Turbovec (Semantic)** | `all-MiniLM-L6-v2` 384-dim vectors + cosine similarity | Long-term cross-session recall with massive 4-bit compression | ~1 ms |
 
 Identity memories (`subtype="identity"`, `recency_decay=1.0`) never decay. Contradiction resolution: if a new identity memory has cosine similarity > 0.90 with an existing one, the older entry is deleted before insert.
 

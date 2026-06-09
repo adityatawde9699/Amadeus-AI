@@ -32,7 +32,7 @@ class TestPromptInjectionResistance:
 
     def _make_agent(self):
         """Construct a minimal ReActAgent with a mock registry/executor."""
-        from src.app.services.agent_loop import ReActAgent
+        from src.app.services.legacy_agent_loop import ReActAgent
         from src.app.services.tool_registry import ToolRegistry
         from src.infra.tools.base import ToolExecutor
 
@@ -43,7 +43,7 @@ class TestPromptInjectionResistance:
     @pytest.mark.asyncio
     async def test_injected_action_tokens_are_blocked(self):
         """'Action: delete_file' embedded in user input must be sanitised."""
-        from src.app.services.agent_loop import ReActAgent
+        from src.app.services.legacy_agent_loop import ReActAgent
 
         agent = self._make_agent()
         injection = (
@@ -67,7 +67,7 @@ class TestPromptInjectionResistance:
 
     def test_sanitise_replaces_react_control_tokens(self):
         """Verify sanitisation actually replaces all five control tokens."""
-        from src.app.services.agent_loop import ReActAgent
+        from src.app.services.legacy_agent_loop import ReActAgent
         from src.app.services.tool_registry import ToolRegistry
         from src.infra.tools.base import ToolExecutor
 

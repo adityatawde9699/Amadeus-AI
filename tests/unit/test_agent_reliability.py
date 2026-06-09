@@ -52,7 +52,7 @@ class TestCycleDetection:
     @pytest.mark.asyncio
     async def test_exact_cycle_detected_within_max_iterations(self):
         """Same (action, args) pair twice → agent terminates before max_iterations."""
-        from src.app.services.agent_loop import ReActAgent
+        from src.app.services.legacy_agent_loop import ReActAgent
 
         registry, executor = self._make_registry_executor()
         call_count = 0
@@ -78,7 +78,7 @@ class TestCycleDetection:
     @pytest.mark.asyncio
     async def test_frequency_cycle_detected_with_varying_args(self):
         """Same tool >3 times with different args → secondary frequency guard fires."""
-        from src.app.services.agent_loop import ReActAgent
+        from src.app.services.legacy_agent_loop import ReActAgent
 
         registry, executor = self._make_registry_executor()
         call_count = 0
@@ -113,7 +113,7 @@ class TestSynthesizeSuccessFlag:
     @pytest.mark.asyncio
     async def test_all_error_observations_yield_success_false(self):
         """When every observation starts with 'Error', result.success must be False."""
-        from src.app.services.agent_loop import ReActAgent
+        from src.app.services.legacy_agent_loop import ReActAgent
         from src.app.services.tool_registry import ToolRegistry
         from src.infra.tools.base import ToolExecutor, Tool, ToolCategory
 
@@ -232,7 +232,7 @@ class TestOrchestratorShutdown:
     @pytest.mark.asyncio
     async def test_shutdown_cancels_worker_task(self):
         """shutdown() must cancel _worker_task so no zombie tasks remain."""
-        from src.app.services.agent_loop import AgentOrchestrator
+        from src.app.services.legacy_agent_loop import AgentOrchestrator
         from src.app.services.tool_registry import ToolRegistry
         from src.infra.tools.base import ToolExecutor
 
@@ -263,7 +263,7 @@ class TestOrchestratorShutdown:
     @pytest.mark.asyncio
     async def test_shutdown_is_idempotent(self):
         """Calling shutdown() twice must not raise."""
-        from src.app.services.agent_loop import AgentOrchestrator
+        from src.app.services.legacy_agent_loop import AgentOrchestrator
         from src.app.services.tool_registry import ToolRegistry
         from src.infra.tools.base import ToolExecutor
 

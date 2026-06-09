@@ -14,7 +14,7 @@ Amadeus exposes structured logs, Prometheus metrics, health probes, and optional
 | `amadeus_tool_calls_total` | Counter | `tool_name` | Tool invocations |
 | `amadeus_tool_duration_seconds` | Histogram | `tool_name`, `success` | Per-tool execution latency (10 buckets: 0.01s–30s) |
 | `amadeus_tool_executions_total` | Counter | `tool_name`, `result` | Per-tool result breakdown (`success`/`failure`/`timeout`/`denied`) |
-| `amadeus_memory_errors_total` | Counter | `operation` | Qdrant upsert/search failures (`upsert`/`search`) |
+| `amadeus_memory_errors_total` | Counter | `operation` | Turbovec upsert/search failures (`upsert`/`search`) |
 | `amadeus_cache_hit_rate` | Gauge | — | Cache hit % (updated on every hit) |
 | `amadeus_llm_cost_usd` | Gauge | — | Estimated cumulative LLM spend |
 | HTTP latency histograms | Histogram | `path`, `method`, `status` | P50/P95/P99 per route |
@@ -48,7 +48,7 @@ Always returns 200 while the process is running. Used by container orchestrators
 
 ```bash
 GET /api/v1/health/ready
-# → 200 {"status": "ready", "checks": {"database": true, "redis": true, "qdrant": true, "llm_provider": true}}
+# → 200 {"status": "ready", "checks": {"database": true, "redis": true, "turbovec": true, "llm_provider": true}}
 # → 503 {"detail": {"checks": {"database": false, ...}, "details": {"database": "..."}}}
 ```
 
@@ -58,7 +58,7 @@ Checks all critical dependencies before accepting traffic. Returns **503** with 
 |---|---|
 | `database` | `SELECT 1` via SQLAlchemy async session |
 | `redis` | `await r.ping()` with 2-second timeout |
-| `qdrant` | `get_collections()` via `AsyncQdrantClient` |
+| `turbovec` | `get_memory_count()` via `TurbovecMemoryService` |
 | `llm_provider` | `global_container.llm_router()` accessible |
 
 ### Legacy Health Check

@@ -7,10 +7,11 @@ services:
     restart: always
     environment:
       - ENV=production
-      - DATABASE_URL=postgresql+asyncpg://amadeus:password@postgres:5432/amadeus
+      - DATABASE_URL=postgresql+asyncpg://amadeus:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/amadeus
       - REDIS_URL=redis://redis:6379/0
       - CHROMA_ENABLED=True
       - QDRANT_HOST=qdrant
+      - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY via .env or environment}
     ports:
       - "8000:8000"
     depends_on:
@@ -27,7 +28,7 @@ services:
     command: ["uv", "run", "arq", "src.infra.queue.worker.WorkerSettings"]
     environment:
       - ENV=production
-      - DATABASE_URL=postgresql+asyncpg://amadeus:password@postgres:5432/amadeus
+      - DATABASE_URL=postgresql+asyncpg://amadeus:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/amadeus
       - REDIS_URL=redis://redis:6379/0
     depends_on:
       - redis
@@ -40,9 +41,9 @@ services:
     container_name: amadeus_postgres
     restart: always
     environment:
-      - POSTGRES_USER=amadeus
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=amadeus
+      - POSTGRES_USER=${POSTGRES_USER:-amadeus}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-amadeus}
     ports:
       - "5432:5432"
     volumes:

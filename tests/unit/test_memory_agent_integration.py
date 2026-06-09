@@ -58,7 +58,7 @@ class TestReActAgentMemoryInjection:
     @pytest.mark.asyncio
     async def test_memory_block_injected_when_service_set(self):
         """LLM prompt should contain memory block when service returns results."""
-        from src.app.services.agent_loop import ReActAgent
+        from src.app.services.legacy_agent_loop import ReActAgent
 
         captured_prompts: list[str] = []
 
@@ -86,7 +86,7 @@ class TestReActAgentMemoryInjection:
     @pytest.mark.asyncio
     async def test_no_memory_when_service_not_set(self):
         """Without memory_service, prompt must NOT contain a memory block."""
-        from src.app.services.agent_loop import ReActAgent
+        from src.app.services.legacy_agent_loop import ReActAgent
 
         captured_prompts: list[str] = []
 
@@ -110,7 +110,7 @@ class TestReActAgentMemoryInjection:
     @pytest.mark.asyncio
     async def test_memory_service_error_does_not_crash_agent(self):
         """If memory retrieval fails, the agent should continue normally."""
-        from src.app.services.agent_loop import ReActAgent
+        from src.app.services.legacy_agent_loop import ReActAgent
 
         async def fake_llm(prompt: str) -> str:
             return 'Thought: done\nAction: FINISH\nAction Input: {"answer": "Resilient"}'

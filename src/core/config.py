@@ -468,8 +468,10 @@ def validate_settings(settings: Settings | None = None) -> dict:
             )
 
         if getattr(settings, "ALLOW_DEBUG_RESPONSES", False):
-            warnings.append(
-                "SEVERE SECURITY WARNING: ALLOW_DEBUG_RESPONSES is True in production! Full stack traces may leak to clients."
+            errors.append(
+                "ALLOW_DEBUG_RESPONSES must be False in production — "
+                "stack traces would leak to API clients. "
+                "Set ALLOW_DEBUG_RESPONSES=false in your .env."
             )
     else:
         if not settings.GEMINI_API_KEY:

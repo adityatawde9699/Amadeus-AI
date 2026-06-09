@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.app.services.agent_loop import ReActAgent
+from src.app.services.legacy_agent_loop import ReActAgent
 
 
 @pytest.mark.asyncio
