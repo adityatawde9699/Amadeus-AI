@@ -209,9 +209,8 @@ async def test_generate_response_raises_llm_response_error_on_runtime_failure(
     with patch(
         "src.infra.llm.llama_cpp_adapter.LlamaCppAdapter._get_llm",
         new=AsyncMock(return_value=fake_llm),
-    ):
-        with pytest.raises(LLMResponseError, match="LlamaCpp generation failed"):
-            await adapter.generate_response("Hello")
+    ), pytest.raises(LLMResponseError, match="LlamaCpp generation failed"):
+        await adapter.generate_response("Hello")
 
 
 @pytest.mark.unit

@@ -1,6 +1,8 @@
-from dataclasses import dataclass, field
 import asyncio
+from dataclasses import dataclass, field
+
 from src.core.domain.models import PermissionProfile
+
 
 @dataclass
 class RequestContext:

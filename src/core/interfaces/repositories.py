@@ -20,13 +20,13 @@ from typing import Generic, TypeVar
 from src.core.domain.models import (
     CalendarEvent,
     EventStatus,
+    Goal,
+    GoalStatus,
     Note,
     Reminder,
     ReminderStatus,
     Task,
     TaskStatus,
-    Goal,
-    GoalStatus,
 )
 
 

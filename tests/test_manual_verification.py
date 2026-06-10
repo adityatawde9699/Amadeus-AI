@@ -3,8 +3,8 @@ import logging
 
 import pytest
 
-from src.infra.tools.base import ToolExecutor
 from src.infra.llm.gemini_adapter import GeminiAdapter
+from src.infra.tools.base import ToolExecutor
 
 
 logging.basicConfig(level=logging.INFO)

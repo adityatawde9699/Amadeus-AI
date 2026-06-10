@@ -182,7 +182,7 @@ wheels = [
 
 [[package]]
 name = "amadeus-ai"
-version = "5.0.0a0"
+version = "5.0.0b0"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
@@ -221,8 +221,6 @@ dependencies = [
     { name = "python-jose", extra = ["cryptography"] },
     { name = "python-telegram-bot", extra = ["webhooks"] },
     { name = "pyyaml" },
-    { name = "qdrant-client", version = "1.12.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
-    { name = "qdrant-client", version = "1.17.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
     { name = "rank-bm25" },
     { name = "rapidfuzz" },
     { name = "redis" },
@@ -255,6 +253,10 @@ all = [
     { name = "testcontainers" },
     { name = "types-psutil" },
     { name = "types-requests" },
+]
+archival-memory = [
+    { name = "qdrant-client", version = "1.12.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
+    { name = "qdrant-client", version = "1.17.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
 ]
 dashboard = [
     { name = "streamlit" },
@@ -355,7 +357,7 @@ requires-dist = [
     { name = "python-jose", extras = ["cryptography"], specifier = ">=3.3.0" },
     { name = "python-telegram-bot", extras = ["webhooks"], specifier = ">=20.7" },
     { name = "pyyaml", specifier = ">=6.0.1" },
-    { name = "qdrant-client", specifier = ">=1.7.0" },
+    { name = "qdrant-client", marker = "extra == 'archival-memory'", specifier = ">=1.7.0" },
     { name = "rank-bm25", specifier = ">=0.2.2" },
     { name = "rapidfuzz", specifier = ">=3.6.0" },
     { name = "redis", specifier = ">=5.0.0" },
@@ -376,7 +378,7 @@ requires-dist = [
     { name = "types-requests", marker = "extra == 'dev'", specifier = ">=2.31.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.37.0" },
 ]
-provides-extras = ["dashboard", "dev", "test", "all", "llm", "windows"]
+provides-extras = ["archival-memory", "dashboard", "dev", "test", "all", "llm", "windows"]
 
 [package.metadata.requires-dev]
 dev = [

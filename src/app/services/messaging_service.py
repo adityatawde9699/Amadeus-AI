@@ -5,10 +5,11 @@ Unifies Telegram, Email, and other messaging platforms.
 """
 
 import logging
-from typing import Any
+
 from src.core.config import get_settings
 from src.infra.messaging.email_adapter import EmailAdapter
 from src.transports.telegram_transport import TelegramTransport
+
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ class MessagingService:
         Send a message to a recipient on a specific platform.
         """
         platform = platform.lower()
-        
+
         if platform == "telegram":
             if not self.telegram:
                 logger.error("Telegram transport not initialized")
@@ -48,7 +49,7 @@ class MessagingService:
             except ValueError:
                 logger.error("Invalid chat_id for Telegram: %s", recipient_id)
                 return False
-                
+
         if platform == "email":
             if not self.email.is_configured:
                 logger.error("Email adapter not configured")
@@ -58,7 +59,7 @@ class MessagingService:
                 subject=subject or "Message from Amadeus",
                 body=text
             )
-            
+
         logger.error("Unsupported messaging platform: %s", platform)
         return False
 
@@ -68,15 +69,15 @@ class MessagingService:
         """
         platforms = platforms or ["telegram", "email"]
         results = {}
-        
+
         if "telegram" in platforms and self.telegram and self.settings.MASTER_TELEGRAM_CHAT_ID:
             chat_ids = [cid.strip() for cid in self.settings.MASTER_TELEGRAM_CHAT_ID.split(",") if cid.strip()]
             for cid in chat_ids:
                 results[f"telegram:{cid}"] = await self.send_message(cid, text, platform="telegram")
-                
+
         if "email" in platforms and self.email.is_configured and self.settings.EMAIL_ADDRESS:
             results[f"email:{self.settings.EMAIL_ADDRESS}"] = await self.send_message(
                 self.settings.EMAIL_ADDRESS, text, platform="email", subject="Amadeus Notification"
             )
-            
+
         return results

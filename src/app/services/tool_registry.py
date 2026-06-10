@@ -234,7 +234,7 @@ class ToolRegistry:
 
         try:
             package = importlib.import_module(package_name)
-            
+
             # pkgutil.iter_modules only works if the package has a __path__
             package_path = getattr(package, "__path__", None)
             if not package_path:
@@ -292,51 +292,51 @@ class ToolRegistry:
         """
         import sys
         from pathlib import Path
-        
+
         plugins_path = Path(plugins_dir).resolve()
         if not plugins_path.exists():
             logger.warning("Plugins directory %s does not exist", plugins_path)
             return 0
-            
+
         # Add plugins directory to sys.path so we can import from it
         if str(plugins_path) not in sys.path:
             sys.path.insert(0, str(plugins_path))
-            
+
         count = 0
-        
+
         # Scan for .py files or directories with __init__.py
         for path in plugins_path.iterdir():
             if path.name.startswith("_"):
                 continue
-                
+
             module_name = None
             if path.is_file() and path.suffix == ".py":
                 module_name = path.stem
             elif path.is_dir() and (path / "__init__.py").exists():
                 module_name = path.name
-                
+
             if module_name:
                 try:
                     module = importlib.import_module(module_name)
                     importlib.reload(module) # Ensure fresh load
-                    
+
                     # 1. Check for register_tools(registry) hook
                     if hasattr(module, "register_tools") and callable(module.register_tools):
                         module.register_tools(self)
                         # We don't know exactly how many were registered via the hook
                         # so we'll re-count later or just trust the hook.
                         logger.info("Executed register_tools hook for plugin: %s", module_name)
-                    
+
                     # 2. Look for @tool decorated functions
                     for name in dir(module):
                         obj = getattr(module, name)
                         if hasattr(obj, "_tool_metadata"):
                             self.register(obj._tool_metadata)
                             count += 1
-                            
+
                 except Exception as e:
                     logger.exception("Error loading plugin %s: %s", module_name, e)
-                    
+
         logger.info("Discovered %d tools from plugins directory: %s", count, plugins_dir)
         return count
 
@@ -390,9 +390,10 @@ class ToolRegistry:
         Returns:
             Number of tools registered
         """
+        import shlex
+
         from mcp import ClientSession, StdioServerParameters
         from mcp.client.stdio import stdio_client
-        import shlex
 
         logger.info("Connecting to MCP server '%s' with command: %s", name, command)
 

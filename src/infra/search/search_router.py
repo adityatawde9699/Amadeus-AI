@@ -129,7 +129,7 @@ class SearchRouter:
                     data = await r.json()
                     extract = data.get("extract", "")
                     return extract[:800] if extract else ""
-                elif r.status == 404:
+                if r.status == 404:
                     return await self._wikipedia_search_fallback(subject)
             return ""
         except Exception as e:

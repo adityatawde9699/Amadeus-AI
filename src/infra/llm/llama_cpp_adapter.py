@@ -17,9 +17,9 @@ import logging
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
+from src.core.domain.models import ToolDefinition, ToolExecutionResult
 from src.core.exceptions import ConfigurationError, LLMConnectionError, LLMResponseError
 from src.core.interfaces.services import ILLMService
-from src.core.domain.models import ToolDefinition, ToolExecutionResult
 
 
 if TYPE_CHECKING:
@@ -38,6 +38,8 @@ GGML_TYPE_Q8_0 = 8     # 8-bit quantization  (good quality / size tradeoff)
 
 # ── Qwen3 / chain-of-thought stripping ──────────────────────────────────────────────
 import re as _re
+
+
 _THINK_TAG_RE = _re.compile(r"<think>[\s\S]*?</think>", _re.IGNORECASE)
 
 # Matches verbose thinking preambles that Qwen3 emits *outside* <think> tags,

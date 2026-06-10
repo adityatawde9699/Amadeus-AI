@@ -14,12 +14,9 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import uuid
-from collections import defaultdict
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
-import pytest_asyncio
 
 
 # ---------------------------------------------------------------------------
@@ -43,7 +40,6 @@ class TestPromptInjectionResistance:
     @pytest.mark.asyncio
     async def test_injected_action_tokens_are_blocked(self):
         """'Action: delete_file' embedded in user input must be sanitised."""
-        from src.app.services.legacy_agent_loop import ReActAgent
 
         agent = self._make_agent()
         injection = (
@@ -264,13 +260,13 @@ class TestPathSandboxing:
 
     def test_path_traversal_sequence_blocked(self):
         """../../etc/passwd style traversal must be caught by path resolution."""
-        from src.infra.tools.system_tools import _assert_in_allowed_dirs
         from pathlib import Path
+
+        from src.infra.tools.system_tools import _assert_in_allowed_dirs
 
         with patch(
             "src.infra.tools.system_tools.get_settings"
         ) as mock_cfg:
-            import os
             mock_cfg.return_value.SEARCH_ALLOWED_DIRS = [
                 str(Path.home() / "Documents")
             ]

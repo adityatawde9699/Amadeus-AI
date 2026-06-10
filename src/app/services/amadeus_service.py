@@ -21,29 +21,25 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-import uuid
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
-from opentelemetry import trace
 
 from google import genai
+from opentelemetry import trace
 
 from src.app.services.argument_extractor import ArgumentExtractor
 from src.app.services.conversation_manager import ConversationManager, IConversationRepository
-from src.core.interfaces.repositories import IGoalRepository
+from src.app.services.messaging_service import MessagingService
 from src.app.services.response_composer import ResponseComposer
 from src.app.services.semantic_router import UnifiedSemanticRouter
 from src.app.services.tool_dispatcher import ToolDispatcher
 from src.app.services.tool_registry import ToolRegistry
 from src.core.config import Settings, get_settings
 from src.core.domain.context import RequestContext
-from src.core.domain.models import PermissionProfile
-
-from src.infra.turbovec_memory import TurbovecMemoryService
-from src.transports.telegram_transport import TelegramTransport
-from src.infra.tools.base import ToolExecutor
+from src.core.interfaces.repositories import IGoalRepository
 from src.infra.queue.manager import QueueManager
-from src.app.services.messaging_service import MessagingService
+from src.infra.tools.base import ToolExecutor
+from src.infra.turbovec_memory import TurbovecMemoryService
 
 
 if TYPE_CHECKING:
@@ -204,13 +200,13 @@ class AmadeusService:
 
             active_session_id = context.session_id
             conversation_manager = await self._get_conversation_manager(active_session_id)
-    
+
             try:
                 await conversation_manager.add("user", user_input)
                 await self.memory_service.store(
                     active_session_id, "user", user_input, subtype="interaction", importance=0.5
                 )
-    
+
                 if self._is_multi_step_query(user_input):
                     response, tools_used = await self._process_with_agent(
                         user_input,
@@ -224,20 +220,20 @@ class AmadeusService:
                         conversation_manager=conversation_manager,
                         context=context,
                     )
-    
+
                 await conversation_manager.add("assistant", response, tool_used=tool_used)
                 await self.memory_service.store(
                     active_session_id, "assistant", response, subtype="interaction", importance=0.4
                 )
                 return response
-    
+
             except Exception as exc:
                 from src.app.services.agent_loop import QueueFullError
-    
+
                 if isinstance(exc, QueueFullError):
                     span.record_exception(exc)
                     raise
-    
+
                 logger.error("Error handling command: %s", exc, exc_info=True)
                 span.record_exception(exc)
                 if self.debug_mode or getattr(self.settings, "ALLOW_DEBUG_RESPONSES", False):
@@ -282,7 +278,7 @@ class AmadeusService:
             "who founded", "who wrote",
         ]
         _LIVE_PREFIXES = ["who won", "how many", "current score", "what happened"]
-        
+
         # Exception: Weather should go to get_weather, not wikipedia/web
         if "weather" in lower_query or "temperature" in lower_query:
             pass
@@ -409,8 +405,8 @@ class AmadeusService:
                 if actual_tool_name == "fetch_webpage_content":
                     # Specialized summary for webpage content
                     prose = await self._composer.compose_tool_response(
-                        user_input, 
-                        actual_tool_name, 
+                        user_input,
+                        actual_tool_name,
                         result.output,
                         instruction="Summarize the content of the webpage provided below. Be thorough but concise."
                     )
@@ -445,7 +441,7 @@ class AmadeusService:
 
     def _is_multi_step_query(self, user_input: str) -> bool:
         """Return True only when the query clearly requires chaining 2+ distinct tools.
-        
+
         Tightened to avoid routing single-tool queries that contain 'and' (e.g.
         'Who is X and what did he do?') to the heavier LangGraph agent.
         Requires both a conjunction indicator AND evidence of 2 distinct tool categories.
@@ -534,7 +530,7 @@ class AmadeusService:
                 tools=tools_config if tools_config else None,
             )
             # PC-01: Gemini SDK is synchronous; run it in a thread pool so we
-            # never block the asyncio event loop during inference (1–10 seconds).
+            # never block the asyncio event loop during inference (1-10 seconds).
             loop = asyncio.get_running_loop()
             _client = self.client
             _model = self.model_name
@@ -628,7 +624,7 @@ class AmadeusService:
         async def _generate(prompt: str, **kwargs: Any) -> str:
             structured = kwargs.get("structured", False)
             complexity = kwargs.get("complexity", "high")
-            
+
             router = getattr(self, "llm_router", None)
             if router is not None:
                 response, _ = await router.generate(
@@ -639,7 +635,7 @@ class AmadeusService:
             loop = asyncio.get_running_loop()
             if self.client is None or self.settings.LOCAL_ONLY_MODE:
                 raise ValueError("Gemini client unavailable and no LLMRouter configured.")
-            
+
             # Simple fallback for Gemini if router is missing
             response = await loop.run_in_executor(
                 None,

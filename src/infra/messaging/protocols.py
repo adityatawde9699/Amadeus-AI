@@ -40,7 +40,7 @@ class IMessagingAdapter(Protocol):
         """
         ...
 
-    async def parse_message(self, payload: dict) -> "InboundMessage | None":
+    async def parse_message(self, payload: dict) -> InboundMessage | None:
         """
         Parse the raw webhook payload into a normalised ``InboundMessage``.
 
@@ -77,7 +77,7 @@ class InboundMessage:
     never needs to know where a message came from.
     """
 
-    __slots__ = ("sender_id", "text", "platform", "raw_payload", "message_id")
+    __slots__ = ("message_id", "platform", "raw_payload", "sender_id", "text")
 
     def __init__(
         self,

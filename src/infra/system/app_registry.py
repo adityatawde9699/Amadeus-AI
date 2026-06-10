@@ -11,7 +11,6 @@ import platform
 from pathlib import Path
 from typing import Any
 
-
 from rapidfuzz import fuzz, process
 
 

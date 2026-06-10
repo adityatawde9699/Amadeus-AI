@@ -20,7 +20,6 @@ from src.infra.system.app_registry import AppRegistry
 from src.infra.tools.base import Tool, ToolCategory, tool
 
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -45,7 +44,7 @@ def _assert_in_allowed_dirs(path):
     try:
         resolved = path.resolve()
     except Exception:
-        return "Access denied: cannot resolve path '{}'.".format(path)
+        return f"Access denied: cannot resolve path '{path}'."
     for root in allowed_roots:
         try:
             resolved.relative_to(root)
@@ -54,7 +53,7 @@ def _assert_in_allowed_dirs(path):
             continue
     roots_str = ", ".join(str(r) for r in allowed_roots)
     return (
-        "Access denied: '{}' is outside the allowed directories ({}).".format(resolved, roots_str)
+        f"Access denied: '{resolved}' is outside the allowed directories ({roots_str})."
     )
 
 
@@ -329,7 +328,7 @@ def copy_file(
         for label, p in (("source", src_path), ("destination", dst_path)):
             err = _assert_in_allowed_dirs(p)
             if err:
-                return "copy_file {} - {}".format(label, err)
+                return f"copy_file {label} - {err}"
 
         if not src_path.is_file():
             return f"Source file does not exist: {src}"
@@ -376,7 +375,7 @@ def move_file(
         for label, p in (("source", src_path), ("destination", dst_path)):
             err = _assert_in_allowed_dirs(p)
             if err:
-                return "move_file {} - {}".format(label, err)
+                return f"move_file {label} - {err}"
 
         if not src_path.is_file():
             return f"Source file does not exist: {src}"
@@ -452,7 +451,7 @@ def create_folder(folder_name: str | None = None, name: str | None = None, **kwa
         # CQ-02: Sandbox the target directory
         err = _assert_in_allowed_dirs(folder_path)
         if err:
-            return "create_folder - {}".format(err)
+            return f"create_folder - {err}"
 
         if folder_path.exists():
             if folder_path.is_dir():

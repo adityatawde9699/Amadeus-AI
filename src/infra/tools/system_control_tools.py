@@ -79,11 +79,11 @@ def set_volume(level: int = 50, **kwargs: Any) -> str:
         # Final fallback: PowerShell with Audio API
         try:
             clamped = max(0, min(100, level))
-            ps_script = f"""
+            ps_script = """
 $code = @"
 using System.Runtime.InteropServices;
 [Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-public interface IAudioEndpointVolume {{
+public interface IAudioEndpointVolume {
     int f(); int g(); int h(); int i();
     int SetMasterVolumeLevelScalar(float fLevel, System.Guid pEventContext);
     int j();
@@ -91,19 +91,19 @@ public interface IAudioEndpointVolume {{
     int k(); int l(); int m(); int n();
     int SetMute([MarshalAs(UnmanagedType.Bool)] bool bMute, System.Guid pEventContext);
     int GetMute(out bool pbMute);
-}}
+}
 [Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-public interface IMMDevice {{
+public interface IMMDevice {
     int Activate(ref System.Guid id, int clsCtx, int activationParams, out IAudioEndpointVolume aev);
-}}
+}
 [Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-public interface IMMDeviceEnumerator {{
+public interface IMMDeviceEnumerator {
     int f();
     int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice endpoint);
-}}
-[ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] public class MMDeviceEnumeratorComObject {{ }}
-public class Audio {{
-    static IAudioEndpointVolume Vol() {{
+}
+[ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] public class MMDeviceEnumeratorComObject { }
+public class Audio {
+    static IAudioEndpointVolume Vol() {
         var enumerator = new MMDeviceEnumeratorComObject() as IMMDeviceEnumerator;
         IMMDevice dev = null;
         enumerator.GetDefaultAudioEndpoint(0, 1, out dev);
@@ -111,16 +111,16 @@ public class Audio {{
         var epvid = typeof(IAudioEndpointVolume).GUID;
         dev.Activate(ref epvid, 23, 0, out epv);
         return epv;
-    }}
-    public static float Volume {{
-        get {{ float v = -1; Vol().GetMasterVolumeLevelScalar(out v); return v; }}
-        set {{ Vol().SetMasterVolumeLevelScalar(value, System.Guid.Empty); }}
-    }}
-    public static bool Mute {{
-        get {{ bool m = false; Vol().GetMute(out m); return m; }}
-        set {{ Vol().SetMute(value, System.Guid.Empty); }}
-    }}
-}}
+    }
+    public static float Volume {
+        get { float v = -1; Vol().GetMasterVolumeLevelScalar(out v); return v; }
+        set { Vol().SetMasterVolumeLevelScalar(value, System.Guid.Empty); }
+    }
+    public static bool Mute {
+        get { bool m = false; Vol().GetMute(out m); return m; }
+        set { Vol().SetMute(value, System.Guid.Empty); }
+    }
+}
 "@
 Add-Type -TypeDefinition $code
 """
@@ -525,7 +525,7 @@ def list_open_apps(**kwargs: Any) -> str:
 def terminate_process(process_name: str, **kwargs: Any) -> str:
     """Terminate a process by name or PID."""
     import psutil
-    
+
     try:
         # Check if it's a PID
         if process_name.isdigit():
@@ -533,14 +533,14 @@ def terminate_process(process_name: str, **kwargs: Any) -> str:
             proc = psutil.Process(pid)
             proc.terminate()
             return f"Process with PID {pid} ({proc.name()}) has been terminated."
-            
+
         # Search by name
         terminated_count = 0
-        for proc in psutil.process_iter(['pid', 'name']):
-            if process_name.lower() in proc.info['name'].lower():
+        for proc in psutil.process_iter(["pid", "name"]):
+            if process_name.lower() in proc.info["name"].lower():
                 proc.terminate()
                 terminated_count += 1
-                
+
         if terminated_count > 0:
             return f"Successfully terminated {terminated_count} process(es) matching '{process_name}'."
         return f"No processes found matching '{process_name}'."
@@ -566,14 +566,13 @@ def terminate_process(process_name: str, **kwargs: Any) -> str:
 )
 def launch_app(app_name: str, **kwargs: Any) -> str:
     """Launch an application."""
-    import os
     import subprocess
-    
+
     if platform.system() == "Windows":
         try:
             # Try to start using shell 'start' command which handles PATH and associations
             # Use 'cmd /c start' with explicit argument list — NO shell=True
-            subprocess.Popen(["cmd", "/c", "start", "", app_name])  # noqa: S603
+            subprocess.Popen(["cmd", "/c", "start", "", app_name])
             return f"Attempting to launch '{app_name}'..."
         except Exception as e:
             return f"Failed to launch '{app_name}': {e}"
@@ -589,7 +588,7 @@ def launch_app(app_name: str, **kwargs: Any) -> str:
             return f"Attempting to launch '{app_name}' on Linux..."
         except Exception as e:
             return f"Failed to launch '{app_name}': {e}"
-            
+
     return f"Launch app not supported on {platform.system()}."
 
 

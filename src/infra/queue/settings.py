@@ -1,7 +1,10 @@
 import logging
 from typing import Any
+
 from arq.connections import RedisSettings
+
 from src.core.config import get_settings
+
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -11,14 +14,14 @@ async def execute_tool_job(ctx: dict[str, Any], tool_name: str, args: dict[str, 
     Background job to execute slow tools using ToolDispatcher.
     """
     logger.info("Starting background job for tool '%s'", tool_name)
-    
+
     try:
         # Load necessary dependencies lazily to avoid circular imports in the worker
-        from src.container import get_tool_registry, get_cache_service
-        from src.infra.tools.base import ToolExecutor
         from src.app.services.tool_dispatcher import ToolDispatcher
+        from src.container import get_cache_service, get_tool_registry
         from src.core.domain.context import RequestContext
         from src.core.domain.models import PermissionProfile
+        from src.infra.tools.base import ToolExecutor
 
         registry = get_tool_registry()
         executor = ToolExecutor()

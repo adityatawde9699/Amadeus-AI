@@ -13,14 +13,14 @@ import redis.asyncio
 from dependency_injector import containers, providers
 
 from src.app.services.amadeus_service import AmadeusService
+from src.app.services.messaging_service import MessagingService
 from src.app.services.tool_registry import ToolRegistry
 from src.core.config import get_settings
 from src.infra.cache.cache_service import CacheService
 from src.infra.llm.router import LLMRouter
-from src.infra.search.search_router import SearchRouter
-from src.infra.queue.manager import QueueManager
-from src.app.services.messaging_service import MessagingService
 from src.infra.messaging.email_adapter import EmailAdapter
+from src.infra.queue.manager import QueueManager
+from src.infra.search.search_router import SearchRouter
 from src.infra.tools.confirmation import ConfirmationCallback
 
 
@@ -99,10 +99,10 @@ def _build_tool_registry() -> ToolRegistry:
     registry = ToolRegistry()
     try:
         from src.infra.persistence.database import get_session
+        from src.infra.persistence.repositories.note_repository import SQLAlchemyNoteRepository
         from src.infra.persistence.repositories.pomodoro_repository import (
             SQLAlchemyPomodoroRepository,
         )
-        from src.infra.persistence.repositories.note_repository import SQLAlchemyNoteRepository
         from src.infra.persistence.repositories.reminder_repository import (
             SQLAlchemyReminderRepository,
         )
@@ -147,8 +147,8 @@ def _build_tool_registry() -> ToolRegistry:
         from src.infra.tools.filesystem_tools import build_filesystem_tools
         from src.infra.tools.info_tools import get_info_tools
         from src.infra.tools.monitor_tools import get_monitor_tools
-        from src.infra.tools.system_tools import get_system_tools
         from src.infra.tools.network_tools import get_network_tools
+        from src.infra.tools.system_tools import get_system_tools
 
         for tool in get_info_tools():
             registry.register(tool)
@@ -172,9 +172,9 @@ def _build_tool_registry() -> ToolRegistry:
 
         # Register web_research and email tools (return plain dicts, not Tool objects)
         try:
+            from src.infra.search.search_router import SearchRouter
             from src.infra.tools.base import ToolCategory
             from src.infra.tools.web_research_tools import build_web_research_tools
-            from src.infra.search.search_router import SearchRouter
 
             # Build and initialize a search router for the tool
             _search_router = SearchRouter(

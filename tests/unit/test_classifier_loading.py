@@ -14,6 +14,7 @@ import pytest
 
 from src.app.services.tool_registry import ToolRegistry
 
+
 # ---------------------------------------------------------------------------
 # Skip guard — check whether the router's hard deps are importable
 # ---------------------------------------------------------------------------

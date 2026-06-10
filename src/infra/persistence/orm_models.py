@@ -19,12 +19,13 @@ from datetime import datetime
 
 from sqlalchemy import Enum as SAEnum
 
+
 # Helper: tell SQLAlchemy to use the StrEnum .value (lowercase) for DB I/O
 # instead of .name (uppercase).  Without this, asyncpg sends e.g. 'WORKING'
 # when the PostgreSQL enum type expects 'working', causing
 # InvalidTextRepresentationError.
 _enum_values = lambda e: [m.value for m in e]  # noqa: E731
-from sqlalchemy import Float, ForeignKey, Index, Integer, JSON, String, Text
+from sqlalchemy import JSON, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 

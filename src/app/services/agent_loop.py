@@ -22,16 +22,16 @@ import logging
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Annotated, Literal, TypedDict
+from typing import TYPE_CHECKING, Annotated, Any, Literal, TypedDict
 
-from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import END, StateGraph
 
 from src.app.services.tool_registry import ToolRegistry
 from src.core.domain.context import RequestContext
 from src.core.domain.models import PermissionProfile
 from src.infra.tools.base import ToolExecutor
+
 
 if TYPE_CHECKING:
     from langgraph.graph.state import CompiledStateGraph
@@ -289,7 +289,7 @@ Create a plan and decide the FIRST action. Respond with JSON only:
                 "tools_used": tool_used,
                 "should_continue": True,
             }
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return {
                 "observations": [f"{tool_name}: Error — timed out after 30s"],
                 "should_continue": True,
@@ -551,7 +551,7 @@ Respond with JSON only:
 
         # Try to find JSON object in the response
         import re
-        json_match = re.search(r'\{[^{}]*\}', cleaned, re.DOTALL)
+        json_match = re.search(r"\{[^{}]*\}", cleaned, re.DOTALL)
         if json_match:
             try:
                 return json.loads(json_match.group())

@@ -45,15 +45,15 @@ class MemoryResult:
 
     __slots__ = (
         "distance",
+        "importance",
         "role",
+        "score",
         "session_id",
+        "source",
+        "subtype",
         "text",
         "timestamp",
         "type",
-        "subtype",
-        "importance",
-        "source",
-        "score",
     )
 
     def __init__(
@@ -334,7 +334,7 @@ class QdrantMemoryService:
         with tracer.start_as_current_span("QdrantMemoryService.store") as span:
             span.set_attribute("memory.role", role)
             span.set_attribute("memory.subtype", subtype)
-            
+
             # Identity memories have fixed high importance
             if subtype == "identity":
                 importance = 1.0
@@ -344,9 +344,9 @@ class QdrantMemoryService:
                     importance = 0.6 if type == "memory" else 0.4
                 elif role == "system":
                     importance = 0.7
-                    
+
             trust_score = 0.8 if source == "user" else 0.5
-    
+
             embedding = await self._embed_async(text, "retrieval_document")
         if embedding is None:
             return False
@@ -362,7 +362,7 @@ class QdrantMemoryService:
         # Contradiction Resolution: If this is an identity fact, check for existing contradictory/duplicate facts.
         if subtype == "identity":
             try:
-                from qdrant_client.models import Filter, FieldCondition, MatchValue, QueryRequest
+                from qdrant_client.models import FieldCondition, Filter, MatchValue
                 qr = await self._circuit_breaker.call(
                     self._client.query_points,
                     collection_name=self._settings.MEMORY_COLLECTION_NAME,
@@ -448,11 +448,11 @@ class QdrantMemoryService:
         tracer = trace.get_tracer(__name__)
         with tracer.start_as_current_span("QdrantMemoryService.retrieve") as span:
             span.set_attribute("memory.top_k", top_k)
-            
+
             embedding = await self._embed_async(query, "retrieval_query")
             if embedding is None:
                 return []
-    
+
             # --- Qdrant query_points (qdrant-client >= 1.8 API) ---
             try:
                 import math

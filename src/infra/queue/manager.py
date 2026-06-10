@@ -6,10 +6,13 @@ Handles enqueuing background jobs using ARQ.
 
 import logging
 from typing import Any
+
 from arq import create_pool
 from arq.connections import RedisSettings
+
 from src.core.config import get_settings
 from src.core.domain.context import RequestContext
+
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +67,7 @@ class QueueManager:
         """
         if self._pool is None:
             await self.initialize(required=True)
-            
+
         # Serialize RequestContext for the job
         context_dict = {
             "request_id": context.request_id,
@@ -74,7 +77,7 @@ class QueueManager:
             "memory_scope": context.memory_scope,
             "trace_id": context.trace_id,
         }
-        
+
         job = await self._pool.enqueue_job("execute_tool_job", tool_name, args, context_dict)
         logger.info("Enqueued background job %s for tool '%s'", job.job_id, tool_name)
         return job.job_id
@@ -83,7 +86,7 @@ class QueueManager:
         """Get the result of a background job."""
         if self._pool is None:
             await self.initialize(required=True)
-            
+
         job = self._pool.get_job(job_id)
         return await job.result()
 

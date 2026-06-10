@@ -14,6 +14,11 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from jose import jwt as _jose_jwt
+from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -21,16 +26,11 @@ from slowapi.util import get_remote_address
 from src.api.auth.manager import auth_backend, fastapi_users
 from src.api.auth.schemas import UserCreate, UserRead
 from src.api.middleware.audit_logger import AuditLoggerMiddleware
+from src.api.middleware.tracing import TracingMiddleware
 from src.container import global_container
 from src.core.config import get_settings, validate_settings
 from src.core.exceptions import AmadeusError
 from src.infra.persistence.database import close_db, init_db
-from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.resources import Resource, SERVICE_NAME
-from src.api.middleware.tracing import TracingMiddleware
 
 
 # Global scheduler instance

@@ -13,6 +13,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException, status
 
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Health"])

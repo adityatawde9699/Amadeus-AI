@@ -25,9 +25,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
 from functools import partial, wraps
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Literal, TypeVar, cast
 
 
 if TYPE_CHECKING:
@@ -76,9 +75,9 @@ class ToolCategory(StrEnum):
     # LEGACY ALIASES — kept so existing code that references the old broad
     # names (SYSTEM, INFORMATION) does not crash before it is migrated.
     # -----------------------------------------------------------------------
-    SYSTEM      = "os_control"     # noqa: PIE796  (duplicate value intentional)
-    INFORMATION = "web_research"   # noqa: PIE796
-    RESEARCH    = "web_research"   # noqa: PIE796
+    SYSTEM      = "os_control"
+    INFORMATION = "web_research"
+    RESEARCH    = "web_research"
 
 
 # =============================================================================
@@ -312,8 +311,9 @@ class ToolExecutor:
         # NEW: TOOL POLICY ENGINE GATE
         # ------------------------------------------------------------------
         try:
-            from src.core.domain.context import RequestContext
             import uuid
+
+            from src.core.domain.context import RequestContext
             # Mock context if none provided (for legacy compatibility)
             mock_ctx = RequestContext(
                 request_id=str(uuid.uuid4()),

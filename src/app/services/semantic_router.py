@@ -28,6 +28,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+
 if TYPE_CHECKING:
     from src.app.services.tool_registry import ToolRegistry
 
@@ -123,7 +124,7 @@ class UnifiedSemanticRouter:
 
     def __init__(
         self,
-        registry: "ToolRegistry",
+        registry: ToolRegistry,
         model_dir: Path | str = Path("Model"),
         threshold: float = _DEFAULT_THRESHOLD,
     ) -> None:
@@ -171,7 +172,7 @@ class UnifiedSemanticRouter:
 
         # Build fresh embeddings
         logger.info("UnifiedSemanticRouter: indexing tools and intents...")
-        
+
         texts = []
         labels = []
         types = []

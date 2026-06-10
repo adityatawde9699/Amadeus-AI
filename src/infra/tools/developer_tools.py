@@ -26,16 +26,16 @@ logger = logging.getLogger(__name__)
 _sandbox = None
 
 
-def _get_sandbox():  # noqa: ANN202
+def _get_sandbox():
     """Lazy-init the sandbox executor. Prefer Docker if available, fallback to Local."""
-    global _sandbox  # noqa: PLW0603
+    global _sandbox
     if _sandbox is None:
         from src.core.config import get_settings
         settings = get_settings()
-        
+
         # Check if user explicitly requested local mode or if we should try Docker first
         sandbox_mode = getattr(settings, "SANDBOX_MODE", "auto").lower()
-        
+
         if sandbox_mode == "local":
             from src.infra.sandbox.local_executor import LocalSandboxExecutor
             _sandbox = LocalSandboxExecutor()
@@ -114,11 +114,10 @@ def execute_python_script(code: str | None = None, **kwargs: Any) -> str:
             if not output:
                 return "Execution successful. The script produced no output."
             return f"Execution successful. Output:\n{output}"
-        else:
-            return (
-                f"Execution failed ({result['status']}). Error:\n{result['output']}\n"
-                "Fix the code and try again."
-            )
+        return (
+            f"Execution failed ({result['status']}). Error:\n{result['output']}\n"
+            "Fix the code and try again."
+        )
     except Exception as e:
         logger.warning("Sandbox execution failed (Docker may not be running): %s", e)
         return (
@@ -149,7 +148,7 @@ def terminal_cmd(command: str | None = None, **kwargs: Any) -> str:
     cmd = command or kwargs.get("cmd", "")
     if not cmd or not cmd.strip():
         return "Error: No command provided."
-    
+
     try:
         args = shlex.split(cmd)
         if not args:
@@ -164,9 +163,8 @@ def terminal_cmd(command: str | None = None, **kwargs: Any) -> str:
         if result.returncode == 0:
             out = result.stdout.strip()
             return f"Command succeeded:\n{out}" if out else "Command succeeded with no output."
-        else:
-            err = result.stderr.strip() or result.stdout.strip()
-            return f"Command failed (exit {result.returncode}):\n{err}"
+        err = result.stderr.strip() or result.stdout.strip()
+        return f"Command failed (exit {result.returncode}):\n{err}"
     except subprocess.TimeoutExpired:
         return f"Error: Command '{cmd}' timed out after 15 seconds."
     except Exception as e:

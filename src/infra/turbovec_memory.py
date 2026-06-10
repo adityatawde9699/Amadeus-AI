@@ -7,10 +7,8 @@ backed by an aiosqlite database for storing the JSON payloads.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import math
-import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -18,14 +16,16 @@ from typing import Any
 import aiosqlite
 from opentelemetry import trace
 
+
 try:
-    import turbovec
     import numpy as np
+    import turbovec
 except ImportError:
     turbovec = None
 
 from src.core.config import Settings, get_settings
 from src.infra.memory_service import MemoryResult
+
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ class TurbovecMemoryService:
         self._local_embed_model: Any = None
         self._use_local_embed = False
         self._embed_dim = 768  # default for Gemini
-        
+
         # Paths
         self._persist_dir = Path(str(self._settings.MEMORY_PERSIST_DIR))
         self._index_path = self._persist_dir / "turbovec_memory.tvim"
@@ -64,28 +64,28 @@ class TurbovecMemoryService:
     async def initialize(self) -> None:
         if not self._enabled:
             return
-            
+
         if turbovec is None:
             logger.warning("turbovec not installed, memory disabled.")
             self._enabled = False
             return
-            
+
         async with _get_init_lock():
             if self._initialized:
                 return
-                
+
             try:
                 self._persist_dir.mkdir(parents=True, exist_ok=True)
-                
+
                 # Setup embedding model first to get dimension
                 await self._setup_embedding_model()
-                
+
                 if not self._enabled:
                     return
 
                 # Init SQLite payload DB
                 self._db = await aiosqlite.connect(self._db_path)
-                await self._db.execute('''
+                await self._db.execute("""
                     CREATE TABLE IF NOT EXISTS memory_payloads (
                         id INTEGER PRIMARY KEY,
                         session_id TEXT,
@@ -100,9 +100,9 @@ class TurbovecMemoryService:
                         access_count INTEGER,
                         hash TEXT UNIQUE
                     )
-                ''')
-                await self._db.execute('CREATE INDEX IF NOT EXISTS idx_session ON memory_payloads(session_id)')
-                await self._db.execute('CREATE INDEX IF NOT EXISTS idx_text ON memory_payloads(text)')
+                """)
+                await self._db.execute("CREATE INDEX IF NOT EXISTS idx_session ON memory_payloads(session_id)")
+                await self._db.execute("CREATE INDEX IF NOT EXISTS idx_text ON memory_payloads(text)")
                 await self._db.commit()
 
                 # Init Turbovec
@@ -112,9 +112,9 @@ class TurbovecMemoryService:
                         _global_turbovec_index = turbovec.IdMapIndex.load(str(self._index_path))
                     else:
                         _global_turbovec_index = turbovec.IdMapIndex(dim=self._embed_dim, bit_width=4)
-                
+
                 self._index = _global_turbovec_index
-                
+
                 logger.info("Turbovec initialized, dim=%d, size=%d", self._embed_dim, len(self._index))
                 self._initialized = True
             except Exception as e:
@@ -127,7 +127,7 @@ class TurbovecMemoryService:
             from src.infra.model_manager import ModelManager
             mm = ModelManager(self._settings)
             load_path, local_dir = mm.resolve_embed_model()
-        except Exception as exc:
+        except Exception:
             load_path, local_dir = model_name, None
 
         try:
@@ -207,21 +207,21 @@ class TurbovecMemoryService:
                 importance = 1.0
             elif importance == 0.5:
                 importance = 0.6 if role == "user" else 0.7
-                    
+
             trust_score = 0.8 if source == "user" else 0.5
-    
+
             embedding = await self._embed_async(text, "retrieval_document")
             if embedding is None:
                 return False
 
             raw_key = f"{session_id}:{role}:{text}"
             timestamp_str = datetime.now(UTC).isoformat()
-            
+
             try:
                 # Contradiction Resolution
                 if subtype == "identity":
                     async with self._db.execute(
-                        "SELECT id FROM memory_payloads WHERE subtype=? AND session_id=?", 
+                        "SELECT id FROM memory_payloads WHERE subtype=? AND session_id=?",
                         ("identity", session_id)
                     ) as cursor:
                         rows = await cursor.fetchall()
@@ -231,18 +231,18 @@ class TurbovecMemoryService:
                             ids_arr = np.array(ids_to_check, dtype=np.uint64)
                             queries = np.array([embedding], dtype=np.float32)
                             scores, ret_ids = self._index.search(queries, k=3, allowlist=ids_arr)
-                            
+
                             to_delete = []
                             for i, score in enumerate(scores[0]):
                                 if score > 0.90:
                                     to_delete.append(int(ret_ids[0][i]))
-                                    
+
                             if to_delete:
                                 for did in to_delete:
                                     self._index.remove(np.uint64(did))
                                     await self._db.execute("DELETE FROM memory_payloads WHERE id=?", (did,))
                                 await self._db.commit()
-                
+
                 # Check if hash already exists to avoid duplicates
                 async with self._db.execute("SELECT id FROM memory_payloads WHERE hash=?", (raw_key,)) as cursor:
                     existing = await cursor.fetchone()
@@ -267,11 +267,11 @@ class TurbovecMemoryService:
                 vec_arr = np.array([embedding], dtype=np.float32)
                 id_arr = np.array([db_id], dtype=np.uint64)
                 self._index.add_with_ids(vec_arr, id_arr)
-                
+
                 # Save to disk
                 loop = asyncio.get_running_loop()
                 await loop.run_in_executor(None, self._index.write, str(self._index_path))
-                
+
                 return True
             except Exception as exc:
                 logger.warning("Turbovec store failed: %s", exc)
@@ -286,21 +286,21 @@ class TurbovecMemoryService:
             embedding = await self._embed_async(query, "retrieval_query")
             if embedding is None:
                 return []
-                
+
             try:
                 queries = np.array([embedding], dtype=np.float32)
                 scores, ret_ids = self._index.search(queries, k=top_k * 2)
-                
+
                 if not len(ret_ids) or not len(ret_ids[0]):
                     return []
-                    
+
                 result_ids = [int(i) for i in ret_ids[0]]
                 result_scores = {int(ret_ids[0][i]): float(scores[0][i]) for i in range(len(result_ids))}
-                
+
                 # Fetch payloads
-                placeholders = ','.join(['?'] * len(result_ids))
+                placeholders = ",".join(["?"] * len(result_ids))
                 query_sql = f"SELECT id, session_id, role, text, timestamp, type, subtype, importance, source, access_count FROM memory_payloads WHERE id IN ({placeholders})"
-                
+
                 memories = []
                 now = datetime.now(UTC)
                 tau_seconds = 7 * 24 * 3600
@@ -309,10 +309,10 @@ class TurbovecMemoryService:
                     async for row in cursor:
                         db_id, session_id, role, text, timestamp_str, type_, subtype, importance, source, access_count = row
                         similarity = result_scores.get(db_id, 0.0)
-                        
+
                         if similarity < 0.65:
                             continue
-                            
+
                         recency_decay = 0.0
                         if timestamp_str and subtype != "identity":
                             try:
@@ -340,7 +340,7 @@ class TurbovecMemoryService:
 
                 memories.sort(key=lambda x: x.score, reverse=True)
                 memories = memories[:top_k]
-                
+
                 if memories:
                     asyncio.create_task(self._increment_access_counts([m.text for m in memories]))
 
@@ -357,17 +357,17 @@ class TurbovecMemoryService:
                 rows = await cursor.fetchall()
                 if not rows:
                     return 0
-                    
+
                 for r in rows:
                     if self._index.contains(np.uint64(r[0])):
                         self._index.remove(np.uint64(r[0]))
-                        
+
                 await self._db.execute("DELETE FROM memory_payloads WHERE session_id=?", (session_id,))
                 await self._db.commit()
-                
+
                 loop = asyncio.get_running_loop()
                 await loop.run_in_executor(None, self._index.write, str(self._index_path))
-                
+
                 return len(rows)
         except Exception as exc:
             logger.warning("Turbovec clear_session failed: %s", exc)
@@ -381,17 +381,17 @@ class TurbovecMemoryService:
                 rows = await cursor.fetchall()
                 if not rows:
                     return 0
-                    
+
                 for r in rows:
                     if self._index.contains(np.uint64(r[0])):
                         self._index.remove(np.uint64(r[0]))
-                        
+
                 await self._db.execute("DELETE FROM memory_payloads WHERE text=?", (text,))
                 await self._db.commit()
-                
+
                 loop = asyncio.get_running_loop()
                 await loop.run_in_executor(None, self._index.write, str(self._index_path))
-                
+
                 return len(rows)
         except Exception as exc:
             logger.warning("Turbovec delete_by_text failed: %s", exc)
@@ -403,10 +403,10 @@ class TurbovecMemoryService:
         try:
             now = datetime.now(UTC)
             cutoff_seconds = older_than_days * 24 * 3600
-            
+
             async with self._db.execute("SELECT id, timestamp FROM memory_payloads WHERE session_id=? AND subtype != 'identity'", (session_id,)) as cursor:
                 rows = await cursor.fetchall()
-                
+
             to_delete = []
             for db_id, timestamp_str in rows:
                 if timestamp_str:
@@ -419,19 +419,19 @@ class TurbovecMemoryService:
                             to_delete.append(db_id)
                     except:
                         pass
-                        
+
             if to_delete:
                 for db_id in to_delete:
                     if self._index.contains(np.uint64(db_id)):
                         self._index.remove(np.uint64(db_id))
-                
-                placeholders = ','.join(['?'] * len(to_delete))
+
+                placeholders = ",".join(["?"] * len(to_delete))
                 await self._db.execute(f"DELETE FROM memory_payloads WHERE id IN ({placeholders})", to_delete)
                 await self._db.commit()
-                
+
                 loop = asyncio.get_running_loop()
                 await loop.run_in_executor(None, self._index.write, str(self._index_path))
-                
+
             return len(to_delete)
         except Exception as exc:
             logger.warning("Turbovec prune_stale_memories failed: %s", exc)
@@ -468,7 +468,7 @@ class TurbovecMemoryService:
             return
         try:
             unique_texts = list(dict.fromkeys(texts))
-            placeholders = ','.join(['?'] * len(unique_texts))
+            placeholders = ",".join(["?"] * len(unique_texts))
             await self._db.execute(f"UPDATE memory_payloads SET access_count = access_count + 1 WHERE text IN ({placeholders})", unique_texts)
             await self._db.commit()
         except Exception as exc:

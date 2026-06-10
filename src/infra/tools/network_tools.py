@@ -4,11 +4,12 @@ Network diagnostic tools for Amadeus AI.
 
 import logging
 import platform
-import subprocess
 import socket
+import subprocess
 from typing import Any
 
 from src.infra.tools.base import Tool, ToolCategory, tool
+
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +32,9 @@ def get_network_info(**kwargs: Any) -> str:
         s.close()
     except Exception:
         local_ip = "Unknown"
-        
+
     status = "Online" if local_ip != "Unknown" else "Offline"
-    
+
     return (
         f"Network Status: {status}\n"
         f"Hostname: {hostname}\n"
@@ -63,7 +64,7 @@ def ping_host(host: str, count: int = 4, **kwargs: Any) -> str:
     """Ping a host."""
     param = "-n" if platform.system() == "Windows" else "-c"
     command = ["ping", param, str(count), host]
-    
+
     try:
         result = subprocess.run(command, capture_output=True, text=True, timeout=10)
         if result.returncode == 0:
