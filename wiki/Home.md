@@ -1,6 +1,6 @@
 # Amadeus-AI Wiki
 
-> **v5.0.0-beta — MCP & Daemon Hardening**
+> **v5.0.0 — MCP & Daemon Hardening**
 > A secure autonomous AI operating layer built on Clean Architecture — autonomous tool execution, long-horizon planning, and multi-transport messaging unified under a single service layer.
 
 ---
