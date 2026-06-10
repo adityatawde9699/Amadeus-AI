@@ -102,7 +102,7 @@ Amadeus solves each pain point with a concrete, implemented mechanism:
 
 ### Security & Safety
 - **Prompt Injection Resistance**: `<user_task>` XML boundaries + control token neutralization.
-- **Authorization Guard**: Telegram chat ID allowlists and WhatsApp HMAC verification.
+- **Authorization Guard**: Telegram chat ID allowlists for inbound messages.
 - **Secure Secret Handling**: Auto-generated ephemeral keys and persistent secret tokens with strict file permissions.
 
 ---
@@ -210,10 +210,14 @@ uv sync --all-extras --dev
 # Run database migrations
 uv run alembic upgrade head
 
-# Start via FastAPI transport
+# Recommended: Telegram-first local daemon (no FastAPI host).
+# Requires TELEGRAM_BOT_TOKEN and MASTER_TELEGRAM_CHAT_ID to be set.
+uv run amadeus-daemon
+
+# Alternative: FastAPI host (REST API + admin surface)
 uv run python -m src.transports.fastapi_transport
 
-# Or via CLI transport for testing
+# CLI transport is a dev/debug utility only — not a supported interface.
 uv run python -m src.transports.cli_transport
 ```
 
@@ -843,7 +847,7 @@ curl -X POST http://localhost:8000/api/v1/messaging/send \
 
 # Check channel status
 curl http://localhost:8000/api/v1/messaging/status
-# {"telegram": true, "whatsapp": false, "email": true}
+# {"telegram": true, "email": true}
 ```
 
 ### Voice via WebSocket (Python client example)

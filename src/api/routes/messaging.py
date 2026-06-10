@@ -2,7 +2,7 @@
 Outbound Messaging Management Routes for Amadeus AI.
 
 Provides a unified dispatch endpoint that routes outbound messages
-to the correct channel adapter (Telegram, WhatsApp, or Email).
+to the correct channel adapter (Telegram or Email).
 
 Endpoints:
     POST /api/v1/messaging/send   — send a message on any channel
@@ -75,7 +75,7 @@ async def send_message(
     messaging: MessagingService = Depends(get_messaging_service),
 ) -> SendMessageResponse:
     """
-    Dispatch an outbound message to Telegram, WhatsApp, or Email.
+    Dispatch an outbound message to Telegram or Email.
 
     Requires a valid JWT bearer token.  In production, restrict this
     endpoint to admin-role tokens via the RequireAdmin dependency.
