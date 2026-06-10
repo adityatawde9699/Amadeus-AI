@@ -7,7 +7,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
-## [5.0.0-beta] — 2026-06-10
+## [5.0.0] — 2026-06-10
 
 ### Architecture & Capabilities
 - **MCP Tool Integration (Phase 3)** — Amadeus now dynamically discovers and consumes external tool capabilities via the Model Context Protocol (e.g. `filesystem`, `github`, `postgres`).
@@ -16,7 +16,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
-## [5.0.0-alpha] — 2026-06-09
+## [5.0.0-alpha] — 2026-06-09 *(pre-release)*
 
 ### Architecture
 - **Cognitive Core (Phase 1)** — Fully migrated to a deterministic `LangGraph` async state machine, resolving brittle ReAct loop parsing errors.

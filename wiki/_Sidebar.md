@@ -1,6 +1,6 @@
 ## Amadeus-AI Wiki
 
-**v5.0.0-beta — MCP & Daemon Hardening**
+**v5.0.0 — MCP & Daemon Hardening**
 
 ---
 

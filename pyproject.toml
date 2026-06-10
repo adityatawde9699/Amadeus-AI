@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "amadeus-ai"
-version = "5.0.0-beta"
+version = "5.0.0"
 description = "A production-ready AI assistant built with Clean Architecture principles"
 readme = "README.md"
 license = {text = "Apache-2.0"}
