@@ -9,7 +9,6 @@ from contextlib import asynccontextmanager
 
 import sentry_sdk
 import structlog
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -28,13 +27,8 @@ from src.api.auth.schemas import UserCreate, UserRead
 from src.api.middleware.audit_logger import AuditLoggerMiddleware
 from src.api.middleware.tracing import TracingMiddleware
 from src.container import global_container
-from src.core.config import get_settings, validate_settings
+from src.core.config import get_settings
 from src.core.exceptions import AmadeusError
-from src.infra.persistence.database import close_db, init_db
-
-
-# Global scheduler instance
-scheduler = AsyncIOScheduler()
 
 
 import logging
@@ -146,101 +140,26 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     Application lifespan manager.
 
-    Handles startup and shutdown events for the application.
+    Delegates the shared runtime lifecycle (DB, runtime services, Telegram
+    polling, background loops) to the transport-agnostic ``RuntimeHost`` and
+    layers on only the API-specific wiring — the HITL confirmation callback
+    used by the ``/confirm`` route.
     """
     # Startup
     logger.info("Starting %s API v%s", settings.ASSISTANT_NAME, settings.ASSISTANT_VERSION)
 
-    # Validate configuration
-    validation = validate_settings()
-    if validation["errors"]:
-        logger.error("Configuration errors: %s", validation["errors"])
-        if settings.is_production:
-            raise RuntimeError("Configuration errors in production")
-    for warning in validation.get("warnings", []):
-        logger.warning("Config warning: %s", warning)
+    from src.runtime.host import RuntimeHost
 
-    # Run database migrations automatically
-    try:
-        import subprocess
+    host = RuntimeHost(settings)
+    await host.start()
+    app.state.host = host
+    app.state.runtime = host.runtime
 
-        logger.info("Running database migrations...")
-        alembic_cfg_path = settings.BASE_DIR / "alembic.ini"
-        alembic_script_location = settings.BASE_DIR / "alembic"
-
-        if alembic_cfg_path.exists() and alembic_script_location.exists():
-            # Run alembic as a subprocess to avoid event-loop conflicts.
-            # alembic/env.py calls asyncio.run() which deadlocks inside
-            # asyncio.to_thread() under uvicorn's already-running loop.
-            import asyncio
-            import sys
-
-            result = await asyncio.to_thread(
-                subprocess.run,
-                [sys.executable, "-m", "alembic", "upgrade", "head"],
-                cwd=str(settings.BASE_DIR),
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            if result.returncode == 0:
-                logger.info("Database migrations complete")
-            else:
-                logger.error("Alembic migration failed: %s", result.stderr)
-                if settings.is_production:
-                    raise RuntimeError(f"Migration failed: {result.stderr}")
-        else:
-            logger.warning(
-                "Alembic config or scripts missing at %s. Skipping migrations.",
-                settings.BASE_DIR,
-            )
-    except Exception as e:
-        logger.exception("Failed to run migrations: %s", e)
-        if settings.is_production:
-            raise
-        else:
-            # Chaos-04: Make migration failures impossible to miss in dev.
-            logger.error(
-                "\n"
-                "╔══════════════════════════════════════════════════════════╗\n"
-                "║  DATABASE MIGRATION FAILED (development mode)           ║\n"
-                "║  The schema may be stale. Run:                          ║\n"
-                "║    alembic upgrade head                                 ║\n"
-                "║  Error: %-48s ║\n"
-                "╚══════════════════════════════════════════════════════════╝",
-                str(e)[:48],
-            )
-
-    # Initialize database
-    await init_db()
-
-    # Initialize AmadeusRuntime
-    from src.runtime.core import AmadeusRuntime
-    runtime = AmadeusRuntime(settings)
-    await runtime.start()
-    app.state.runtime = runtime
-
-    # Phase 3: Initialize MCP servers
-    mcp_config_path = settings.BASE_DIR / "config" / "mcp_servers.yaml"
-    if mcp_config_path.exists():
-        import yaml
-        try:
-            mcp_config = yaml.safe_load(mcp_config_path.read_text())
-            for server in mcp_config.get("mcp_servers", []):
-                if server.get("enabled"):
-                    await runtime.tools.connect_mcp_server(
-                        server["command"],
-                        server["name"]
-                    )
-        except Exception as e:
-            logger.error("Failed to initialize MCP servers: %s", e)
-
-    from src.infra.tools.info_tools import initialize_info_tools_http_session
-    await initialize_info_tools_http_session()
-
-    # Initialize HITL Confirmation callback singleton.
+    # Initialize HITL Confirmation callback singleton (API-only).
     # Stored on app.state so the /confirm route handler can access it
-    # via the get_confirmation_callback dependency.
+    # via the get_confirmation_callback dependency. The Telegram transport
+    # injects its own TelegramConfirmationCallback per-message, so this is
+    # only used by the REST /confirm flow.
     from src.container import inject_confirmation_callback
     from src.infra.tools.confirmation import APIConfirmationCallback
 
@@ -251,66 +170,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     inject_confirmation_callback(confirmation_callback)
     logger.info("HITL confirmation gate initialized (timeout=60s)")
 
-    # Initialize Telegram Long Polling
-    logger.info("Initializing Telegram Long Polling...")
-    from src.api.routes.webhooks import _telegram
-
-    _telegram.runtime = runtime  # Inject runtime so messages are processed
-    await _telegram.start_polling()
-
-    # Initialize and start APScheduler
-    logger.info("Initializing background task scheduler...")
-
-    from src.app.services.proactive_service import run_proactive_checks
-
-    # Run proactive checks periodically (e.g. every 30 minutes)
-    interval_minutes = settings.PROACTIVE_CHECK_INTERVAL_MINUTES
-    scheduler.add_job(
-        run_proactive_checks,
-        "interval",
-        minutes=interval_minutes,
-        id="proactive_checks_job",
-        replace_existing=True,
-    )
-
-    scheduler.start()
-
-    # Initialize Autonomous Observation Loop
-    logger.info("Initializing Autonomous Observation Loop...")
-    from src.app.services.autonomous_loop import AutonomousObservationLoop
-
-    observation_loop = AutonomousObservationLoop(
-        interval_minutes=60, session_ids=["system_default_session"]
-    )
-    await observation_loop.start()
-
     logger.info("API ready at http://%s:%s", settings.API_HOST, settings.API_PORT)
 
     yield
 
     # Shutdown
     logger.info("Shutting down API...")
-    if scheduler.running:
-        # DR-03: wait=True lets in-flight APScheduler jobs finish cleanly
-        # before the event loop closes. Without this, long-running jobs
-        # (e.g. proactive_checks) may be interrupted mid-execution.
-        scheduler.shutdown(wait=True)
-
-    await _telegram.stop_polling()
-
-    observation_loop.stop()
-
-    from src.infra.tools.info_tools import close_info_tools_http_session
-
-    await close_info_tools_http_session()
-
-    if getattr(app.state, "runtime", None):
-        # Phase 3: Shutdown MCP sessions
-        if app.state.runtime.tools:
-            await app.state.runtime.tools.shutdown_mcp()
-        await app.state.runtime.stop()
-
-    await close_db()
+    await host.stop()
     logger.info("Shutdown complete")
 
 
@@ -472,7 +338,6 @@ from src.api.routes import (
     messaging,
     readiness,
     tasks,
-    webhooks,
 )
 
 
@@ -486,9 +351,6 @@ app.include_router(readiness.router, prefix="/api/v1", tags=["Health"])
 protected_deps = [Depends(RequireUser)]
 app.include_router(tasks.router, prefix="/api/v1", tags=["Tasks"], dependencies=protected_deps)
 app.include_router(chat.router, prefix="/api/v1", tags=["Chat"], dependencies=protected_deps)
-
-# Webhooks use their own secret-token validation — no JWT
-app.include_router(webhooks.router, prefix="/api/v1", tags=["Webhooks"])
 
 
 # FastAPI-Users Auth

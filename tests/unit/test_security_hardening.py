@@ -3,7 +3,6 @@ Phase 11 — Security Hardening Unit Tests.
 
 Tests every critical security fix from the audit:
   - SEC-01: Prompt injection resistance in ReAct
-  - SEC-02: WhatsApp HMAC webhook verification
   - SEC-03: Telegram authorization guard
   - CQ-01/02: Path traversal blocked in filesystem tools
   - CQ-03: _validate_args fails fast on missing required params
@@ -12,8 +11,6 @@ Tests every critical security fix from the audit:
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -22,65 +19,6 @@ import pytest
 # ---------------------------------------------------------------------------
 # SEC-01 — Prompt injection resistance
 # ---------------------------------------------------------------------------
-
-
-
-# ---------------------------------------------------------------------------
-# SEC-02 — WhatsApp HMAC verification
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.skip(reason="WhatsApp webhook currently removed from webhooks.py")
-class TestWhatsAppHmacVerification:
-    """POST /webhooks/whatsapp must reject requests without valid HMAC."""
-
-    def _make_valid_signature(self, body: bytes, secret: str) -> str:
-        mac = hmac.new(secret.encode(), body, hashlib.sha256)
-        return "sha256=" + mac.hexdigest()
-
-    @pytest.mark.asyncio
-    async def test_invalid_signature_returns_403(self, async_client):
-        """Request with wrong signature must return 403."""
-        payload = b'{"object":"whatsapp_business_account","entry":[]}'
-        with patch("src.api.routes.webhooks.get_settings") as mock_cfg:
-            mock_cfg.return_value.WHATSAPP_APP_SECRET = "super_secret"
-            response = await async_client.post(
-                "/api/v1/webhooks/whatsapp",
-                content=payload,
-                headers={"X-Hub-Signature-256": "sha256=invalid_signature"},
-            )
-        assert response.status_code == 403
-
-    @pytest.mark.asyncio
-    async def test_valid_signature_passes_verification(self, async_client):
-        """Request with correct HMAC signature must NOT be rejected with 403."""
-        secret = "test_app_secret"
-        payload = b'{"object":"whatsapp_business_account","entry":[]}'
-        sig = self._make_valid_signature(payload, secret)
-
-        with patch("src.api.routes.webhooks.get_settings") as mock_cfg:
-            mock_cfg.return_value.WHATSAPP_APP_SECRET = secret
-            response = await async_client.post(
-                "/api/v1/webhooks/whatsapp",
-                content=payload,
-                headers={"X-Hub-Signature-256": sig},
-            )
-        # 200 or non-403 (message may be empty → returns 200 with {"status": "ok"})
-        assert response.status_code != 403
-
-    @pytest.mark.asyncio
-    async def test_missing_signature_header_returns_403_when_secret_configured(
-        self, async_client
-    ):
-        """No X-Hub-Signature-256 header + secret configured → 403."""
-        payload = b'{"object":"whatsapp_business_account","entry":[]}'
-        with patch("src.api.routes.webhooks.get_settings") as mock_cfg:
-            mock_cfg.return_value.WHATSAPP_APP_SECRET = "some_secret"
-            response = await async_client.post(
-                "/api/v1/webhooks/whatsapp",
-                content=payload,
-            )
-        assert response.status_code == 403
 
 
 # ---------------------------------------------------------------------------

@@ -64,7 +64,6 @@ Disclosing security issues publicly before a fix is available puts all users at 
 - JWT via `fastapi-users` with bcrypt password hashing
 - RBAC middleware: `RequireUser` role required for chat/task endpoints
 - **SEC-03**: `MASTER_TELEGRAM_CHAT_ID` allowlist — unauthorized Telegram senders are dropped
-- **SEC-02**: `X-Hub-Signature-256` HMAC verification on WhatsApp webhooks
 
 ### Network Isolation (Docker)
 - Redis (`6379`) and Postgres (`5432`) ports are **not exposed to the host**

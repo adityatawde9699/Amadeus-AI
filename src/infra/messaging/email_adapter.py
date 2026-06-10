@@ -16,11 +16,13 @@ from datetime import UTC, datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-import aiosmtplib
 from bs4 import BeautifulSoup
-from imap_tools import AND, MailBox
 
 from src.core.config import get_settings
+
+# NOTE: ``imap_tools`` and ``aiosmtplib`` are optional (the ``[email]`` extra).
+# They are imported lazily inside the read/send methods so this module — and the
+# default install — import cleanly when the email extra is not present.
 
 
 logger = logging.getLogger(__name__)
@@ -109,6 +111,8 @@ class EmailAdapter:
 
         if not self._email or not self._password:
             raise ValueError("Email credentials not configured")
+        from imap_tools import AND, MailBox  # optional dep — see [email] extra
+
         with MailBox(self._imap_server).login(self._email, self._password) as mailbox:
             for msg in mailbox.fetch(AND(seen=False), limit=limit, reverse=True):
                 body = msg.text or _strip_html(msg.html or "")
@@ -166,6 +170,8 @@ class EmailAdapter:
         try:
             if not self._email or not self._password:
                 raise ValueError("Email credentials not configured")
+            import aiosmtplib  # optional dep — see [email] extra
+
             await aiosmtplib.send(
                 message,
                 hostname=self._smtp_server,
