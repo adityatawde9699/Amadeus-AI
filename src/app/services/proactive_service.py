@@ -30,10 +30,6 @@ async def run_proactive_checks() -> None:
     if telegram_id:
         platforms.append(("telegram", telegram_id))
 
-    whatsapp_number = getattr(settings, "MASTER_WHATSAPP_NUMBER", None)
-    if whatsapp_number:
-        platforms.append(("whatsapp", whatsapp_number))
-
     if not platforms:
         logger.info("No MASTER users configured. Skipping proactive checks.")
         return

@@ -51,10 +51,14 @@ class AmadeusRuntime:
         self.memory = self.amadeus_service.memory_service
         self.tools = self.amadeus_service.tool_registry
 
-        # Eagerly warm up the local LlamaCpp model in the background so the
-        # first user message isn't blocked by 3-4s of model loading.
-        # We fire-and-forget — failure is logged but doesn't block startup.
-        if self.llm is not None:
+        # Optionally warm up the local LlamaCpp model in the background so the
+        # first user message isn't blocked by 3-4s of model loading. This is
+        # opt-in (SLM_WARMUP_ON_START, default False) because eager warmup
+        # increases startup RAM/CPU on low-end machines; when disabled the
+        # first message pays the load cost instead.
+        # Fire-and-forget — failure is logged but doesn't block startup.
+        if self.llm is not None and self.config.SLM_WARMUP_ON_START:
+            logger.info("SLM_WARMUP_ON_START enabled — warming local model in background")
             asyncio.create_task(self.llm.warmup())
 
         # Start watchdog

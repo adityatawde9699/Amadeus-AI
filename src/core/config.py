@@ -105,6 +105,31 @@ class Settings(BaseSettings):
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
     # =========================================================================
+    # FEATURE FLAGS (Telegram-first roadmap)
+    # Gate optional subsystems so the default local daemon stays small and safe.
+    # Behaviour-preserving defaults for the FastAPI host are kept where flipping
+    # them would change current behaviour; the rest default to "off/opt-in".
+    # =========================================================================
+    # FastAPI/admin API host. Kept on by default while `amadeus` still launches
+    # FastAPI; the Telegram daemon ignores this flag.
+    ENABLE_API: bool = True
+    # Optional, higher-risk capabilities — off by default.
+    ENABLE_EMAIL: bool = False  # IMAP/SMTP email tools (extra: amadeus-ai[email])
+    ENABLE_MCP: bool = False  # Connect MCP servers from config/mcp_servers.yaml (extra: [mcp])
+    ENABLE_DOCKER_SANDBOX: bool = False  # Docker-backed code sandbox (extra: [sandbox-docker])
+    ENABLE_SYSTEM_TOOLS: bool = True  # System-control tools (default-flip is a later security item)
+    ENABLE_PLUGINS: bool = False  # Auto-discover/import tools from the plugins/ directory
+    # Background loops — opt-in so an idle daemon stays quiet and cheap.
+    ENABLE_PROACTIVE_LOOP: bool = False  # APScheduler proactive checks
+    ENABLE_AUTONOMOUS_LOOP: bool = False  # AutonomousObservationLoop
+    # Warm the local GGUF model at startup. Off by default to cut startup RAM/CPU
+    # on low-end machines; the first message pays the load cost instead.
+    SLM_WARMUP_ON_START: bool = False
+    # Run Alembic migrations during host startup. Kept on for the FastAPI host;
+    # the Telegram daemon starts with this disabled (migrations are an install step).
+    RUN_MIGRATIONS_ON_START: bool = True
+
+    # =========================================================================
     # PROACTIVE OBSERVATION LOOP
     # =========================================================================
     PROACTIVE_MESSAGE_LIMIT_PER_HOUR: int = 3
