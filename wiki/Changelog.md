@@ -4,6 +4,15 @@ Full version history. For detailed commit-level changes, see [CHANGELOG.md](http
 
 ---
 
+## v5.0.0-beta — MCP & Daemon Hardening *(2026-06-10)*
+
+### Architecture & Capabilities
+- **MCP Tool Integration (Phase 3)** — Amadeus now dynamically discovers and consumes external tool capabilities via the Model Context Protocol (e.g. `filesystem`, `github`, `postgres`).
+- **24/7 Daemon Hardening (Phase 6)** — Systemd daemon fully fortified with memory/CPU quotas, burst restarts, and proper ASGI SIGTERM signal handling.
+- **Proactive Garbage Collection** — Background autonomous loops now correctly invoke `prune_stale_memories` to prevent Turbovec index bloating on long-lived master sessions.
+
+---
+
 ## v5.0.0-alpha — LangGraph & Deep RAG Edition *(2026-06-09)*
 
 ### Architecture

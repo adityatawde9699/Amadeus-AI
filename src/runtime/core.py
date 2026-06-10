@@ -33,6 +33,10 @@ class AmadeusRuntime:
 
         # We will lazy-initialize AmadeusService or hold it here
         self.amadeus_service = None
+        
+        # Track active tasks for graceful shutdown
+        self._active_tasks: set[asyncio.Task] = set()
+        self.graceful_shutdown_timeout: int = 30
 
     async def start(self) -> None:
         logger.info("Starting AmadeusRuntime...")
@@ -70,6 +74,18 @@ class AmadeusRuntime:
         if self._watchdog_task:
             await self._watchdog_task
             
+        # Graceful shutdown of active tasks
+        if self._active_tasks:
+            logger.info("Waiting up to %ds for %d active tasks to finish...", self.graceful_shutdown_timeout, len(self._active_tasks))
+            done, pending = await asyncio.wait(
+                self._active_tasks, 
+                timeout=self.graceful_shutdown_timeout
+            )
+            if pending:
+                logger.warning("Cancelling %d tasks that did not complete within the timeout.", len(pending))
+                for t in pending:
+                    t.cancel()
+            
         logger.info("AmadeusRuntime stopped.")
 
     async def process_task(self, context: RequestContext, input_text: str) -> str:
@@ -82,6 +98,10 @@ class AmadeusRuntime:
         if not self.amadeus_service:
             raise RuntimeError("AmadeusRuntime not started")
             
+        current_task = asyncio.current_task()
+        if current_task:
+            self._active_tasks.add(current_task)
+            
         await self.event_bus.emit("task.started", {"request_id": context.request_id, "input": input_text})
         try:
             result = await self.cognitive_core.process(input_text, context)
@@ -90,6 +110,9 @@ class AmadeusRuntime:
         except Exception as e:
             await self.event_bus.emit("task.failed", {"request_id": context.request_id, "error": str(e)})
             raise
+        finally:
+            if current_task is not None and current_task in self._active_tasks:
+                self._active_tasks.remove(current_task)
 
     async def execute_tool(self, context: RequestContext, tool_name: str, args: dict) -> Any:
         """

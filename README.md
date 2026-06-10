@@ -1,6 +1,6 @@
 <div align="center">
 
-# Amadeus AI v5.0.0-alpha
+# Amadeus AI v5.0.0-beta
 
 **A secure autonomous AI operating layer built on Clean Architecture — featuring a plan-driven cognitive runtime, persistent execution graphs, and a dynamic plugin system for local devices.**
 

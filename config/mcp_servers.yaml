@@ -1,0 +1,14 @@
+mcp_servers:
+  - name: filesystem
+    command: "npx -y @modelcontextprotocol/server-filesystem /home/adityatawde9699"
+    enabled: true
+  - name: github
+    command: "npx -y @modelcontextprotocol/server-github"
+    env:
+      GITHUB_TOKEN: "${GITHUB_TOKEN}"
+    enabled: false
+  - name: postgres
+    command: "npx -y @modelcontextprotocol/server-postgres"
+    env:
+      DATABASE_URL: "${DATABASE_URL}"
+    enabled: false
