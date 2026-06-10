@@ -16,6 +16,7 @@ Why python-telegram-bot v20+?
 from __future__ import annotations
 
 import logging
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
@@ -23,7 +24,6 @@ from src.core.config import get_settings
 from src.core.domain.context import RequestContext
 from src.core.domain.models import PermissionProfile
 from src.runtime.core import AmadeusRuntime
-import uuid
 
 
 logger = logging.getLogger(__name__)
@@ -45,8 +45,10 @@ class TelegramMessage:
     from_username: str | None = None
 
 
-from src.infra.tools.confirmation import ConfirmationCallback
 import asyncio
+
+from src.infra.tools.confirmation import ConfirmationCallback
+
 
 # ---------------------------------------------------------------------------
 # Confirmation Callback
@@ -55,7 +57,7 @@ import asyncio
 class TelegramConfirmationCallback(ConfirmationCallback):
     """Hits the user up on Telegram for confirmation using inline buttons."""
 
-    def __init__(self, transport: "TelegramTransport", chat_id: int):
+    def __init__(self, transport: TelegramTransport, chat_id: int):
         self.transport = transport
         self.chat_id = chat_id
 
@@ -82,7 +84,7 @@ class TelegramConfirmationCallback(ConfirmationCallback):
                 {"text": "❌ Deny", "callback_data": f"confirm_no:{request_id}"},
             ]
         ]
-        
+
         success = await self.transport.send_buttons(self.chat_id, text, buttons)
         if not success:
             self.transport._pending_confirmations.pop(request_id, None)
@@ -90,7 +92,7 @@ class TelegramConfirmationCallback(ConfirmationCallback):
 
         try:
             return await asyncio.wait_for(future, timeout=60)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return False
         finally:
             self.transport._pending_confirmations.pop(request_id, None)
@@ -135,8 +137,8 @@ class TelegramTransport:
         try:
             from telegram.ext import (
                 ApplicationBuilder,
-                MessageHandler,
                 CallbackQueryHandler,
+                MessageHandler,
                 filters,
             )
 
@@ -299,7 +301,7 @@ class TelegramTransport:
         if data and (data.startswith("confirm_yes:") or data.startswith("confirm_no:")):
             approved = data.startswith("confirm_yes:")
             request_id = data.split(":", 1)[1]
-            
+
             future = self._pending_confirmations.get(request_id)
             if future and not future.done():
                 future.set_result(approved)

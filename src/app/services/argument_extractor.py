@@ -22,6 +22,7 @@ import re
 from html import escape
 from typing import TYPE_CHECKING, Any
 
+
 # Compiled once — strips Qwen3-style <think>...</think> chain-of-thought blocks.
 _THINK_TAG_RE = re.compile(r"<think>[\s\S]*?</think>", re.IGNORECASE)
 
@@ -79,11 +80,10 @@ class ArgumentExtractor:
             return await self._extract_word_args(text)
 
         # ── 1.5 specialized code generator ───────────────────────────
-        if tool_name == "execute_python_script":
+        if tool_name == "execute_python_script" and not any(marker in text for marker in ("def ", "import ", "print(", "=", ":")):
             # If input is natural language (no code markers), generate code first.
-            if not any(marker in text for marker in ("def ", "import ", "print(", "=", ":")):
-                logger.info("Natural language coding request detected, using LLM to generate code")
-                return await self._generate_code_with_llm(text)
+            logger.info("Natural language coding request detected, using LLM to generate code")
+            return await self._generate_code_with_llm(text)
 
         # ── 2. LLM extraction (when schema available + multi-word) ────
         if self._llm_router and len(text.split()) > 2:
@@ -147,7 +147,7 @@ class ArgumentExtractor:
             # Keep only keys that match the schema's properties
             properties_dict = schema.get("properties", schema)
             valid_keys = list(properties_dict.keys())
-            
+
             filtered = {
                 k: str(v).strip()
                 for k, v in parsed.items()

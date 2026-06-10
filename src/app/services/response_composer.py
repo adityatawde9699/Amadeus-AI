@@ -16,11 +16,13 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+
 if TYPE_CHECKING:
     from src.core.config import Settings
     from src.infra.llm.router import LLMRouter
 
 import re
+
 
 logger = logging.getLogger(__name__)
 
@@ -208,7 +210,7 @@ class ResponseComposer:
         Falls back to the raw output if the LLM is unavailable.
         """
         instruction_text = instruction or "Compose a brief, natural, conversational response to the user based on this result. Be concise — 1-2 sentences max."
-        
+
         prompt = (
             "/no_think "
             f"You are Amadeus, a personal AI assistant created by Aditya Tawde.\n"

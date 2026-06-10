@@ -19,14 +19,14 @@ Usage tracking resets daily at midnight (UTC).
 
 import asyncio
 import logging
-import re
+import time
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from datetime import date
 from typing import TYPE_CHECKING, Any, ClassVar
-import time
 
 from opentelemetry import trace
+
 from src.core.exceptions import LLMRateLimitError
 from src.core.interfaces.services import ILLMService
 from src.runtime.events import EventBus
@@ -186,8 +186,8 @@ class LLMRouter:
         self._circuit_breakers: dict[str, CircuitBreaker] = {}
         for p in self._providers:
             self._circuit_breakers[p] = CircuitBreaker(
-                name=f"llm_{p}", 
-                failure_threshold=3, 
+                name=f"llm_{p}",
+                failure_threshold=3,
                 recovery_timeout=60,
                 event_bus=self.event_bus
             )
@@ -250,14 +250,14 @@ class LLMRouter:
             structured:  True if the output MUST be valid JSON.
         """
         self._reset_if_new_day()
-        
+
         # If structured is True, ensure complexity is at least 'normal'
         effective_complexity = "normal" if structured and complexity == "simple" else complexity
-        
+
         # If structured is True, inject JSON instruction if not present
         if structured and "JSON" not in prompt.upper():
             prompt += "\n\nIMPORTANT: Respond ONLY with a valid JSON object."
-            
+
         logger.info("LLMRouter: effective_complexity=%r structured=%r", effective_complexity, structured)
 
         # ── Build provider priority list ─────────────────────────────────────
@@ -333,12 +333,12 @@ class LLMRouter:
             try:
                 provider = self._providers[provider_name]
                 cb = self._circuit_breakers[provider_name]
-                
+
                 tracer = trace.get_tracer(__name__)
                 with tracer.start_as_current_span(f"LLMRouter.generate ({provider_name})") as span:
                     span.set_attribute("provider.name", provider_name)
                     span.set_attribute("prompt.complexity", effective_complexity)
-                    
+
                     t_start = time.time()
                     try:
                         result = await cb.call(
@@ -366,7 +366,7 @@ class LLMRouter:
                                     self._provider_health[provider_name].p95_latency_ms = sum(latencies)/len(latencies)
                                 fails = sum(1 for x in history if not x[1])
                                 self._provider_health[provider_name].error_rate = fails / len(history)
-                
+
                 async with self._lock:
                     self._usage[provider_name] += 1
                 # Persist to Redis so other workers see the updated count

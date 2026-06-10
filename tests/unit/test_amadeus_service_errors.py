@@ -9,8 +9,9 @@ Validates that:
 
 import sys
 import types
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
+
 
 if TYPE_CHECKING:
     from src.app.services.amadeus_service import AmadeusService
@@ -39,7 +40,7 @@ if "google.genai" not in sys.modules:
 # ---------------------------------------------------------------------------
 
 
-def _make_service(debug: bool = False) -> "AmadeusService":  # noqa: F821
+def _make_service(debug: bool = False) -> "AmadeusService":
     """Create a minimal AmadeusService with all heavy deps mocked out."""
     from src.app.services.amadeus_service import AmadeusService
 

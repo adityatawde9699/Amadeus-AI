@@ -16,8 +16,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from src.api.middleware.authentication import verify_jwt_token
-from src.container import get_messaging_service
 from src.app.services.messaging_service import MessagingService
+from src.container import get_messaging_service
 
 
 logger = logging.getLogger(__name__)

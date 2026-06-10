@@ -1,15 +1,16 @@
-import time
-import logging
 import asyncio
+import logging
+import time
+from collections.abc import Awaitable, Callable
 from enum import Enum
-from collections.abc import Callable, Awaitable
 from typing import Any, TypeVar
 
 from src.runtime.events import EventBus
 
+
 logger = logging.getLogger(__name__)
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 class CircuitState(Enum):
     CLOSED = "CLOSED"
@@ -35,7 +36,7 @@ class CircuitBreaker:
         self.failure_threshold = failure_threshold
         self.recovery_timeout = recovery_timeout
         self.event_bus = event_bus
-        
+
         self.state = CircuitState.CLOSED
         self.failure_count = 0
         self.last_failure_time = 0.0

@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy.pool import NullPool, QueuePool, StaticPool
+from sqlalchemy.pool import NullPool, StaticPool
 
 from src.core.config import get_settings
 

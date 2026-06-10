@@ -2,8 +2,9 @@
 Health and system status API routes.
 """
 
-import psutil
 from typing import Any
+
+import psutil
 from fastapi import APIRouter, Depends
 
 from src.app.services.amadeus_service import AmadeusService

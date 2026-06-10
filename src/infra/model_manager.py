@@ -27,6 +27,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+
 if TYPE_CHECKING:
     from ..core.config import Settings
 
@@ -48,7 +49,7 @@ class ModelManager:
         gguf_path  = mm.resolve_gguf_model()      # Path to .gguf file or None
     """
 
-    def __init__(self, settings: "Settings") -> None:
+    def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.model_dir: Path = Path(settings.MODEL_DIR)  # type: ignore[arg-type]
         self.model_dir.mkdir(parents=True, exist_ok=True)

@@ -19,7 +19,8 @@ from typing import Any
 # Re-export the single canonical model — no local dataclass.
 from src.core.domain.models import ConversationMessage
 
-__all__ = ["ConversationMessage", "ConversationManager", "IConversationRepository"]
+
+__all__ = ["ConversationManager", "ConversationMessage", "IConversationRepository"]
 
 logger = logging.getLogger(__name__)
 

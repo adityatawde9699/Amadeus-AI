@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 
+
 class AgentAction(BaseModel):
     """
     Structured action protocol for the ReAct Agent Loop.

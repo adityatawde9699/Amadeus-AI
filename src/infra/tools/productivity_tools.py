@@ -22,7 +22,7 @@ from src.core.interfaces.repositories import (
     IReminderRepository,
     ITaskRepository,
 )
-from src.infra.tools.base import Tool, ToolCategory, tool
+from src.infra.tools.base import Tool, ToolCategory
 
 
 logger = logging.getLogger(__name__)

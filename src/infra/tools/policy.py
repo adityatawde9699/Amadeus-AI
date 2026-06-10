@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 from src.core.domain.context import RequestContext
 from src.core.domain.models import PermissionProfile
 
+
 if TYPE_CHECKING:
     from src.infra.tools.base import Tool
 
@@ -18,7 +19,6 @@ logger = logging.getLogger(__name__)
 
 class ToolPolicyViolation(Exception):
     """Raised when a tool execution request violates security policy."""
-    pass
 
 class ToolPolicyEngine:
     """
@@ -34,7 +34,7 @@ class ToolPolicyEngine:
         Raises ToolPolicyViolation if the execution is unsafe.
         """
         capability = tool.capability
-        
+
         # If no explicit capability is defined, we enforce basic safety checks
         # based on the tool's defined `requires_confirmation` flag.
         if not capability:
@@ -66,7 +66,7 @@ class ToolPolicyEngine:
             raise ToolPolicyViolation(
                 f"Critical tool {tool.name} must declare requires_confirmation=True"
             )
-            
+
         # 3. Sandbox Checks
         # Currently, if a tool says it requires a sandbox, we verify it is categorized correctly.
         if getattr(capability, "sandbox_required", False) and "execute_python" not in tool.name:
@@ -91,7 +91,7 @@ class ToolPolicyEngine:
             for token in dangerous_tokens:
                 if token in cmd:
                     raise ToolPolicyViolation(f"Command contains forbidden token '{token}'")
-                    
+
         if tool.name == "terminate_process":
             proc = str(args.get("process_name", "")).lower()
             protected_procs = ["explorer.exe", "svchost.exe", "system", "kernel"]

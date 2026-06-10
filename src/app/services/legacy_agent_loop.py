@@ -16,11 +16,11 @@ Example:
         7. Return: Combined response
 """
 
+import json
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-import json
 
 
 class QueueFullError(Exception):
@@ -201,7 +201,7 @@ class ReActAgent:
                     action_input=action_input,
                 )
                 self.current_step = step
-                
+
                 if action != self.FINISH_ACTION:
                     action_signature = self._action_signature(action, action_input)
                     if action_signature in self._seen_action_inputs:
@@ -253,7 +253,7 @@ class ReActAgent:
         """Create an initial plan for complex tasks."""
         if not self.llm_generate:
             return "No plan (keyword mode)"
-            
+
         tool_menu = self.tool_registry.get_tools_menu()
         prompt = f"""You are Amadeus, an autonomous agent. Create a high-level step-by-step plan to solve this task.
 Task: {task}
@@ -299,7 +299,7 @@ Plan:"""
         obs_lower = self.current_observation.lower()
         if "error" in obs_lower or "failed" in obs_lower:
             self.current_observation += "\n[REFLECTION: The last action failed. I must re-evaluate my approach.]"
-            
+
         self.current_step.observation = self.current_observation
         self.observations.append(f"{self.current_step.action}: {self.current_observation}")
         self.steps.append(self.current_step)
@@ -359,7 +359,7 @@ Plan:"""
             (["time", "what time", "current time"], "get_datetime_info", {"query": "time"}),
             (["date", "what day", "today"], "get_datetime_info", {"query": "date"}),
             (["joke", "make me laugh", "funny"], "tell_joke", {}),
-            (["weather"], "get_weather", {"location": __import__('src.core.config', fromlist=['get_settings']).get_settings().DEFAULT_LOCATION}),
+            (["weather"], "get_weather", {"location": __import__("src.core.config", fromlist=["get_settings"]).get_settings().DEFAULT_LOCATION}),
             (["system", "cpu", "memory", "status"], "system_status", {}),
             (["task", "tasks", "todo"], "list_tasks", {}),
             (["note", "notes"], "list_notes", {}),
@@ -471,8 +471,7 @@ Decide the next action:
 
     def _parse_llm_response(self, response: str) -> tuple[str, str, dict]:
         """Parse LLM response using AgentAction JSON schema."""
-        import json
-        
+
         # Clean up markdown code blocks if the LLM adds them despite instructions
         cleaned = response.strip()
         if cleaned.startswith("```json"):
@@ -481,7 +480,7 @@ Decide the next action:
             cleaned = cleaned[3:]
         if cleaned.endswith("```"):
             cleaned = cleaned[:-3]
-        
+
         cleaned = cleaned.strip()
 
         try:
@@ -673,7 +672,7 @@ class AgentOrchestrator:
 
         # Dynamic Keyword Routing based on all registered tools
         lower_task = task.lower()
-        
+
         # Check against all tool names and descriptions
         for tool_name in self.tool_registry.list_names():
             if tool_name in lower_task:

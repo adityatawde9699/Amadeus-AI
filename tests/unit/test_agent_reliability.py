@@ -13,11 +13,9 @@ Tests every agent-loop and reliability fix from the audit:
 from __future__ import annotations
 
 import asyncio
-from collections import defaultdict
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
-import pytest_asyncio
 
 
 # ---------------------------------------------------------------------------
@@ -30,7 +28,7 @@ class TestCycleDetection:
 
     def _make_registry_executor(self):
         from src.app.services.tool_registry import ToolRegistry
-        from src.infra.tools.base import ToolExecutor, Tool, ToolCategory
+        from src.infra.tools.base import Tool, ToolCategory, ToolExecutor
 
         registry = ToolRegistry()
         executor = ToolExecutor()
@@ -115,7 +113,7 @@ class TestSynthesizeSuccessFlag:
         """When every observation starts with 'Error', result.success must be False."""
         from src.app.services.legacy_agent_loop import ReActAgent
         from src.app.services.tool_registry import ToolRegistry
-        from src.infra.tools.base import ToolExecutor, Tool, ToolCategory
+        from src.infra.tools.base import Tool, ToolCategory, ToolExecutor
 
         registry = ToolRegistry()
         executor = ToolExecutor()
@@ -289,7 +287,7 @@ class TestHITLDenyByDefault:
     @pytest.mark.asyncio
     async def test_destructive_tool_denied_without_callback(self):
         """execute() must return success=False for requires_confirmation tools when callback=None."""
-        from src.infra.tools.base import Tool, ToolExecutor, ToolCategory
+        from src.infra.tools.base import Tool, ToolCategory, ToolExecutor
 
         def delete_file(file_path: str) -> str:
             return f"deleted {file_path}"

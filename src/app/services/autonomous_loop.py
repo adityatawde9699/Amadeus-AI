@@ -62,7 +62,7 @@ class AutonomousObservationLoop:
                 # 2. Trigger Observations for sessions
                 for s_id in self.session_ids:
                     await self._trigger_observation(s_id)
-                
+
                 # Wait for the interval
                 await asyncio.sleep(self.interval_minutes * 60)
             except asyncio.CancelledError:
@@ -74,8 +74,9 @@ class AutonomousObservationLoop:
     async def _check_system_health(self) -> None:
         """Monitor system resources and alert if critical."""
         try:
-            import psutil
             import platform
+
+            import psutil
 
             cpu_usage = psutil.cpu_percent(interval=0.5)
             mem = psutil.virtual_memory()
@@ -102,7 +103,7 @@ class AutonomousObservationLoop:
                 # Notify the first session (typically the master user)
                 await svc.send_outbound_message(self.session_ids[0], "telegram", alert_msg)
         except Exception as e:
-            logger.error("Failed to check system health: %s", e)
+            logger.exception("Failed to check system health: %s", e)
 
     async def _trigger_observation(self, session_id: str) -> None:
         """Trigger the agent to observe its state."""

@@ -118,7 +118,7 @@ def _rrf_score(rank: int, k: int = _RRF_K) -> float:
 class SearchResult:
     """A single hybrid search hit."""
 
-    __slots__ = ("file_path", "snippet", "start_line", "score", "semantic_rank", "bm25_rank")
+    __slots__ = ("bm25_rank", "file_path", "score", "semantic_rank", "snippet", "start_line")
 
     def __init__(
         self,

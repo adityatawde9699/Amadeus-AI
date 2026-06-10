@@ -20,19 +20,20 @@ import aiohttp
 from src.core.config import get_settings
 from src.infra.tools.base import Tool, ToolCategory, tool
 
+
 logger = logging.getLogger(__name__)
 settings = get_settings()
 _http_session: aiohttp.ClientSession | None = None
 
 async def initialize_info_tools_http_session() -> None:
     """Create the shared HTTP session used by information tools."""
-    global _http_session  # noqa: PLW0603
+    global _http_session
     if _http_session is None or _http_session.closed:
         _http_session = aiohttp.ClientSession()
 
 async def close_info_tools_http_session() -> None:
     """Close the shared HTTP session used by information tools."""
-    global _http_session  # noqa: PLW0603
+    global _http_session
     if _http_session is not None and not _http_session.closed:
         await _http_session.close()
     _http_session = None

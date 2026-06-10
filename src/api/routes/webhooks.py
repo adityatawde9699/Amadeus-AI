@@ -7,12 +7,9 @@ Endpoints:
   POST /webhooks/whatsapp   — receives WhatsApp Cloud API updates
 """
 
-import hashlib
-import hmac
 import logging
-from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request, status
+from fastapi import APIRouter
 
 from src.core.config import get_settings
 from src.transports.telegram_transport import TelegramTransport

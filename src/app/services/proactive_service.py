@@ -6,9 +6,9 @@ and triggers the AmadeusService's background event processor to
 proactively check for tasks, reminders, or system alerts and send notifications.
 """
 
+import asyncio
 import logging
 import uuid
-import asyncio
 from datetime import datetime
 
 from src.core.config import get_settings
@@ -29,7 +29,7 @@ async def run_proactive_checks() -> None:
     telegram_id = getattr(settings, "MASTER_TELEGRAM_CHAT_ID", None)
     if telegram_id:
         platforms.append(("telegram", telegram_id))
-        
+
     whatsapp_number = getattr(settings, "MASTER_WHATSAPP_NUMBER", None)
     if whatsapp_number:
         platforms.append(("whatsapp", whatsapp_number))
@@ -50,7 +50,7 @@ async def run_proactive_checks() -> None:
             # We use the user_id as the session_id to maintain conversation context for that user
             # just as the webhooks do.
             service = global_container.amadeus_service()
-            
+
             # Prune stale memories to prevent unbounded Turbovec index growth
             if hasattr(service, "memory_service") and service.memory_service:
                 pruned = await service.memory_service.prune_stale_memories(

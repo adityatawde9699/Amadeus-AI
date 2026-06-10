@@ -75,7 +75,7 @@ def get_agent_tools() -> list[Any]:
             svc = get_amadeus_service()
             if not svc.memory_service or not svc.memory_service.is_enabled:
                 return "Memory service is not enabled."
-            
+
             # Use 'identity' subtype so it never decays.
             session_id = kwargs.get("session_id", "core")
             success = await svc.memory_service.store(
@@ -110,7 +110,7 @@ def get_agent_tools() -> list[Any]:
             svc = get_amadeus_service()
             if not svc.memory_service or not svc.memory_service.is_enabled:
                 return "Memory service is not enabled."
-            
+
             # Accessing the new delete_by_text method
             if hasattr(svc.memory_service, "delete_by_text"):
                 count = await svc.memory_service.delete_by_text(fact)
@@ -183,7 +183,7 @@ def get_agent_tools() -> list[Any]:
             else:
                 goal.status = goal_status
                 goal = await svc.goal_repository.update(goal)
-                
+
             return f"Successfully updated goal #{goal.id} to {goal.status.value}"
         except Exception as e:
             logger.exception("Failed to update goal: %s", e)
@@ -230,48 +230,48 @@ def get_agent_tools() -> list[Any]:
     )
     async def manage_plugins(action: str, plugin_name: str = "", content: str = "", **kwargs: Any) -> str:
         """Manage Amadeus plugins."""
+
         from src.core.config import get_settings
-        from pathlib import Path
-        
+
         settings = get_settings()
         plugins_dir = settings.BASE_DIR / "plugins"
         plugins_dir.mkdir(parents=True, exist_ok=True)
-        
+
         if action == "list":
             plugins = list(plugins_dir.glob("*.py"))
             if not plugins:
                 return "No plugins found in the plugins directory."
             return "Available plugins:\n" + "\n".join(f"- {p.name}" for p in plugins)
-            
+
         if action == "add":
             if not plugin_name or not content:
                 return "Error: plugin_name and content are required for 'add' action."
             if not plugin_name.endswith(".py"):
                 plugin_name += ".py"
-            
+
             plugin_path = plugins_dir / plugin_name
             plugin_path.write_text(content, encoding="utf-8")
-            
+
             # Trigger re-discovery
             from src.container import get_tool_registry
             registry = get_tool_registry()
             registry.discover_plugins(plugins_dir)
-            
+
             return f"Successfully added plugin: {plugin_name}. New tools have been registered."
-            
+
         if action == "remove":
             if not plugin_name:
                 return "Error: plugin_name is required for 'remove' action."
             if not plugin_name.endswith(".py"):
                 plugin_name += ".py"
-                
+
             plugin_path = plugins_dir / plugin_name
             if not plugin_path.exists():
                 return f"Error: Plugin {plugin_name} not found."
-                
+
             plugin_path.unlink()
             return f"Successfully removed plugin: {plugin_name}. Note: Registered tools from this plugin will persist until restart."
-            
+
         return f"Unknown action: {action}"
 
     @tool(
@@ -285,20 +285,21 @@ def get_agent_tools() -> list[Any]:
     )
     async def search_codebase(query: str, file_pattern: str = "*", **kwargs: Any) -> str:
         """Search the codebase."""
-        from src.core.config import get_settings
-        import subprocess
         import shlex
-        
+        import subprocess
+
+        from src.core.config import get_settings
+
         settings = get_settings()
         try:
             # Use grep to search (ripgrep if available, fallback to grep)
             cmd = f"grep -r -l --include='{file_pattern}' '{query}' {settings.BASE_DIR / 'src'}"
             args = shlex.split(cmd)
             result = subprocess.run(args, capture_output=True, text=True, timeout=10)
-            
+
             if result.returncode != 0:
                 return f"No matches found for '{query}' in {file_pattern}."
-                
+
             files = result.stdout.strip().split("\n")
             return f"Found '{query}' in {len(files)} files:\n" + "\n".join(f"- {f}" for f in files[:10])
         except Exception as e:
@@ -334,24 +335,22 @@ Tasks:"""
             llm_generate = svc._make_llm_generate()
             if not llm_generate:
                 return "LLM not available for decomposition."
-            
+
             response = await llm_generate(prompt)
             tasks = [line.strip("- ").strip() for line in response.strip().split("\n") if line.strip()]
-            
+
             if not tasks:
                 return "Failed to generate sub-tasks."
 
-            from src.infra.persistence.repositories.task_repository import SQLAlchemyTaskRepository
-            from src.core.domain.models import Task
-            
+
             # This is a bit tricky due to repository access, but let's assume we can add them
             # For simplicity in this tool, we'll just return the suggested tasks.
             # A more complete implementation would save them to the DB linked to the goal.
-            
+
             lines = [f"Decomposition for Goal #{goal_id} ('{goal.title}'):"]
             for i, task_text in enumerate(tasks, 1):
                 lines.append(f"{i}. {task_text}")
-                
+
             return "\n".join(lines)
         except Exception as e:
             logger.exception("Failed to decompose goal: %s", e)

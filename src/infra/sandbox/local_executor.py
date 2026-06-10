@@ -14,10 +14,10 @@ Security constraints:
 import io
 import logging
 import multiprocessing
-import sys
 import traceback
 from contextlib import redirect_stderr, redirect_stdout
 from typing import Any
+
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,7 @@ def _worker(code: str, queue: multiprocessing.Queue):
             "enumerate": enumerate,
             "zip": zip,
         }
-        
+
         # Remove potentially dangerous builtins
         # Note: This is NOT a perfect sandbox, but better than nothing for local use.
         # For a truly secure sandbox without Docker, something like RestrictedPython is needed.
@@ -64,7 +64,7 @@ def _worker(code: str, queue: multiprocessing.Queue):
         with redirect_stdout(stdout), redirect_stderr(stderr):
             # Use exec to run the code
             exec(code, safe_globals)
-        
+
         queue.put({"status": "success", "output": stdout.getvalue(), "error": stderr.getvalue()})
     except Exception:
         queue.put({"status": "error", "output": stdout.getvalue(), "error": traceback.format_exc()})
@@ -83,10 +83,10 @@ class LocalSandboxExecutor:
         """
         timeout = timeout or self.DEFAULT_TIMEOUT
         queue = multiprocessing.Queue()
-        
+
         process = multiprocessing.Process(target=_worker, args=(code, queue))
         process.start()
-        
+
         try:
             # Wait for result with timeout
             result = queue.get(timeout=timeout)

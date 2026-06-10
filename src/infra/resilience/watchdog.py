@@ -1,8 +1,9 @@
 import asyncio
 import logging
-import httpx
+
 from src.core.config import Settings
 from src.runtime.events import EventBus
+
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ class DependencyWatchdog:
         return True
 
     async def check_llm_providers(self) -> dict[str, bool]:
-        # Quick health checks for LLMs. 
+        # Quick health checks for LLMs.
         # For simplicity, we just mark them as true unless circuit breaker is open.
         # This will be integrated tighter with LLMRouter's circuit breakers in the future.
         return {
@@ -58,22 +59,22 @@ class DependencyWatchdog:
                 self.dependencies["redis"] = curr_redis
                 if self.event_bus and prev_redis != curr_redis:
                     await self.event_bus.emit(
-                        "provider.recovered" if curr_redis else "provider.disabled", 
+                        "provider.recovered" if curr_redis else "provider.disabled",
                         {"provider": "redis"}
                     )
 
                 self.dependencies["qdrant"] = await self.check_qdrant()
                 self.dependencies["llm_providers"] = await self.check_llm_providers()
-                
+
                 # Graceful degradation logic
                 # If all cloud providers are down, we could dynamically set LOCAL_ONLY_MODE = True
-                
+
             except asyncio.CancelledError:
                 self._running = False
                 break
             except Exception as e:
                 logger.error("Watchdog error: %s", e)
-                
+
             await asyncio.sleep(interval_seconds)
 
     def stop(self):
