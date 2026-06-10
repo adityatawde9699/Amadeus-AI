@@ -45,8 +45,7 @@ def _make_service(debug: bool = False) -> "AmadeusService":
     from src.app.services.amadeus_service import AmadeusService
 
     with (
-        patch("src.app.services.amadeus_service.genai"),
-        patch("src.app.services.amadeus_service.QdrantMemoryService") as mock_mem,
+        patch("src.app.services.amadeus_service.TurbovecMemoryService") as mock_mem,
 
         patch("src.app.services.amadeus_service.ToolRegistry"),
         patch("src.app.services.amadeus_service.ToolExecutor"),
@@ -54,8 +53,7 @@ def _make_service(debug: bool = False) -> "AmadeusService":
         patch("src.app.services.amadeus_service.ToolDispatcher"),
         patch("src.app.services.amadeus_service.ResponseComposer"),
         patch("src.app.services.amadeus_service.UnifiedSemanticRouter") as mock_router,
-        # AgentOrchestrator is lazily imported inside __init__ from agent_loop
-        patch("src.app.services.agent_loop.AgentOrchestrator"),
+        patch("src.app.services.agent_loop.AmadeusGraph"),
     ):
         mock_mem.return_value.is_enabled = False
         mock_mem.return_value.store = AsyncMock()

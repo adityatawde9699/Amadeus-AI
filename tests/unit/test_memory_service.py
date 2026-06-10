@@ -7,6 +7,8 @@ any API keys or local Qdrant installation.
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -17,6 +19,13 @@ from src.infra.memory_service import MemoryResult, QdrantMemoryService
 # ===========================================================================
 # Fixtures
 # ===========================================================================
+
+class FakeCircuitBreaker:
+    async def call(self, func, *args, **kwargs):
+        if hasattr(func, "__await__") or inspect.iscoroutinefunction(func):
+            return await func(*args, **kwargs)
+        return func(*args, **kwargs)
+
 
 
 def _mock_settings(memory_enabled: bool = True) -> MagicMock:
@@ -44,6 +53,7 @@ class TestQdrantMemoryServiceInit:
         with patch("src.infra.memory_service.QdrantMemoryService._setup"):
             svc = QdrantMemoryService.__new__(QdrantMemoryService)
             svc._settings = settings
+            svc._circuit_breaker = FakeCircuitBreaker()  # type: ignore[assignment]
             svc._enabled = False
             svc._initialized = False
 
@@ -55,6 +65,7 @@ class TestQdrantMemoryServiceInit:
         with patch("builtins.__import__", side_effect=ImportError("no module named qdrant_client")):
             svc = QdrantMemoryService.__new__(QdrantMemoryService)
             svc._settings = settings
+            svc._circuit_breaker = FakeCircuitBreaker()  # type: ignore[assignment]
             svc._client = None
             svc._embed_model = None
             svc._enabled = False
@@ -79,6 +90,7 @@ class TestQdrantMemoryServiceStore:
         # Build a pre-initialized service without touching real Qdrant
         svc = QdrantMemoryService.__new__(QdrantMemoryService)
         svc._settings = settings
+        svc._circuit_breaker = FakeCircuitBreaker()  # type: ignore[assignment]
         svc._enabled = True
         svc._initialized = True
         svc._embed_model = "models/embedding-001"
@@ -107,6 +119,7 @@ class TestQdrantMemoryServiceStore:
     async def test_store_returns_false_when_disabled(self) -> None:
         """store() should return False immediately when service is disabled."""
         svc = QdrantMemoryService.__new__(QdrantMemoryService)
+        svc._circuit_breaker = FakeCircuitBreaker()  # type: ignore[assignment]
         svc._enabled = False
         svc._initialized = False
 
@@ -119,6 +132,7 @@ class TestQdrantMemoryServiceStore:
         settings = _mock_settings()
         svc = QdrantMemoryService.__new__(QdrantMemoryService)
         svc._settings = settings
+        svc._circuit_breaker = FakeCircuitBreaker()  # type: ignore[assignment]
         svc._enabled = True
         svc._initialized = True
         svc._client = AsyncMock()
@@ -145,6 +159,7 @@ class TestQdrantMemoryServiceRetrieve:
         settings = _mock_settings()
         svc = QdrantMemoryService.__new__(QdrantMemoryService)
         svc._settings = settings
+        svc._circuit_breaker = FakeCircuitBreaker()  # type: ignore[assignment]
         svc._enabled = True
         svc._initialized = True
         svc._embed_model = "models/embedding-001"
@@ -169,7 +184,9 @@ class TestQdrantMemoryServiceRetrieve:
         hit2.score = 0.75
 
         mock_client = AsyncMock()
-        mock_client.search.return_value = [hit1, hit2]
+        qr = MagicMock()
+        qr.points = [hit1, hit2]
+        mock_client.query_points.return_value = qr
         svc._client = mock_client
 
         fake_embedding = [0.1] * 768
@@ -186,6 +203,7 @@ class TestQdrantMemoryServiceRetrieve:
     async def test_retrieve_returns_empty_when_disabled(self) -> None:
         """retrieve() must return [] when service is disabled."""
         svc = QdrantMemoryService.__new__(QdrantMemoryService)
+        svc._circuit_breaker = FakeCircuitBreaker()  # type: ignore[assignment]
         svc._enabled = False
         svc._initialized = False
 
@@ -198,12 +216,13 @@ class TestQdrantMemoryServiceRetrieve:
         settings = _mock_settings()
         svc = QdrantMemoryService.__new__(QdrantMemoryService)
         svc._settings = settings
+        svc._circuit_breaker = FakeCircuitBreaker()  # type: ignore[assignment]
         svc._enabled = True
         svc._initialized = True
         svc._embed_model = "models/embedding-001"
 
         mock_client = AsyncMock()
-        mock_client.search.side_effect = RuntimeError("DB failure")
+        mock_client.query_points.side_effect = RuntimeError("DB failure")
         svc._client = mock_client
 
         with patch.object(svc, "_embed_async", return_value=[0.1] * 768):
@@ -224,17 +243,15 @@ class TestFormatForPrompt:
         svc = QdrantMemoryService.__new__(QdrantMemoryService)
         assert svc.format_for_prompt([]) == ""
 
-    def test_formats_memories_with_role_labels(self) -> None:
+    def test_formats_memories_as_numbered_list(self) -> None:
         memories = [
             MemoryResult("s1", "user", "I love astronomy", "2026-01-01", 0.01),
             MemoryResult("s1", "assistant", "That's wonderful!", "2026-01-01", 0.05),
         ]
         svc = QdrantMemoryService.__new__(QdrantMemoryService)
         output = svc.format_for_prompt(memories)
-        assert "User]:" in output
-        assert "Amadeus]:" in output
-        assert "I love astronomy" in output
-        assert "That's wonderful!" in output
+        assert "1. I love astronomy" in output
+        assert "2. That's wonderful!" in output
 
     def test_max_chars_truncates_output(self) -> None:
         """format_for_prompt should stop appending memories once max_chars is reached."""

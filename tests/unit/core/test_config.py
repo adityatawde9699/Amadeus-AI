@@ -18,7 +18,7 @@ class TestSettings:
 
     def test_default_values(self):
         """Test that Settings has sensible defaults."""
-        settings = Settings()
+        settings = Settings(_env_file=None)
 
         assert settings.ASSISTANT_NAME == "Amadeus"
         assert settings.ENV == "development"
@@ -34,7 +34,7 @@ class TestSettings:
                 "API_PORT": "9000",
             },
         ):
-            settings = Settings()
+            settings = Settings(_env_file=None)
 
             assert settings.ENV == "production"
             assert settings.DEBUG is True
@@ -43,12 +43,12 @@ class TestSettings:
     def test_is_production_property(self):
         """Test the is_production computed property."""
         with mock.patch.dict(os.environ, {"ENV": "production"}):
-            settings = Settings()
+            settings = Settings(_env_file=None)
             assert settings.is_production is True
             assert settings.is_development is False
 
         with mock.patch.dict(os.environ, {"ENV": "development"}):
-            settings = Settings()
+            settings = Settings(_env_file=None)
             assert settings.is_production is False
             assert settings.is_development is True
 
@@ -57,7 +57,7 @@ class TestSettings:
         with mock.patch.dict(
             os.environ, {"ALLOWED_ORIGINS": "http://localhost:3000, http://example.com"}
         ):
-            settings = Settings()
+            settings = Settings(_env_file=None)
             origins = settings.allowed_origins_list
 
             assert len(origins) == 2
@@ -68,27 +68,27 @@ class TestSettings:
         """Test conversion of database URL to async format."""
         # SQLite
         with mock.patch.dict(os.environ, {"DATABASE_URL": "sqlite:///./test.db"}):
-            settings = Settings()
+            settings = Settings(_env_file=None)
             assert "sqlite+aiosqlite" in settings.get_async_database_url()
 
         # PostgreSQL
         with mock.patch.dict(os.environ, {"DATABASE_URL": "postgresql://user:pass@localhost/db"}):
-            settings = Settings()
+            settings = Settings(_env_file=None)
             assert "postgresql+asyncpg" in settings.get_async_database_url()
 
     def test_database_is_sqlite(self):
         """Test SQLite detection."""
         with mock.patch.dict(os.environ, {"DATABASE_URL": "sqlite:///./test.db"}):
-            settings = Settings()
+            settings = Settings(_env_file=None)
             assert settings.database_is_sqlite is True
 
         with mock.patch.dict(os.environ, {"DATABASE_URL": "postgresql://localhost/db"}):
-            settings = Settings()
+            settings = Settings(_env_file=None)
             assert settings.database_is_sqlite is False
 
     def test_system_thresholds(self):
         """Test system threshold configuration."""
-        settings = Settings()
+        settings = Settings(_env_file=None)
         thresholds = settings.get_system_thresholds()
 
         assert "cpu" in thresholds
