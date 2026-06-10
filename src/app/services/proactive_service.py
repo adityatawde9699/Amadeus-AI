@@ -26,10 +26,13 @@ async def run_proactive_checks() -> None:
     settings = get_settings()
 
     platforms = []
-    if settings.MASTER_TELEGRAM_CHAT_ID:
-        platforms.append(("telegram", settings.MASTER_TELEGRAM_CHAT_ID))
-    if settings.MASTER_WHATSAPP_NUMBER:
-        platforms.append(("whatsapp", settings.MASTER_WHATSAPP_NUMBER))
+    telegram_id = getattr(settings, "MASTER_TELEGRAM_CHAT_ID", None)
+    if telegram_id:
+        platforms.append(("telegram", telegram_id))
+        
+    whatsapp_number = getattr(settings, "MASTER_WHATSAPP_NUMBER", None)
+    if whatsapp_number:
+        platforms.append(("whatsapp", whatsapp_number))
 
     if not platforms:
         logger.info("No MASTER users configured. Skipping proactive checks.")
@@ -47,6 +50,15 @@ async def run_proactive_checks() -> None:
             # We use the user_id as the session_id to maintain conversation context for that user
             # just as the webhooks do.
             service = global_container.amadeus_service()
+            
+            # Prune stale memories to prevent unbounded Turbovec index growth
+            if hasattr(service, "memory_service") and service.memory_service:
+                pruned = await service.memory_service.prune_stale_memories(
+                    session_id=user_id, older_than_days=90
+                )
+                if pruned > 0:
+                    logger.info("Pruned %d stale memories for %s", pruned, user_id)
+
             context = RequestContext(
                 request_id=str(uuid.uuid4()),
                 session_id=user_id,

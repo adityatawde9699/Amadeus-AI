@@ -47,6 +47,7 @@ class ToolRegistry:
 
     def __init__(self) -> None:
         self._tools: dict[str, Tool] = {}
+        self._mcp_resources: list[Any] = []
 
     def register(self, tool: Tool) -> None:
         """
@@ -373,3 +374,103 @@ class ToolRegistry:
             lines.append(f"- {tool.name}: {desc}")
 
         return "\n".join(lines)
+
+    # =========================================================================
+    # MCP (MODEL CONTEXT PROTOCOL) INTEGRATION
+    # =========================================================================
+
+    async def connect_mcp_server(self, command: str, name: str) -> int:
+        """
+        Connect an MCP server via stdio and register its tools.
+
+        Args:
+            command: The command to run the MCP server (e.g. "npx @modelcontextprotocol/server-github")
+            name: Namespace for the tools (e.g. "github")
+
+        Returns:
+            Number of tools registered
+        """
+        from mcp import ClientSession, StdioServerParameters
+        from mcp.client.stdio import stdio_client
+        import shlex
+
+        logger.info("Connecting to MCP server '%s' with command: %s", name, command)
+
+        try:
+            # Parse command into parts for StdioServerParameters
+            parts = shlex.split(command)
+            if not parts:
+                logger.error("Empty command for MCP server '%s'", name)
+                return 0
+
+            server_params = StdioServerParameters(
+                command=parts[0],
+                args=parts[1:],
+            )
+
+            # To keep the connection alive, we manually enter the context managers
+            # and store them in self._mcp_resources for later cleanup.
+            client_cm = stdio_client(server_params)
+            read, write = await client_cm.__aenter__()
+
+            session = ClientSession(read, write)
+            await session.__aenter__()
+            await session.initialize()
+
+            self._mcp_resources.append((client_cm, session))
+
+            # List tools and register them
+            tools_result = await session.list_tools()
+            count = 0
+            for mcp_tool in tools_result.tools:
+                self._register_mcp_tool(session, mcp_tool, server_name=name)
+                count += 1
+
+            logger.info("Registered %d tools from MCP server '%s'", count, name)
+            return count
+
+        except Exception as e:
+            logger.exception("Failed to connect to MCP server '%s': %s", name, e)
+            return 0
+
+    def _register_mcp_tool(self, session: Any, mcp_tool: Any, server_name: str) -> None:
+        """Register a single MCP tool as an Amadeus tool."""
+
+        async def _caller(**kwargs: Any) -> Any:
+            try:
+                result = await session.call_tool(mcp_tool.name, kwargs)
+                # MCP results often have a 'content' field with a list of items
+                if hasattr(result, "content") and isinstance(result.content, list):
+                    # Combine text content for the LLM
+                    return "\n".join([c.text for c in result.content if hasattr(c, "text")])
+                return str(result)
+            except Exception as e:
+                logger.error("Error calling MCP tool %s.%s: %s", server_name, mcp_tool.name, e)
+                return f"Error: {e}"
+
+        # Standardize parameter schema (MCP uses 'inputSchema' or 'input_schema')
+        parameters = getattr(mcp_tool, "inputSchema", getattr(mcp_tool, "input_schema", {}))
+
+        tool_name = f"{server_name}_{mcp_tool.name}"
+
+        self.register_function(
+            func=_caller,
+            name=tool_name,
+            description=mcp_tool.description or f"MCP tool: {mcp_tool.name}",
+            category=ToolCategory.WEB_RESEARCH,
+            parameters=parameters,
+        )
+
+    async def shutdown_mcp(self) -> None:
+        """Shutdown all MCP sessions."""
+        if not hasattr(self, "_mcp_resources"):
+            return
+
+        for client_cm, session in self._mcp_resources:
+            try:
+                await session.__aexit__(None, None, None)
+                await client_cm.__aexit__(None, None, None)
+            except Exception as e:
+                logger.warning("Error during MCP shutdown: %s", e)
+
+        self._mcp_resources.clear()

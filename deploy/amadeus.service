@@ -1,6 +1,7 @@
 [Unit]
 Description=Amadeus AI runtime daemon
-After=network.target postgresql.service redis.service qdrant.service
+After=network.target postgresql.service redis.service
+Wants=postgresql.service redis.service
 
 [Service]
 Type=simple
@@ -9,9 +10,13 @@ Group=amadeus
 WorkingDirectory=/opt/amadeus
 Environment="PATH=/opt/amadeus/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
 EnvironmentFile=/opt/amadeus/.env
-ExecStart=/opt/amadeus/.venv/bin/python -m src.transports.fastapi_transport
+ExecStart=/opt/amadeus/.venv/bin/python -m uvicorn src.transports.fastapi_transport:app --host 127.0.0.1 --port 8765 --workers 1 --log-level info
+ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
-RestartSec=5s
+RestartSec=10
+RestartBurstSec=60
+MemoryMax=2G
+CPUQuota=80%
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=amadeus

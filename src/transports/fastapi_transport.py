@@ -220,6 +220,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await runtime.start()
     app.state.runtime = runtime
 
+    # Phase 3: Initialize MCP servers
+    mcp_config_path = settings.BASE_DIR / "config" / "mcp_servers.yaml"
+    if mcp_config_path.exists():
+        import yaml
+        try:
+            mcp_config = yaml.safe_load(mcp_config_path.read_text())
+            for server in mcp_config.get("mcp_servers", []):
+                if server.get("enabled"):
+                    await runtime.tools.connect_mcp_server(
+                        server["command"],
+                        server["name"]
+                    )
+        except Exception as e:
+            logger.error("Failed to initialize MCP servers: %s", e)
+
     from src.infra.tools.info_tools import initialize_info_tools_http_session
     await initialize_info_tools_http_session()
 
@@ -290,6 +305,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await close_info_tools_http_session()
 
     if getattr(app.state, "runtime", None):
+        # Phase 3: Shutdown MCP sessions
+        if app.state.runtime.tools:
+            await app.state.runtime.tools.shutdown_mcp()
         await app.state.runtime.stop()
 
     await close_db()

@@ -595,8 +595,8 @@ The migration is **non-breaking at the API level**. All existing REST endpoints,
 ## Versioning and Release
 
 - `v5.0.0-alpha` — Phases 0–2 complete (security, LangGraph, Turbovec)
-- `v5.0.0-beta` — Phases 3–4 complete (MCP, Vision)
-- `v5.0.0` — All phases complete + dashboard + daemon hardening
+- `v5.0.0-beta` — Phase 3 (MCP) and Phase 6 (Daemon Hardening) complete. Phases 4 (Vision) and 5 (Dashboard) were intentionally skipped.
+- `v5.0.0-rc1` / `v5.0.0` — Final verification, cleanup, and stable release.
 
 Each phase merges to `develop`, releases to `main` only when all verification checklist items pass.
 

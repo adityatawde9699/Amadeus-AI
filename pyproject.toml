@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "amadeus-ai"
-version = "5.0.0-alpha"
+version = "5.0.0-beta"
 description = "A production-ready AI assistant built with Clean Architecture principles"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -76,7 +76,7 @@ dependencies = [
     # HTML Parsing (Phase 4 — email cleaning + web research)
     "beautifulsoup4>=4.12.0",
     # Vector Memory (Long-term semantic recall)
-    "qdrant-client>=1.7.0",
+    # qdrant-client is moved to optional-dependencies
     # Sandbox (Docker-based code execution)
     "docker>=7.0.0",
     # Telegram Bot (v20+ async, webhook-native)
@@ -95,9 +95,16 @@ dependencies = [
     "opentelemetry-instrumentation-fastapi>=0.63b1",
     "ddgs>=9.14.4",
     "langgraph>=0.4",
+    "mcp>=1.2.1",
+    "PyYAML>=6.0.1",
 ]
 
 [project.optional-dependencies]
+
+# Archival Memory (Qdrant)
+archival_memory = [
+    "qdrant-client>=1.7.0",
+]
 
 # Dashboard UI
 dashboard = [
