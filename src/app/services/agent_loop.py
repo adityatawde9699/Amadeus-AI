@@ -1,16 +1,19 @@
 """
-LangGraph Agent Loop for Amadeus AI v5.
+LangGraph Agent Loop for Amadeus AI v5 — Agentic MoE Architecture.
 
-Replaces the legacy ReActAgent + AgentOrchestrator with a LangGraph
-StateGraph that provides:
-  - Typed state schema (AmadeusState)
-  - Checkpointed crash recovery via SqliteSaver
-  - Cycle-detection guard (preserved from legacy)
-  - Drop-in compatibility with AmadeusService._process_with_agent()
+Replaces the monolithic single-agent graph with a Mixture-of-Experts (MoE)
+Supervisor pattern. Each Expert Node runs its own Plan-and-Solve loop with
+a constrained tool subset.
 
 Graph shape:
-  plan_node → tool_node → reflect_node ─┬→ tool_node (loop)
-                                         └→ synthesize_node → END
+  supervisor_node → expert_node(profile) → plan_node → tool_node → reflect_node
+                                                                      ↓
+                                                              synthesize_node → END
+
+The Supervisor is lightweight — it reads the pre-computed routing intent from
+the graph state and transitions to the correct Expert. Each Expert runs a
+full Plan → Tool → Reflect → Synthesize loop internally, but ONLY with its
+own tools.
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import re
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -28,6 +32,10 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 
 from src.app.services.tool_registry import ToolRegistry
+from src.core.domain.agent_profiles import (
+    AGENT_PROFILES,
+    AgentProfile,
+)
 from src.core.domain.context import RequestContext
 from src.core.domain.models import PermissionProfile
 from src.infra.tools.base import ToolExecutor
@@ -59,7 +67,7 @@ def _merge_lists(left: list, right: list) -> list:
 
 
 class AmadeusState(TypedDict, total=False):
-    """LangGraph state schema for the Amadeus agent graph."""
+    """LangGraph state schema for the Amadeus MoE agent graph."""
 
     task: str
     plan: str
@@ -81,6 +89,11 @@ class AmadeusState(TypedDict, total=False):
     should_continue: bool
     # Error tracking
     error: str
+    # MoE: The active expert profile name (set by supervisor)
+    active_expert: str
+    # MoE: Pre-computed routing intent from semantic router
+    routing_intent: str   # 'expert', 'tool', 'conversational', 'cloud_escalation'
+    routing_target: str   # expert_name or tool_name
 
 
 # =============================================================================
@@ -99,19 +112,26 @@ class AgentResult:
     total_iterations: int = 0
     error: str | None = None
     plan: str | None = None
+    expert_used: str | None = None
 
 
 # =============================================================================
-# LANGGRAPH AGENT GRAPH
+# LANGGRAPH MOE AGENT GRAPH
 # =============================================================================
 
 
 class AmadeusGraph:
     """
-    LangGraph StateGraph-based agent for Amadeus AI.
+    LangGraph StateGraph-based MoE agent for Amadeus AI.
 
-    Replaces the legacy ReActAgent + AgentOrchestrator.
-    Nodes: plan → tool → reflect → (loop or synthesize)
+    Architecture:
+        supervisor_node → expert_plan_node → expert_tool_node → expert_reflect_node
+                                                                    ↓
+                                                            synthesize_node → END
+
+    The Supervisor reads the routing intent from state and sets the active
+    expert profile. The expert nodes use Plan-and-Solve with a constrained
+    tool subset.
     """
 
     def __init__(
@@ -129,69 +149,148 @@ class AmadeusGraph:
         self.default_max_iterations = max_iterations
         self.memory_service = memory_service
 
-        # Build checkpointer (in-memory by default, can be swapped for SqliteSaver)
+        # Build checkpointer (in-memory by default)
         self._checkpointer = checkpointer or MemorySaver()
+
+        # Pre-build profile lookup for fast access
+        self._profiles: dict[str, AgentProfile] = {
+            p.name: p for p in AGENT_PROFILES
+        }
 
         # Compile the graph
         self._graph: CompiledStateGraph = self._build_graph()
-        logger.info("AmadeusGraph compiled (max_iter=%d)", max_iterations)
+        logger.info(
+            "AmadeusGraph MoE compiled (experts=%d, max_iter=%d)",
+            len(self._profiles), max_iterations,
+        )
 
     # ------------------------------------------------------------------
     # Graph construction
     # ------------------------------------------------------------------
 
     def _build_graph(self) -> CompiledStateGraph:
-        """Build and compile the LangGraph StateGraph."""
+        """Build and compile the MoE LangGraph StateGraph."""
         builder = StateGraph(AmadeusState)  # type: ignore
 
         # Register nodes
-        builder.add_node("plan_node", self._plan_node)
-        builder.add_node("tool_node", self._tool_node)
-        builder.add_node("reflect_node", self._reflect_node)
+        builder.add_node("supervisor_node", self._supervisor_node)
+        builder.add_node("expert_plan_node", self._expert_plan_node)
+        builder.add_node("expert_tool_node", self._expert_tool_node)
+        builder.add_node("expert_reflect_node", self._expert_reflect_node)
         builder.add_node("synthesize_node", self._synthesize_node)
 
-        # Entry point
-        builder.set_entry_point("plan_node")
+        # Entry point — Supervisor routes to the right expert
+        builder.set_entry_point("supervisor_node")
 
-        # Edges
-        builder.add_edge("plan_node", "tool_node")
+        # Supervisor → Expert Plan (always)
+        builder.add_edge("supervisor_node", "expert_plan_node")
+
+        # Expert Plan → Expert Tool
+        builder.add_edge("expert_plan_node", "expert_tool_node")
+
+        # Expert Tool → Reflect or Synthesize
         builder.add_conditional_edges(
-            "tool_node",
+            "expert_tool_node",
             self._after_tool_router,
             {
-                "reflect": "reflect_node",
+                "reflect": "expert_reflect_node",
                 "synthesize": "synthesize_node",
             },
         )
+
+        # Reflect → Continue looping or finish
         builder.add_conditional_edges(
-            "reflect_node",
+            "expert_reflect_node",
             self._should_continue_router,
             {
-                "continue": "tool_node",
+                "continue": "expert_tool_node",
                 "finish": "synthesize_node",
             },
         )
+
         builder.add_edge("synthesize_node", END)
 
         return builder.compile(checkpointer=self._checkpointer)
 
     # ------------------------------------------------------------------
-    # Node implementations
+    # Supervisor Node — MoE Gating
     # ------------------------------------------------------------------
 
-    async def _plan_node(self, state: AmadeusState) -> dict:
-        """Decompose the task into a plan and decide the first tool call."""
+    async def _supervisor_node(self, state: AmadeusState) -> dict:
+        """Read the routing intent and activate the appropriate expert.
+
+        This node is intentionally lightweight — no LLM call. The heavy
+        routing was already done by the SemanticRouter before graph invocation.
+        """
+        routing_intent = state.get("routing_intent", "conversational")
+        routing_target = state.get("routing_target", "")
         task = state.get("task", "")
+
+        # Determine which expert to activate
+        expert_name = "generalist"  # default fallback
+
+        if routing_intent == "expert" and routing_target:
+            if routing_target in self._profiles:
+                expert_name = routing_target
+            else:
+                logger.warning(
+                    "Supervisor: unknown expert '%s', falling back to generalist",
+                    routing_target,
+                )
+
+        elif routing_intent == "tool" and routing_target:
+            # Map tool → its owning expert via category
+            tool = self.tool_registry.get(routing_target)
+            if tool:
+                from src.core.domain.agent_profiles import get_profile_for_category
+                profile = get_profile_for_category(tool.category)
+                expert_name = profile.name
+            else:
+                logger.warning(
+                    "Supervisor: tool '%s' not found, falling back to generalist",
+                    routing_target,
+                )
+
+        profile = self._profiles.get(expert_name, self._profiles["generalist"])
+        max_iter = profile.max_iterations
+
+        logger.info(
+            "MoE Supervisor: '%s' → Expert: %s (%s)",
+            task[:50], profile.display_name, expert_name,
+        )
+
+        return {
+            "active_expert": expert_name,
+            "max_iterations": max_iter,
+        }
+
+    # ------------------------------------------------------------------
+    # Expert Plan Node — Plan-and-Solve with constrained tools
+    # ------------------------------------------------------------------
+
+    async def _expert_plan_node(self, state: AmadeusState) -> dict:
+        """Decompose the task into a plan using only the expert's tools."""
+        task = state.get("task", "")
+        expert_name = state.get("active_expert", "generalist")
         max_iter = state.get("max_iterations", self.default_max_iterations)
+
+        profile = self._profiles.get(expert_name, self._profiles["generalist"])
 
         # Build plan via LLM
         plan = "No plan (keyword mode)"
         first_tool = ""
         first_args: dict = {}
 
-        if self.llm_generate:
+        # Get the expert's constrained tool menu
+        if profile.categories:
+            tool_menu = self.tool_registry.get_tools_menu_for_categories(
+                list(profile.categories)
+            )
+        else:
+            # Generalist gets all tools
             tool_menu = self.tool_registry.get_tools_menu()
 
+        if self.llm_generate:
             # Retrieve semantic memories if available
             memory_block = ""
             if self.memory_service is not None:
@@ -204,18 +303,13 @@ class AmadeusGraph:
                 except Exception:
                     pass
 
-            json_template = """{
-  "plan": "step-by-step plan",
-  "tool": "first_tool_name or FINISH",
-  "args": {"param": "value"},
-  "intent": "your reasoning"
-}"""
-            prompt = f"""You are Amadeus — an advanced autonomous AI agent.
+            json_template = """{\n  "plan": "step-by-step plan",\n  "tool": "first_tool_name or FINISH",\n  "args": {"param": "value"},\n  "intent": "your reasoning"\n}"""
+            prompt = f"""{profile.system_prompt_preamble}
 
 Task: {task}
 {memory_block}
 
-Available Tools:
+Available Tools (you may ONLY use these):
 {tool_menu}
 - FINISH: Use when task is complete. Input: {{"answer": "your final response"}}
 
@@ -228,10 +322,10 @@ Create a plan and decide the FIRST action. Respond with JSON only:
                 first_tool = parsed.get("tool", "FINISH")
                 first_args = parsed.get("args", {})
             except Exception as e:
-                logger.warning("Plan node LLM failed: %s — falling back to keyword", e)
-                first_tool, first_args = self._keyword_match(task, set())
+                logger.warning("Expert plan LLM failed: %s — falling back to keyword", e)
+                first_tool, first_args = self._keyword_match(task, set(), profile)
         else:
-            first_tool, first_args = self._keyword_match(task, set())
+            first_tool, first_args = self._keyword_match(task, set(), profile)
 
         updates: dict[str, Any] = {
             "plan": plan,
@@ -247,7 +341,11 @@ Create a plan and decide the FIRST action. Respond with JSON only:
 
         return updates
 
-    async def _tool_node(self, state: AmadeusState) -> dict:
+    # ------------------------------------------------------------------
+    # Expert Tool Node — Execute within expert's scope
+    # ------------------------------------------------------------------
+
+    async def _expert_tool_node(self, state: AmadeusState) -> dict:
         """Execute the current tool."""
         tool_name = state.get("current_tool", "")
         tool_args = state.get("current_args", {})
@@ -300,7 +398,11 @@ Create a plan and decide the FIRST action. Respond with JSON only:
                 "should_continue": True,
             }
 
-    async def _reflect_node(self, state: AmadeusState) -> dict:
+    # ------------------------------------------------------------------
+    # Expert Reflect Node — Decide next action within expert scope
+    # ------------------------------------------------------------------
+
+    async def _expert_reflect_node(self, state: AmadeusState) -> dict:
         """Observe the last result and decide the next action."""
         task = state.get("task", "")
         iteration = state.get("iteration", 1)
@@ -308,10 +410,13 @@ Create a plan and decide the FIRST action. Respond with JSON only:
         observations = state.get("observations", [])
         plan = state.get("plan", "")
         seen_signatures = state.get("seen_signatures", [])
+        expert_name = state.get("active_expert", "generalist")
+
+        profile = self._profiles.get(expert_name, self._profiles["generalist"])
 
         # Max iterations check
         if iteration >= max_iterations:
-            logger.info("Max iterations (%d) reached — synthesizing", max_iterations)
+            logger.info("Max iterations (%d) reached for %s — synthesizing", max_iterations, expert_name)
             return {"should_continue": False}
 
         next_tool = "FINISH"
@@ -319,15 +424,24 @@ Create a plan and decide the FIRST action. Respond with JSON only:
 
         if self.llm_generate:
             obs_text = "\n".join(f"  - {o}" for o in observations[-5:])
-            json_template = """{
-  "intent": "your reasoning",
-  "tool": "next_tool_name or FINISH",
-  "args": {"param": "value"}
-}"""
-            prompt = f"""You are Amadeus — an advanced autonomous AI agent.
+
+            # Expert-constrained tool menu
+            if profile.categories:
+                tool_menu = self.tool_registry.get_tools_menu_for_categories(
+                    list(profile.categories)
+                )
+            else:
+                tool_menu = self.tool_registry.get_tools_menu()
+
+            json_template = """{\n  "intent": "your reasoning",\n  "tool": "next_tool_name or FINISH",\n  "args": {"param": "value"}\n}"""
+            prompt = f"""{profile.system_prompt_preamble}
 
 Plan: {plan}
 Task: {task}
+
+Available Tools (you may ONLY use these):
+{tool_menu}
+- FINISH: Use when task is complete. Input: {{"answer": "your final response"}}
 
 Previous observations:
 {obs_text}
@@ -343,20 +457,20 @@ Respond with JSON only:
                 next_tool = parsed.get("tool", "FINISH")
                 next_args = parsed.get("args", {})
             except Exception as e:
-                logger.warning("Reflect node LLM failed: %s — finishing", e)
+                logger.warning("Expert reflect LLM failed: %s — finishing", e)
                 next_tool = "FINISH"
                 next_args = {"answer": " ".join(
                     o.split(":", 1)[-1].strip() for o in observations if ":" in o
                 )}
         else:
             done_tools = {o.split(":")[0] for o in observations}
-            next_tool, next_args = self._keyword_match(task, done_tools)
+            next_tool, next_args = self._keyword_match(task, done_tools, profile)
 
         # Cycle detection
         if next_tool != "FINISH":
             sig = self._action_signature(next_tool, next_args)
             if sig in seen_signatures:
-                logger.warning("Cycle detected for '%s' — forcing finish", next_tool)
+                logger.warning("Cycle detected for '%s' in %s — forcing finish", next_tool, expert_name)
                 return {"should_continue": False}
             return {
                 "current_tool": next_tool,
@@ -379,6 +493,10 @@ Respond with JSON only:
             "should_continue": False,
             "final_answer": final,
         }
+
+    # ------------------------------------------------------------------
+    # Synthesize Node — Final answer assembly
+    # ------------------------------------------------------------------
 
     async def _synthesize_node(self, state: AmadeusState) -> dict:
         """Combine all observations into a final answer."""
@@ -431,11 +549,21 @@ Respond with JSON only:
         context: RequestContext,
         context_summary: str = "",
         max_iterations: int | None = None,
+        routing_intent: str = "conversational",
+        routing_target: str = "",
     ) -> AgentResult:
         """
-        Execute a task through the LangGraph agent.
+        Execute a task through the MoE LangGraph agent.
 
-        Drop-in replacement for the legacy AgentOrchestrator.execute().
+        Drop-in replacement for the legacy AmadeusGraph.ainvoke().
+
+        Args:
+            task: The user's input/task.
+            context: RequestContext with session, user, permissions.
+            context_summary: Conversation context for the LLM.
+            max_iterations: Override for max iterations (expert default used if None).
+            routing_intent: Pre-computed intent from semantic router.
+            routing_target: Expert name or tool name from semantic router.
         """
         thread_id = context.session_id or str(uuid.uuid4())
         max_iter = max_iterations or self.default_max_iterations
@@ -457,6 +585,10 @@ Respond with JSON only:
             "current_args": {},
             "should_continue": True,
             "error": "",
+            # MoE fields
+            "active_expert": "",
+            "routing_intent": routing_intent,
+            "routing_target": routing_target,
         }
 
         config = {"configurable": {"thread_id": thread_id}}
@@ -470,9 +602,10 @@ Respond with JSON only:
                 tools_used=final_state.get("tools_used", []),
                 total_iterations=final_state.get("iteration", 0),
                 plan=final_state.get("plan"),
+                expert_used=final_state.get("active_expert"),
             )
         except Exception as e:
-            logger.exception("LangGraph execution failed: %s", e)
+            logger.exception("MoE LangGraph execution failed: %s", e)
             return AgentResult(
                 success=False,
                 final_answer=f"I encountered an error while processing your request: {e}",
@@ -484,14 +617,16 @@ Respond with JSON only:
         if hasattr(self._checkpointer, "conn") and self._checkpointer.conn:
             with contextlib.suppress(Exception):
                 await self._checkpointer.conn.close()
-        logger.info("AmadeusGraph shut down cleanly")
+        logger.info("AmadeusGraph MoE shut down cleanly")
 
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
 
-    def _keyword_match(self, task: str, done_tools: set[str]) -> tuple[str, dict]:
-        """Simple keyword-based tool selection fallback."""
+    def _keyword_match(
+        self, task: str, done_tools: set[str], profile: AgentProfile | None = None
+    ) -> tuple[str, dict]:
+        """Simple keyword-based tool selection fallback, scoped to expert."""
         task_lower = task.lower()
 
         intents = [
@@ -508,12 +643,23 @@ Respond with JSON only:
             (["weather"], "get_weather", {}),
         ]
 
+        # If scoped to an expert, only consider tools in its categories
+        if profile and profile.categories:
+            allowed_tools = {
+                t.name for t in self.tool_registry.get_tools_by_categories(
+                    list(profile.categories)
+                )
+            }
+        else:
+            allowed_tools = set(self.tool_registry.list_names())
+
         for keywords, tool_name, tool_input in intents:
             if tool_name in done_tools:
                 continue
-            if any(kw in task_lower for kw in keywords):
-                if tool_name in self.tool_registry.list_names():
-                    return tool_name, tool_input
+            if tool_name not in allowed_tools:
+                continue
+            if any(kw in task_lower for kw in keywords) and tool_name in self.tool_registry.list_names():
+                return tool_name, tool_input
 
         # All matched or nothing matched
         if done_tools:
@@ -550,7 +696,6 @@ Respond with JSON only:
             pass
 
         # Try to find JSON object in the response
-        import re
         json_match = re.search(r"\{[^{}]*\}", cleaned, re.DOTALL)
         if json_match:
             try:

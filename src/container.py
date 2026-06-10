@@ -170,10 +170,9 @@ def _build_tool_registry() -> ToolRegistry:
         except Exception as e:
             logger.warning("Failed to register developer_tools: %s", e)
 
-        # Register web_research and email tools (return plain dicts, not Tool objects)
+        # Register web_research and email tools
         try:
             from src.infra.search.search_router import SearchRouter
-            from src.infra.tools.base import ToolCategory
             from src.infra.tools.web_research_tools import build_web_research_tools
 
             # Build and initialize a search router for the tool
@@ -181,32 +180,67 @@ def _build_tool_registry() -> ToolRegistry:
                 tavily_api_key=getattr(get_settings(), "TAVILY_API_KEY", None),
             )
 
-            for td in build_web_research_tools(search_router=_search_router):
-                registry.register_function(
-                    func=td["function"],
-                    name=td["name"],
-                    description=td["description"],
-                    category=ToolCategory.WEB_RESEARCH,
-                    parameters=td.get("parameters", {}),
-                )
+            for tool in build_web_research_tools(search_router=_search_router):
+                registry.register(tool)
         except Exception as e:
             logger.warning("Failed to register web_research_tools: %s", e)
 
         try:
-            from src.infra.tools.base import ToolCategory
-            from src.infra.tools.email_tools import build_email_tools
+            from src.infra.tools.email_tools import get_email_tools
 
-            for td in build_email_tools():
-                registry.register_function(
-                    func=td["function"],
-                    name=td["name"],
-                    description=td["description"],
-                    category=ToolCategory.COMMUNICATION,
-                    parameters=td.get("parameters", {}),
-                    requires_confirmation=td["name"] == "send_email",  # sending is destructive
-                )
+            for tool in get_email_tools():
+                registry.register(tool)
         except Exception as e:
             logger.warning("Failed to register email_tools: %s", e)
+
+        # Register agent tools with dependencies
+        try:
+            from src.infra.tools.agent_tools import build_agent_tools
+
+            # Since TurbovecMemoryService requires no args to instantiate its wrapper
+            from src.infra.turbovec_memory import TurbovecMemoryService
+            memory_service = TurbovecMemoryService()
+
+            # Use the global _build_goal_repo_factory and cast them to appease typecheckers
+            from typing import cast
+
+            from src.core.interfaces.repositories import IGoalRepository, ITaskRepository
+            goal_repo_proxy = cast("IGoalRepository", _build_goal_repo_factory())
+            task_repo_proxy = cast("ITaskRepository", task_repo)
+
+            # LLM generate for decompose_goal
+            async def _llm_generate(prompt: str) -> str:
+                # Use global function directly, avoiding self-import
+                svc = get_amadeus_service()
+                llm = svc._make_llm_generate()
+                if llm:
+                    return await llm(prompt)
+                return ""
+
+            # Background dispatch
+            async def _dispatch_bg(prompt: str) -> None:
+                from src.core.domain.context import RequestContext
+                from src.core.domain.models import PermissionProfile
+                svc = get_amadeus_service()
+                context = RequestContext(
+                    request_id="bg-task",
+                    session_id="background",
+                    user_id="system",
+                    permissions=PermissionProfile.SYSTEM_FULL
+                )
+                await svc.handle_background_event(prompt, context=context)
+
+            for tool in build_agent_tools(
+                memory_service=memory_service,
+                goal_repository=goal_repo_proxy,
+                task_repository=task_repo_proxy,
+                tool_registry=registry,
+                llm_generate=_llm_generate,
+                dispatch_background_event=_dispatch_bg
+            ):
+                registry.register(tool)
+        except Exception as e:
+            logger.warning("Failed to register agent_tools: %s", e)
 
         logger.info("Tool registry initialized with %d tools", len(registry))
 

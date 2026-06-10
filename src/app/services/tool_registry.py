@@ -132,6 +132,34 @@ class ToolRegistry:
         """Get all registered tools."""
         return list(self._tools.values())
 
+    def get_tools_by_categories(self, categories: list[ToolCategory]) -> list[Tool]:
+        """Get all tools belonging to any of the given categories.
+
+        Used by MoE Expert Nodes to retrieve only their permitted tool subset.
+
+        Args:
+            categories: List of ToolCategory enums to include
+
+        Returns:
+            List of tools whose category matches any of the given categories
+        """
+        cat_values = {c.value for c in categories}
+        return [t for t in self._tools.values() if t.category.value in cat_values]
+
+    def get_tools_menu_for_categories(self, categories: list[ToolCategory]) -> str:
+        """Generate a concise text menu of tools limited to specific categories.
+
+        Used by MoE Expert Nodes to build a small, focused tool prompt.
+        """
+        tools = self.get_tools_by_categories(categories)
+        lines = []
+        for tool in sorted(tools, key=lambda t: t.name):
+            desc = tool.description.split("\n")[0].strip()
+            if not desc.endswith("."):
+                desc += "."
+            lines.append(f"- {tool.name}: {desc}")
+        return "\n".join(lines)
+
     def list_names(self) -> list[str]:
         """Get all tool names."""
         return list(self._tools.keys())

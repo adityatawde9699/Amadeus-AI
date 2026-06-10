@@ -1,24 +1,20 @@
 """
-Semantic Tool Router for Amadeus AI.
+Semantic Router for Amadeus AI — Agentic MoE Architecture.
 
-Replaces the TF-IDF + LinearSVC classifier with a zero-training,
-purely mathematical vector router.
+Routes user queries to specialized AgentProfiles (sub-agents) rather than
+individual tools. This is the "Gating Network" of the Mixture-of-Experts
+architecture.
 
 Architecture:
-- At startup, every registered tool's description is embedded into a
-  768-dimensional NumPy vector using sentence-transformers/all-mpnet-base-v2.
-- Tool embeddings are persisted to disk (Model/semantic_tool_embeddings.npz)
-  and reloaded on subsequent starts. The cache is invalidated automatically
-  when the set of tool names changes.
-- At query time, the user's command is embedded and cosine similarity is
-  computed against every tool vector using pure NumPy.
-- If the best match exceeds the threshold, that tool name is returned.
-  Otherwise None is returned and the LLM fallback takes over.
+- At startup, every AgentProfile's description + anchor_phrases are embedded
+  into dense vectors using sentence-transformers/all-MiniLM-L6-v2.
+- At query time, cosine similarity determines which Expert to activate.
+- Stage 1 (SVM) narrows the candidate pool, Stage 2 (Transformer) selects.
 
-Benefits:
-- Zero retraining: new tools are picked up automatically on the next startup.
-- No ML label engineering required.
-- Runs entirely on CPU via the C++ sentence-transformers backend.
+Benefits over per-tool routing:
+- Fewer embedding vectors (5 experts vs 70+ tools) → faster routing.
+- Each expert gets a constrained tool menu → better zero-shot accuracy.
+- Parallel expert activation for multi-intent queries.
 """
 
 from __future__ import annotations
@@ -28,31 +24,38 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from src.core.domain.agent_profiles import (
+    AGENT_PROFILES,
+    AgentProfile,
+    get_profile_by_name,
+)
+
 
 if TYPE_CHECKING:
     from src.app.services.tool_registry import ToolRegistry
 
 from src.app.services.category_classifier import CategoryClassifier
+from src.core.domain.agent_profiles import get_profile_for_category
 
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Constants & Intents
+# Constants
 # ---------------------------------------------------------------------------
 
 _EMBED_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 _CACHE_FILENAME = "unified_semantic_cache.npz"
-_DEFAULT_THRESHOLD = 0.30        # base threshold for full-pool search
-_NARROW_THRESHOLD = 0.42         # raised threshold when candidate pool is narrowed
-_SVM_CONFIDENCE_CUTOFF = 0.35    # minimum LinearSVC score to trust SVM category
+_DEFAULT_THRESHOLD = 0.30
+_NARROW_THRESHOLD = 0.42
+_SVM_CONFIDENCE_CUTOFF = 0.35
 
-# Anchor phrases for global intents to guide the vector space
+# Global intents that are NOT routed to an expert
 _GLOBAL_INTENTS = {
     "conversational": [
         "hello", "hi there", "how are you?", "good morning", "thanks", "thank you",
         "who are you?", "what's up?", "hey Amadeus", "tell me a joke", "chat with me",
-        "you're helpful", "bye", "goodbye", "see ya"
+        "you're helpful", "bye", "goodbye", "see ya",
     ],
     "cloud_escalation": [
         "debug my fastapi startup error and stack trace",
@@ -78,14 +81,26 @@ _GLOBAL_INTENTS = {
         "review observability gaps and propose sre runbooks",
         "design database sharding strategy for write-heavy workload",
         "perform incident postmortem and preventive action planning",
-        "explain advanced concurrency patterns with real examples"
-    ]
+        "explain advanced concurrency patterns with real examples",
+    ],
 }
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _profile_text(profile: AgentProfile) -> str:
+    """Build a rich text representation of an AgentProfile for embedding."""
+    parts = [
+        profile.description,
+        f"Expert name: {profile.display_name}",
+        f"Specialization: {profile.description}",
+    ]
+    if profile.categories:
+        parts.append(f"Categories: {', '.join(c.value for c in profile.categories)}")
+    return "\n".join(parts)
 
 
 def _tool_text(name: str, description: str, category: str = "") -> str:
@@ -100,26 +115,34 @@ def _tool_text(name: str, description: str, category: str = "") -> str:
     return "\n".join(parts)
 
 
-def _registry_fingerprint(tool_names: list[str], tool_descs: list[str] | None = None) -> str:
-    """Stable hash of the tool names, descriptions, and intents — used to detect changes."""
+def _registry_fingerprint(
+    tool_names: list[str],
+    tool_descs: list[str] | None = None,
+    profile_names: list[str] | None = None,
+) -> str:
+    """Stable hash for cache invalidation."""
     all_keys = sorted(tool_names) + sorted(_GLOBAL_INTENTS.keys())
     if tool_descs:
         all_keys += sorted(tool_descs)
+    if profile_names:
+        all_keys += sorted(profile_names)
     key = "|".join(all_keys)
     return hashlib.md5(key.encode()).hexdigest()  # noqa: S324 — non-security hash
 
 
 # ---------------------------------------------------------------------------
-# UnifiedSemanticRouter
+# UnifiedSemanticRouter — MoE Edition
 # ---------------------------------------------------------------------------
 
 
 class UnifiedSemanticRouter:
     """
-    Zero-training unified router that maps user queries to either a specific
-    tool or a global intent (conversational, escalation) via cosine similarity.
+    Zero-training router that maps user queries to AgentProfiles (experts)
+    or global intents via cosine similarity.
 
-    Uses sentence-transformers/all-mpnet-base-v2 for high-quality embeddings.
+    Two-stage architecture:
+        Stage 1: SVM category pre-filter (sub-ms, narrows candidate pool)
+        Stage 2: Sentence Transformer cosine similarity (selects expert)
     """
 
     def __init__(
@@ -133,15 +156,15 @@ class UnifiedSemanticRouter:
         self._threshold = threshold
 
         # Populated by build_index()
-        self._labels: list[str] = []  # Names of tools or intents
-        self._types: list[str] = []   # 'tool' or 'intent'
-        self._matrix: Any = None      # np.ndarray shape (N, D)
+        self._labels: list[str] = []   # Names: expert names or intent names
+        self._types: list[str] = []    # 'expert', 'tool', or 'intent'
+        self._matrix: Any = None       # np.ndarray shape (N, D)
         self._embed_model: Any = None  # SentenceTransformer instance
         self._ready = False
 
         # Stage-1 SVM pre-filter
         self._category_clf = CategoryClassifier(model_dir=self._model_dir)
-        # Build a fast lookup: label (tool name) → category string
+        # Fast lookup: label (tool/expert name) → category string
         self._tool_category_map: dict[str, str] = {}
 
     def build_index(self) -> None:
@@ -150,19 +173,20 @@ class UnifiedSemanticRouter:
             import numpy as np
             from sentence_transformers import SentenceTransformer
         except ImportError as exc:
-            logger.error("UnifiedSemanticRouter requires sentence-transformers and numpy: %s", exc)
+            logger.exception("UnifiedSemanticRouter requires sentence-transformers and numpy: %s", exc)
             return
 
         try:
             self._embed_model = SentenceTransformer(_EMBED_MODEL_NAME)
         except Exception as exc:
-            logger.error("UnifiedSemanticRouter: failed to load embedding model: %s", exc)
+            logger.exception("UnifiedSemanticRouter: failed to load embedding model: %s", exc)
             return
 
         all_tools = self._registry.list_all()
         tool_names = [t.name for t in all_tools]
         tool_descs = [t.description for t in all_tools]
-        current_fp = _registry_fingerprint(tool_names, tool_descs)
+        profile_names = [p.name for p in AGENT_PROFILES]
+        current_fp = _registry_fingerprint(tool_names, tool_descs, profile_names)
 
         cache_path = self._model_dir / _CACHE_FILENAME
         if self._try_load_cache(cache_path, current_fp, np):
@@ -171,20 +195,33 @@ class UnifiedSemanticRouter:
             return
 
         # Build fresh embeddings
-        logger.info("UnifiedSemanticRouter: indexing tools and intents...")
+        logger.info("UnifiedSemanticRouter: indexing experts, tools, and intents...")
 
         texts = []
         labels = []
         types = []
 
-        # 1. Tools — store category for SVM cross-reference
+        # 1. Expert profiles — embed each profile + its anchor phrases
+        for profile in AGENT_PROFILES:
+            # Embed the profile description itself
+            texts.append(_profile_text(profile))
+            labels.append(profile.name)
+            types.append("expert")
+
+            # Embed each anchor phrase mapped to this expert
+            for phrase in profile.anchor_phrases:
+                texts.append(f"Expert: {profile.display_name}\nQuery: {phrase}")
+                labels.append(profile.name)
+                types.append("expert")
+
+        # 2. Individual tools — for fine-grained routing within experts
         for t in all_tools:
             texts.append(_tool_text(t.name, t.description, t.category.value))
             labels.append(t.name)
             types.append("tool")
             self._tool_category_map[t.name] = t.category.value
 
-        # 2. Intents
+        # 3. Global intents
         for intent, anchors in _GLOBAL_INTENTS.items():
             for phrase in anchors:
                 texts.append(f"Intent: {intent}\nExample: {phrase}")
@@ -195,7 +232,7 @@ class UnifiedSemanticRouter:
             matrix = self._embed_model.encode(
                 texts,
                 normalize_embeddings=True,
-                show_progress_bar=False
+                show_progress_bar=False,
             )
             self._labels = labels
             self._types = types
@@ -218,24 +255,17 @@ class UnifiedSemanticRouter:
                 logger.info("UnifiedSemanticRouter: training category classifier...")
                 self._category_clf.train()
         except Exception as exc:
-            logger.error("UnifiedSemanticRouter: index build failed: %s", exc)
+            logger.exception("UnifiedSemanticRouter: index build failed: %s", exc)
 
     def route(self, query: str) -> tuple[str, str | None]:
         """
-        Two-stage route: query → (intent_type, tool_name_or_none).
-
-        Stage 1 — SVM category pre-filter:
-            Predicts the tool category in ~1ms and narrows the candidate
-            pool from N tools to the K tools in that category.
-
-        Stage 2 — Sentence Transformer cosine similarity:
-            Runs only against the narrowed candidate pool, giving higher
-            precision than searching across all tools.
+        Route a user query to either an expert profile or a global intent.
 
         Returns one of:
-            ('tool', tool_name)          — a specific tool was matched
-            ('conversational', None)     — no confident match; use LLM
-            ('cloud_escalation', None)   — complex query; use cloud LLM
+            ('expert', expert_name)        — a specific expert was matched
+            ('tool', tool_name)            — a specific tool was matched directly
+            ('conversational', None)       — no confident match; use LLM chitchat
+            ('cloud_escalation', None)     — complex query; use cloud LLM
         """
         if not self._ready or self._matrix is None:
             return "conversational", None
@@ -244,7 +274,7 @@ class UnifiedSemanticRouter:
             import numpy as np
 
             q_vec = self._embed_model.encode(
-                query, normalize_embeddings=True, show_progress_bar=False
+                query, normalize_embeddings=True, show_progress_bar=False,
             )
 
             # ----------------------------------------------------------
@@ -255,16 +285,15 @@ class UnifiedSemanticRouter:
 
             if self._category_clf.is_ready:
                 top2_categories = self._category_clf.predict_top2(query)
-                primary_cat, confidence = self._category_clf.predict(query)
+                _primary_cat, confidence = self._category_clf.predict(query)
 
                 if confidence >= _SVM_CONFIDENCE_CUTOFF and top2_categories:
-                    # Build a set of allowed categories (top-2 for safety)
                     allowed_cats = set(top2_categories)
 
-                    # Also always keep intent rows (no category = always included)
+                    # Keep expert rows, intent rows, and tool rows whose category matches
                     candidate_indices = [
-                        i for i, (lbl, typ) in enumerate(zip(self._labels, self._types))
-                        if typ == "intent"
+                        i for i, (lbl, typ) in enumerate(zip(self._labels, self._types, strict=True))
+                        if typ in ("intent", "expert")
                         or self._tool_category_map.get(lbl, "") in allowed_cats
                     ]
 
@@ -275,7 +304,6 @@ class UnifiedSemanticRouter:
                             query[:40], top2_categories, confidence, len(candidate_indices),
                         )
                     else:
-                        # Too few candidates — fall back to full search
                         candidate_indices = None
 
             # ----------------------------------------------------------
@@ -287,7 +315,7 @@ class UnifiedSemanticRouter:
                 best_local = int(np.argmax(scores))
                 best_idx = candidate_indices[best_local]
                 score = float(scores[best_local])
-                effective_threshold = _NARROW_THRESHOLD  # tighter — smaller pool
+                effective_threshold = _NARROW_THRESHOLD
             else:
                 scores = self._matrix @ q_vec
                 best_idx = int(np.argmax(scores))
@@ -305,14 +333,39 @@ class UnifiedSemanticRouter:
             if score < effective_threshold:
                 return "conversational", None
 
+            if kind == "expert":
+                return "expert", label
+
             if kind == "tool":
                 return "tool", label
 
-            return label, None  # 'conversational' or 'cloud_escalation'
+            # 'intent' → 'conversational' or 'cloud_escalation'
+            return label, None
 
         except Exception as exc:
-            logger.error("UnifiedRouter: routing error: %s", exc)
+            logger.exception("UnifiedRouter: routing error: %s", exc)
             return "conversational", None
+
+    def route_to_profile(self, query: str) -> AgentProfile:
+        """Convenience: route and resolve directly to an AgentProfile.
+
+        Returns the generalist profile if no confident match is found.
+        """
+        kind, name = self.route(query)
+
+        if kind == "expert" and name:
+            profile = get_profile_by_name(name)
+            if profile:
+                return profile
+
+        if kind == "tool" and name:
+            # Map the tool's category to its owning expert
+            tool = self._registry.get(name)
+            if tool:
+                return get_profile_for_category(tool.category)
+
+        # Fallback: generalist
+        return AGENT_PROFILES[-1]
 
     def _try_load_cache(self, cache_path: Path, expected_fp: str, np: Any) -> bool:
         if not cache_path.exists():
@@ -331,4 +384,3 @@ class UnifiedSemanticRouter:
     @property
     def is_ready(self) -> bool:
         return self._ready
-
