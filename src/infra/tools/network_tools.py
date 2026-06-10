@@ -66,7 +66,7 @@ def ping_host(host: str, count: int = 4, **kwargs: Any) -> str:
     command = ["ping", param, str(count), host]
 
     try:
-        result = subprocess.run(command, capture_output=True, text=True, timeout=10)
+        result = subprocess.run(command, capture_output=True, text=True, timeout=10, check=False)
         if result.returncode == 0:
             return f"Ping successful for {host}:\n{result.stdout.strip()}"
         return f"Ping failed for {host}:\n{result.stderr.strip() or result.stdout.strip()}"
@@ -76,6 +76,6 @@ def ping_host(host: str, count: int = 4, **kwargs: Any) -> str:
 def get_network_tools() -> list[Tool]:
     """Get all network tools."""
     return [
-        get_network_info._tool_metadata,
-        ping_host._tool_metadata,
+        get_network_info._tool_metadata,  # type: ignore[attr-defined]
+        ping_host._tool_metadata,  # type: ignore[attr-defined]
     ]

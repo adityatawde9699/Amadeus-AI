@@ -143,6 +143,14 @@ class AmadeusService:
 
         # ── LangGraph Agent (multi-step) ─────────────────────────────
         from src.app.services.agent_loop import AmadeusGraph
+        import sqlite3
+        from langgraph.checkpoint.sqlite import SqliteSaver
+
+        # Setup persistent checkpointer for crash recovery and MoE tracking
+        checkpoint_db_path = self.settings.BASE_DIR / "langgraph_checkpoints.sqlite"
+        conn = sqlite3.connect(str(checkpoint_db_path), check_same_thread=False)
+        self._checkpointer = SqliteSaver(conn)
+        self._checkpointer.setup()
 
         llm_generate = self._make_llm_generate()
         self.graph = AmadeusGraph(
@@ -150,6 +158,7 @@ class AmadeusService:
             tool_executor=self.tool_executor,
             llm_generate=llm_generate,
             memory_service=self.memory_service,
+            checkpointer=self._checkpointer,
         )
 
         logger.info(

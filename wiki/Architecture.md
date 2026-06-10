@@ -21,7 +21,7 @@ Amadeus follows **Clean Architecture** with strict layer separation. Dependencie
                       │  Depends()
 ┌─────────────────────▼────────────────────────────┐
 │       APPLICATION LAYER  (src/app/)              │
-│  AmadeusService · CognitiveCore · PlanEngine     │
+│  AmadeusService · LangGraph State Machine        │
 │  ConversationManager · ToolDispatcher            │
 │  ArgumentExtractor · ResponseComposer            │
 │  AutonomousObservationLoop                       │
@@ -60,9 +60,9 @@ Client (HTTP / Telegram / CLI)
   ▼  2. AmadeusService.process_task() called with context
   │     ├─ Check Redis LLM response cache (1 h TTL)
   │     ├─ Retrieve top-3 semantic memories from Turbovec
-  │     └─ Dispatch to AgentOrchestrator queue
+  │     └─ Dispatch to LangGraph Cognitive Core
   │
-  ▼  3. AgentOrchestrator routes by ML intent (SVM → keyword fallback)
+  ▼  3. SemanticToolRouter triages intent
   │     Selects: general / system / research agent
   │
   ▼  4. LangGraph State Machine (max 4 iterations)

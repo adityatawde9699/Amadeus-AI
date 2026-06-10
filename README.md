@@ -260,17 +260,9 @@ There is no built-in user registration endpoint at this time. Tokens must be gen
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `POST` | `/api/v1/chat` | Yes | Send a message to the assistant |
-| `GET` | `/api/v1/chat/stream` | Yes | **SSE streaming** — real-time token-by-token response |
 | `GET` | `/api/v1/chat/history` | Yes | Retrieve conversation history by session |
 | `GET` | `/api/v1/chat/tools` | Yes | List all available tools by category |
 | `POST` | `/api/v1/chat/clear` | Yes | Clear conversation history |
-
-**SSE streaming example:**
-```bash
-curl -N -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:8000/api/v1/chat/stream?message=Tell+me+a+joke"
-# Streams: data: {"delta": "Why"} ... data: [DONE]
-```
 
 **Chat request body:**
 ```json
@@ -423,7 +415,7 @@ block-beta
 
   block:app["🧠  APPLICATION LAYER  —  src/app/"]:1
     columns 3
-    J["🤖 AmadeusService\nOrchestrator"] K["📝 ConversationManager\nHistory · DB Sync"] L["🔄 AgentOrchestrator\nReAct loop"]
+    J["🤖 AmadeusService\nOrchestrator"] K["📝 ConversationManager\nHistory · DB Sync"] L["🔄 LangGraph\nState Machine"]
     J2["🔍 ArgumentExtractor\nLLM · Regex"] K2["⚙️ ToolDispatcher\nTimeouts · Cache"] L2["✍️ ResponseComposer\nPrompts"]
   end
 
@@ -471,7 +463,7 @@ sequenceDiagram
     participant Auth as 🔐 JWT Auth
     participant Amadeus as 🤖 AmadeusService
     participant Classifier as 📊 ML Classifier
-    participant Agent as 🔄 Agent Loop
+    participant Agent as 🔄 LangGraph
     participant Router as 🔀 LLMRouter
     participant LlamaCpp as 💻 LlamaCpp
     participant Groq as ☁️ Groq
@@ -489,7 +481,7 @@ sequenceDiagram
         Amadeus->>Classifier: route(message)
         Note over Classifier: SemanticToolRouter (cosine sim)
         Classifier-->>Amadeus: tool_name (< 10ms)
-        Amadeus->>Agent: run_agent_loop()
+        Amadeus->>Agent: invoke_graph()
         Agent->>Router: generate(prompt, context)
         Router->>LlamaCpp: is_available()?
         alt LlamaCpp available
@@ -594,7 +586,6 @@ sequenceDiagram
     <code style="background:#c5edd9;border:1px solid #9FE1CB;border-radius:4px;padding:2px 8px;font-size:12px;color:#085041;margin:2px 4px 2px 0;display:inline-block">ToolDispatcher</code>
     <code style="background:#c5edd9;border:1px solid #9FE1CB;border-radius:4px;padding:2px 8px;font-size:12px;color:#085041;margin:2px 4px 2px 0;display:inline-block">ResponseComposer</code>
     <code style="background:#c5edd9;border:1px solid #9FE1CB;border-radius:4px;padding:2px 8px;font-size:12px;color:#085041;margin:2px 4px 2px 0;display:inline-block">UnifiedSemanticRouter</code>
-    <code style="background:#c5edd9;border:1px solid #9FE1CB;border-radius:4px;padding:2px 8px;font-size:12px;color:#085041;margin:2px 4px 2px 0;display:inline-block">VoiceService — STT → LLM → TTS</code>
   </td>
 </tr>
 </table>
@@ -834,20 +825,6 @@ curl -X POST "http://localhost:8000/api/v1/chat/clear" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-### SSE Streaming
-
-```bash
-curl -N -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:8000/api/v1/chat/stream?message=Summarise+today%27s+news"
-```
-
-Each event is a JSON object. The stream ends with `[DONE]`:
-```
-data: {"delta": "Here"}
-data: {"delta": " are"}
-data: {"delta": " today's top news ..."}
-data: [DONE]
-```
 
 ### Outbound Messaging
 
@@ -935,7 +912,7 @@ Amadeus-AI/
 │   │   │   ├── rbac.py             # Permission profiles
 │   │   │   └── audit_logger.py     # Request ID injection, latency headers
 │   │   └── routes/
-│   │       ├── chat.py             # POST /chat · GET /chat/stream (SSE)
+│   │       ├── chat.py             # POST /chat (send message, history, tools, clear)
 │   │       ├── messaging.py        # POST /messaging/send
 │   │       ├── webhooks.py         # Telegram inbound webhooks
 │   │       ├── tasks.py            # CRUD /tasks
@@ -944,7 +921,7 @@ Amadeus-AI/
 │   ├── app/                        # ── APPLICATION LAYER ─────────────────────
 │   │   └── services/
 │   │       ├── amadeus_service.py  # Thin orchestrator
-│   │       ├── agent_loop.py       # ReAct agent + AgentOrchestrator
+│   │       ├── agent_loop.py       # LangGraph cognitive core state machine
 │   │       ├── autonomous_loop.py  # Proactive observation loop
 │   │       ├── conversation_manager.py
 │   │       ├── argument_extractor.py
@@ -968,7 +945,7 @@ Amadeus-AI/
 │       │   ├── llama_cpp_adapter.py
 │       │   ├── groq_adapter.py
 │       │   └── gemini_adapter.py
-│       ├── memory_service.py       # Turbovec + Flash Cache
+│       ├── turbovec_memory.py      # Turbovec + Flash Cache
 │       ├── messaging/
 │       │   ├── telegram_adapter.py
 │       │   └── email_adapter.py

@@ -372,11 +372,13 @@ Create a plan and decide the FIRST action. Respond with JSON only:
             }
 
         try:
+            from src.app.services.tool_dispatcher import ToolDispatcher
+            timeout = ToolDispatcher.TOOL_TIMEOUTS.get(tool_name, ToolDispatcher.DEFAULT_TIMEOUT)
             result = await asyncio.wait_for(
                 self.tool_executor.execute(
                     tool, tool_args, permission_profile=permission_profile,
                 ),
-                timeout=30,
+                timeout=timeout,
             )
             observation = (
                 str(result.result) if result.success else f"Error: {result.error_message}"

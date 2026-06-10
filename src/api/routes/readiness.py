@@ -4,7 +4,7 @@ Observability Improvements — Phase 12 Architecture Upgrade.
 Adds:
   1. Per-tool execution Histogram + Counter (audit recommendation)
   2. /health/live  — simple liveness probe (always 200 if process is up)
-  3. /health/ready — readiness probe that checks DB, Redis, Qdrant, LLM
+  3. /health/ready — readiness probe that checks DB, Redis, Turbovec, LLM
 """
 
 from __future__ import annotations
@@ -89,19 +89,23 @@ async def readiness() -> dict[str, object]:
         checks["redis"] = False
         details["redis"] = str(exc)
 
-    # ── Qdrant (vector memory) ────────────────────────────────────────────────
+    # ── Turbovec (vector memory) ──────────────────────────────────────────────
+    # Replaces the previous Qdrant check — Qdrant was moved to an optional
+    # dependency in v5. Turbovec is the active memory backend.
     try:
         if settings.MEMORY_ENABLED:
-            from qdrant_client import AsyncQdrantClient
+            from src.container import global_container
 
-            qc = AsyncQdrantClient(path=settings.MEMORY_PERSIST_DIR)
-            await qc.get_collections()
-            await qc.close()
-        checks["qdrant"] = True
+            amadeus = global_container.amadeus_service()
+            if amadeus and amadeus.memory_service.is_enabled:
+                # Deep query check: run a real embed + search to verify both
+                # the sentence-transformers model and turbovec index are alive.
+                await amadeus.memory_service.retrieve("health check ping", top_k=1)
+        checks["turbovec"] = True
     except Exception as exc:
-        logger.warning("Readiness: Qdrant check failed: %s", exc)
-        checks["qdrant"] = False
-        details["qdrant"] = str(exc)
+        logger.warning("Readiness: Turbovec check failed: %s", exc)
+        checks["turbovec"] = False
+        details["turbovec"] = str(exc)
 
     # ── LLM provider ─────────────────────────────────────────────────────────
     try:
