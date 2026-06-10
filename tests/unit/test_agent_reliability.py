@@ -142,9 +142,11 @@ class TestAPSchedulerShutdownConfig:
     """server.py must use wait=True for APScheduler shutdown."""
 
     def test_scheduler_uses_wait_true(self):
-        """Verify the lifespan code calls scheduler.shutdown(wait=True)."""
+        """Verify the runtime host calls scheduler.shutdown(wait=True)."""
         from pathlib import Path
-        src = Path("src/transports/fastapi_transport.py").read_text(encoding="utf-8")
+        # The scheduler lifecycle moved out of the FastAPI lifespan into the
+        # transport-agnostic RuntimeHost as part of the Telegram-first refactor.
+        src = Path("src/runtime/host.py").read_text(encoding="utf-8")
         assert "shutdown(wait=True)" in src, (
             "DR-03: APScheduler must use shutdown(wait=True) to prevent dropping in-flight jobs"
         )

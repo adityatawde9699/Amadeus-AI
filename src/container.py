@@ -185,13 +185,17 @@ def _build_tool_registry() -> ToolRegistry:
         except Exception as e:
             logger.warning("Failed to register web_research_tools: %s", e)
 
-        try:
-            from src.infra.tools.email_tools import get_email_tools
+        # Email tools are opt-in (ENABLE_EMAIL) and need the [email] extra.
+        if get_settings().ENABLE_EMAIL:
+            try:
+                from src.infra.tools.email_tools import get_email_tools
 
-            for tool in get_email_tools():
-                registry.register(tool)
-        except Exception as e:
-            logger.warning("Failed to register email_tools: %s", e)
+                for tool in get_email_tools():
+                    registry.register(tool)
+            except Exception as e:
+                logger.warning("Failed to register email_tools: %s", e)
+        else:
+            logger.info("ENABLE_EMAIL disabled — email tools not registered")
 
         # Register agent tools with dependencies
         try:
@@ -244,14 +248,20 @@ def _build_tool_registry() -> ToolRegistry:
 
         logger.info("Tool registry initialized with %d tools", len(registry))
 
-        # ── Plugin Discovery ───────────────────────────────────────────
+        # ── Plugin Discovery (opt-in) ──────────────────────────────────
+        # Auto-importing arbitrary .py files from plugins/ is code execution at
+        # startup, so it is disabled by default. Enable explicitly with
+        # ENABLE_PLUGINS=true once plugins are trusted/reviewed.
         try:
             settings = get_settings()
-            plugins_dir = settings.BASE_DIR / "plugins"
-            if plugins_dir.exists():
-                plugin_count = registry.discover_plugins(plugins_dir)
-                if plugin_count > 0:
-                    logger.info("Discovered %d tools from plugins directory", plugin_count)
+            if settings.ENABLE_PLUGINS:
+                plugins_dir = settings.BASE_DIR / "plugins"
+                if plugins_dir.exists():
+                    plugin_count = registry.discover_plugins(plugins_dir)
+                    if plugin_count > 0:
+                        logger.info("Discovered %d tools from plugins directory", plugin_count)
+            else:
+                logger.info("ENABLE_PLUGINS disabled — skipping plugin auto-discovery")
         except Exception as e:
             logger.warning("Failed to discover plugins: %s", e)
 
@@ -344,7 +354,6 @@ class Container(containers.DeclarativeContainer):
             "src.api.routes.llm",
             "src.api.routes.messaging",
             "src.api.routes.tasks",
-            "src.api.routes.webhooks",
         ]
     )
 

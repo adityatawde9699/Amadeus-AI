@@ -26,7 +26,7 @@ assignees: adityatawde9699
 - [ ] Voice / speech pipeline
 - [ ] Memory / context management
 - [ ] API / REST endpoints
-- [ ] Messaging integrations (Telegram, WhatsApp)
+- [ ] Messaging integrations (Telegram)
 - [ ] CI/CD / infrastructure
 - [ ] Documentation
 

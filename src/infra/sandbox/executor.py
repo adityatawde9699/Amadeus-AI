@@ -19,9 +19,9 @@ import os
 import tempfile
 from typing import Any
 
-import docker
-import docker.errors
-
+# NOTE: ``docker`` is an optional dependency (the ``[sandbox-docker]`` extra and
+# ENABLE_DOCKER_SANDBOX flag). It is imported lazily inside the methods that use
+# it so this module — and the default install — import cleanly without Docker.
 
 logger = logging.getLogger(__name__)
 
@@ -39,12 +39,16 @@ class DockerSandboxExecutor:
     DEFAULT_TIMEOUT = 15  # seconds
 
     def __init__(self, image: str | None = None) -> None:
+        import docker  # optional dep — see [sandbox-docker] extra
+
         self.client = docker.from_env()
         self.image = image or self.DEFAULT_IMAGE
         self._ensure_image()
 
     def _ensure_image(self) -> None:
         """Pre-pull the execution image to prevent timeout on first run."""
+        import docker.errors  # optional dep — see [sandbox-docker] extra
+
         try:
             self.client.images.get(self.image)
             logger.debug("Sandbox image '%s' already available.", self.image)
@@ -71,6 +75,8 @@ class DockerSandboxExecutor:
             - ``status``:  "success" | "error" | "system_error"
             - ``output``:  stdout on success, stderr on error, exception str on system_error
         """
+        import docker.errors  # optional dep — see [sandbox-docker] extra
+
         timeout = timeout or self.DEFAULT_TIMEOUT
 
         with tempfile.TemporaryDirectory() as temp_dir:
