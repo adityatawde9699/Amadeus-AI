@@ -358,8 +358,12 @@ class AmadeusService:
         conversation_manager: ConversationManager,
         context: RequestContext,
     ) -> tuple[str, str | None]:
-        """Single-step triage → extract → dispatch → compose pipeline."""
-        intent_type, tool_name = await self._predict_intent(user_input)
+        """Single-step triage → extract → dispatch → compose pipeline.
+
+        MoE integration: 'expert' intents are routed through the MoE graph
+        so the Supervisor can activate the correct specialized expert.
+        """
+        intent_type, target_name = await self._predict_intent(user_input)
 
         if intent_type == "cloud_escalation":
             logger.info("Triage: cloud escalation detected")
@@ -392,8 +396,21 @@ class AmadeusService:
             )
             return response, None
 
-        # intent_type == "tool"
-        actual_tool_name = tool_name or ""
+        # ── MoE: Route 'expert' intents through the MoE graph ──────────
+        if intent_type == "expert":
+            logger.info("Triage: MoE expert=%s", target_name)
+            response, tools_used = await self._process_with_agent(
+                user_input,
+                conversation_manager=conversation_manager,
+                context=context,
+                routing_intent="expert",
+                routing_target=target_name or "",
+            )
+            tool_used = ", ".join(tools_used) if tools_used else None
+            return response, tool_used
+
+        # ── intent_type == "tool" — direct single-tool dispatch ─────────
+        actual_tool_name = target_name or ""
         logger.info("Triage: tool=%s", actual_tool_name)
 
         if self.tool_registry.get(actual_tool_name):
@@ -416,8 +433,6 @@ class AmadeusService:
                     )
                 return prose, actual_tool_name
             # P8: Don't return raw error strings directly to the user.
-            # Wrap in a friendly prose response so the answer reads naturally
-            # (e.g. "I tried get_weather but encountered an error: ...").
             error_prose = await self._composer.compose_tool_response(
                 user_input,
                 actual_tool_name,
@@ -475,12 +490,23 @@ class AmadeusService:
         user_input: str,
         conversation_manager: ConversationManager,
         context: RequestContext,
+        routing_intent: str = "conversational",
+        routing_target: str = "",
     ) -> tuple[str, list[str]]:
+        """Delegate to the MoE LangGraph agent with routing context."""
         context_summary = conversation_manager.get_context_summary()
         result = await self.graph.ainvoke(
-            task=user_input, context=context, context_summary=context_summary,
+            task=user_input,
+            context=context,
+            context_summary=context_summary,
+            routing_intent=routing_intent,
+            routing_target=routing_target,
         )
         if result.success:
+            logger.info(
+                "MoE agent completed: expert=%s, tools=%s",
+                result.expert_used, result.tools_used,
+            )
             return result.final_answer, result.tools_used
         return result.error or "I couldn't complete that task.", []
 

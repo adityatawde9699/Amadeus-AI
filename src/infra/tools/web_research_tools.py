@@ -12,6 +12,8 @@ from typing import Any
 import httpx
 from bs4 import BeautifulSoup
 
+from src.infra.tools.base import Tool, ToolCategory, tool
+
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +36,7 @@ def _html_to_text(html: str) -> str:
     return clean[:MAX_PAGE_CHARS]
 
 
-def build_web_research_tools(search_router: Any = None) -> list[dict[str, Any]]:
+def build_web_research_tools(search_router: Any = None) -> list[Tool]:
     """Build web research tools for the LLM tool registry.
 
     Args:
@@ -42,22 +44,21 @@ def build_web_research_tools(search_router: Any = None) -> list[dict[str, Any]]:
                        imported from the global container on first use.
     """
 
-    async def web_search(query: str) -> str:
-        """
-        Search the web for current information, news, scores, or facts.
-
-        Uses DuckDuckGo (free) first, then Tavily for deeper research.
-        Returns a formatted summary of the top results with sources.
-
-        Use this tool whenever the user asks about:
-        - Current events, news, sports scores, stock prices
-        - People, places, companies, products
-        - Any factual question that may require up-to-date information
-        - "Who won", "What happened", "Latest", "Current", "Today's"
-
-        Trigger phrases: 'search for', 'look up', 'find out', 'who won',
-        'latest news', 'current score', 'what happened', 'tell me about'.
-        """
+    @tool(
+        name="web_search",
+        description=(
+            "Search the web for current information, news, sports scores, people, places, or any factual query. "
+            "Use this tool for: 'who won', 'latest news', 'current score', 'what happened', 'tell me about', "
+            "'look up', 'search for', 'find out', 'today's weather', 'recent events'. "
+            "Always use this instead of saying 'I'll search' — just search."
+        ),
+        category=ToolCategory.WEB_RESEARCH,
+        parameters={
+            "query": {"type": "string", "description": "The search query to look up"},
+        },
+    )
+    async def web_search(query: str, **kwargs: Any) -> str:
+        """Search the web for current information, news, scores, or facts."""
         if not query or not query.strip():
             return "❌ Please provide a search query."
 
@@ -79,16 +80,20 @@ def build_web_research_tools(search_router: Any = None) -> list[dict[str, Any]]:
             logger.exception("web_search tool failed: %s", exc)
             return f"❌ Search failed: {exc}"
 
-    async def fetch_webpage_content(url: str) -> str:
-        """
-        Fetch a webpage and extract its text content.
-
-        Strips HTML tags, scripts, and styles. Returns clean text
-        suitable for LLM analysis (capped at 4000 chars).
-
-        Use this when the user gives you a specific URL to read.
-        Trigger: 'read this webpage', 'get content from URL', 'scrape this page'.
-        """
+    @tool(
+        name="fetch_webpage_content",
+        description=(
+            "Fetches a specific webpage by URL and extracts clean, readable text (strips HTML). "
+            "Returns up to 4000 chars of content. Use when user provides a specific URL. "
+            "Trigger: 'read this webpage', 'get content from URL', 'extract text from'."
+        ),
+        category=ToolCategory.WEB_RESEARCH,
+        parameters={
+            "url": {"type": "string", "description": "The URL to fetch and parse"},
+        },
+    )
+    async def fetch_webpage_content(url: str, **kwargs: Any) -> str:
+        """Fetch a webpage and extract its text content."""
         if not url.startswith(("http://", "https://")):
             return "❌ Invalid URL — must start with http:// or https://"
 
@@ -120,29 +125,6 @@ def build_web_research_tools(search_router: Any = None) -> list[dict[str, Any]]:
             return f"❌ Error: {exc}"
 
     return [
-        {
-            "name": "web_search",
-            "description": (
-                "Search the web for current information, news, sports scores, people, places, or any factual query. "
-                "Use this tool for: 'who won', 'latest news', 'current score', 'what happened', 'tell me about', "
-                "'look up', 'search for', 'find out', 'today's weather', 'recent events'. "
-                "Always use this instead of saying 'I'll search' — just search."
-            ),
-            "function": web_search,
-            "parameters": {
-                "query": {"type": "string", "description": "The search query to look up"},
-            },
-        },
-        {
-            "name": "fetch_webpage_content",
-            "description": (
-                "Fetches a specific webpage by URL and extracts clean, readable text (strips HTML). "
-                "Returns up to 4000 chars of content. Use when user provides a specific URL. "
-                "Trigger: 'read this webpage', 'get content from URL', 'extract text from'."
-            ),
-            "function": fetch_webpage_content,
-            "parameters": {
-                "url": {"type": "string", "description": "The URL to fetch and parse"},
-            },
-        },
+        web_search._tool_metadata,  # type: ignore[attr-defined]
+        fetch_webpage_content._tool_metadata,  # type: ignore[attr-defined]
     ]

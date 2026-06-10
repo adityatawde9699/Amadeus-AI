@@ -14,7 +14,6 @@ Usage:
 
 import logging
 import shlex
-import subprocess
 from typing import Any
 
 from src.infra.tools.base import Tool, ToolCategory, tool
@@ -143,8 +142,9 @@ def execute_python_script(code: str | None = None, **kwargs: Any) -> str:
     },
     requires_confirmation=True,
 )
-def terminal_cmd(command: str | None = None, **kwargs: Any) -> str:
+async def terminal_cmd(command: str | None = None, **kwargs: Any) -> str:
     """Execute a command on the host OS without invoking a shell."""
+    import asyncio
     cmd = command or kwargs.get("cmd", "")
     if not cmd or not cmd.strip():
         return "Error: No command provided."
@@ -153,20 +153,26 @@ def terminal_cmd(command: str | None = None, **kwargs: Any) -> str:
         args = shlex.split(cmd)
         if not args:
             return "Error: No command provided."
-        result = subprocess.run(
-            args,
-            shell=False,
-            capture_output=True,
-            text=True,
-            timeout=15,
+
+        process = await asyncio.create_subprocess_exec(
+            *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
         )
-        if result.returncode == 0:
-            out = result.stdout.strip()
+
+        try:
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=15.0)
+        except TimeoutError:
+            process.kill()
+            await process.wait()
+            return f"Error: Command '{cmd}' timed out after 15 seconds."
+
+        out = stdout.decode("utf-8", errors="replace").strip()
+        err = stderr.decode("utf-8", errors="replace").strip()
+
+        if process.returncode == 0:
             return f"Command succeeded:\n{out}" if out else "Command succeeded with no output."
-        err = result.stderr.strip() or result.stdout.strip()
-        return f"Command failed (exit {result.returncode}):\n{err}"
-    except subprocess.TimeoutExpired:
-        return f"Error: Command '{cmd}' timed out after 15 seconds."
+        return f"Command failed (exit {process.returncode}):\n{err or out}"
     except Exception as e:
         logger.exception("terminal_cmd failed: %s", e)
         return f"Error executing command: {e}"
