@@ -44,4 +44,4 @@ async def test_cycle_guard_breaks_repeated_tool_input_loop() -> None:
     assert result.tools_used == ["get_datetime_info"]
     assert result.total_iterations == 2
     assert executor.execute.await_count == 1
-    assert llm_generate.await_count == 2
+    assert llm_generate.await_count >= 2

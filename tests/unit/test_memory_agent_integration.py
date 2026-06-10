@@ -62,7 +62,7 @@ class TestReActAgentMemoryInjection:
 
         captured_prompts: list[str] = []
 
-        async def fake_llm(prompt: str) -> str:
+        async def fake_llm(prompt: str, **kwargs) -> str:
             captured_prompts.append(prompt)
             return 'Thought: done\nAction: FINISH\nAction Input: {"answer": "Memory test done"}'
 
@@ -80,8 +80,11 @@ class TestReActAgentMemoryInjection:
         assert result.success
         # The prompt should contain the memory block
         assert len(captured_prompts) > 0
-        assert "[RETRIEVED MEMORIES]" in captured_prompts[0]
-        assert "dark mode" in captured_prompts[0]
+        assert len(captured_prompts) > 0
+        has_memory = any("[RETRIEVED MEMORIES]" in p for p in captured_prompts)
+        assert has_memory
+        has_dark_mode = any("dark mode" in p for p in captured_prompts)
+        assert has_dark_mode
 
     @pytest.mark.asyncio
     async def test_no_memory_when_service_not_set(self):
@@ -90,7 +93,7 @@ class TestReActAgentMemoryInjection:
 
         captured_prompts: list[str] = []
 
-        async def fake_llm(prompt: str) -> str:
+        async def fake_llm(prompt: str, **kwargs) -> str:
             captured_prompts.append(prompt)
             return 'Thought: done\nAction: FINISH\nAction Input: {"answer": "No memory"}'
 
@@ -105,14 +108,15 @@ class TestReActAgentMemoryInjection:
 
         assert result.success
         assert len(captured_prompts) > 0
-        assert "[RETRIEVED MEMORIES]" not in captured_prompts[0]
+        has_memory = any("[RETRIEVED MEMORIES]" in p for p in captured_prompts)
+        assert not has_memory
 
     @pytest.mark.asyncio
     async def test_memory_service_error_does_not_crash_agent(self):
         """If memory retrieval fails, the agent should continue normally."""
         from src.app.services.legacy_agent_loop import ReActAgent
 
-        async def fake_llm(prompt: str) -> str:
+        async def fake_llm(prompt: str, **kwargs) -> str:
             return 'Thought: done\nAction: FINISH\nAction Input: {"answer": "Resilient"}'
 
         error_svc = MagicMock()

@@ -106,7 +106,7 @@ async def db_session(test_db) -> AsyncGenerator[AsyncSession, None]:
 @pytest.fixture(scope="module")
 def client() -> Generator[TestClient, None, None]:
     """Provide a test client for synchronous API tests."""
-    from src.api.server import app
+    from src.transports.fastapi_transport import app
 
     with TestClient(app) as c:
         yield c
@@ -115,7 +115,7 @@ def client() -> Generator[TestClient, None, None]:
 @pytest_asyncio.fixture
 async def async_client() -> AsyncGenerator[AsyncClient, None]:
     """Provide an async test client for async API tests."""
-    from src.api.server import app
+    from src.transports.fastapi_transport import app
 
     async with AsyncClient(
         transport=ASGITransport(app=app),
