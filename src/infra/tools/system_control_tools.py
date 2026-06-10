@@ -131,7 +131,7 @@ Add-Type -TypeDefinition $code
             else:
                 ps_script += f"\n[Audio]::Volume = {clamped / 100.0}"
 
-            result = subprocess.run(
+            result = subprocess.run(check=False, 
                 ["powershell", "-Command", ps_script],
                 timeout=10,
                 capture_output=True,
@@ -146,7 +146,7 @@ Add-Type -TypeDefinition $code
     elif platform.system() == "Linux":
         try:
             clamped = max(0, min(100, level))
-            subprocess.run(["amixer", "sset", "Master", f"{clamped}%"], capture_output=True, timeout=5)
+            subprocess.run(check=False, ["amixer", "sset", "Master", f"{clamped}%"], capture_output=True, timeout=5)
             return f"Volume set to {clamped}%."
         except Exception as e:
             return f"Failed to set volume on Linux: {e}"
@@ -154,7 +154,7 @@ Add-Type -TypeDefinition $code
     elif platform.system() == "Darwin":
         try:
             clamped = max(0, min(100, level))
-            subprocess.run(["osascript", "-e", f"set volume output volume {clamped}"], timeout=5)
+            subprocess.run(check=False, ["osascript", "-e", f"set volume output volume {clamped}"], timeout=5)
             return f"Volume set to {clamped}%."
         except Exception as e:
             return f"Failed to set volume on macOS: {e}"
@@ -243,7 +243,7 @@ def set_brightness(level: int = 70, **kwargs: Any) -> str:
                 f"(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightnessMethods)"
                 f".WmiSetBrightness(1,{clamped})"
             )
-            result = subprocess.run(
+            result = subprocess.run(check=False, 
                 ["powershell", "-Command", ps_cmd],
                 capture_output=True,
                 timeout=10,
@@ -257,7 +257,7 @@ def set_brightness(level: int = 70, **kwargs: Any) -> str:
     elif platform.system() == "Linux":
         try:
             # Try xrandr
-            result = subprocess.run(
+            result = subprocess.run(check=False, 
                 ["xrandr", "--listmonitors"], capture_output=True, text=True, timeout=5
             )
             monitors = [
@@ -266,7 +266,7 @@ def set_brightness(level: int = 70, **kwargs: Any) -> str:
                 if "+" in line
             ]
             for monitor in monitors:
-                subprocess.run(
+                subprocess.run(check=False, 
                     ["xrandr", "--output", monitor, "--brightness", str(clamped / 100)],
                     timeout=5,
                 )
@@ -277,7 +277,7 @@ def set_brightness(level: int = 70, **kwargs: Any) -> str:
     elif platform.system() == "Darwin":
         try:
             # brightness 0.0-1.0
-            subprocess.run(
+            subprocess.run(check=False, 
                 ["brightness", str(clamped / 100)],
                 timeout=5,
             )
@@ -394,7 +394,7 @@ def take_screenshot(filename: str | None = None, **kwargs: Any) -> str:
                 f"$bmp.Save('{save_path}'); "
                 f"$g.Dispose(); $bmp.Dispose() }}"
             )
-            result = subprocess.run(
+            result = subprocess.run(check=False, 
                 ["powershell", "-Command", ps_cmd], capture_output=True, timeout=15
             )
             if result.returncode == 0 and save_path.exists():
@@ -479,7 +479,7 @@ def list_open_apps(**kwargs: Any) -> str:
 
     elif platform.system() == "Darwin":
         try:
-            result = subprocess.run(
+            result = subprocess.run(check=False, 
                 ["osascript", "-e", 'tell application "System Events" to get name of every process whose background only is false'],
                 capture_output=True, text=True, timeout=5,
             )
@@ -490,7 +490,7 @@ def list_open_apps(**kwargs: Any) -> str:
 
     elif platform.system() == "Linux":
         try:
-            result = subprocess.run(
+            result = subprocess.run(check=False, 
                 ["wmctrl", "-l"], capture_output=True, text=True, timeout=5
             )
             titles = [line.split(None, 3)[-1] for line in result.stdout.splitlines() if line]

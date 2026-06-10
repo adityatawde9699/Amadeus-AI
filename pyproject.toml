@@ -97,6 +97,7 @@ dependencies = [
     "langgraph>=0.4",
     "mcp>=1.2.1",
     "PyYAML>=6.0.1",
+    "langgraph-checkpoint-sqlite>=3.1.0",
 ]
 
 [project.optional-dependencies]

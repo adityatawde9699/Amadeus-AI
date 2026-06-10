@@ -82,6 +82,7 @@ src/
 ├── api/          # FastAPI routes, middleware, auth
 ├── app/          # Use-cases, services, agent loop
 │   └── services/
+│       ├── agent_loop.py         ← LangGraph cognitive core state machine
 │       ├── amadeus_service.py    ← main AI service + SemanticToolRouter integration
 │       └── semantic_router.py   ← zero-training tool router (all-mpnet-base-v2)
 ├── core/         # Domain models, exceptions, interfaces (no external deps)
@@ -95,7 +96,7 @@ src/
     ├── persistence/
     ├── search/
     ├── speech/
-    ├── memory_service.py        ← FlashMemoryCache (L1) + QdrantMemoryService (L2)
+    ├── turbovec_memory.py       ← FlashMemoryCache (L1) + Turbovec Deep RAG (L2)
     ├── workspace_indexer.py     ← Hybrid BM25+dense workspace RAG
     └── tools/    ← All Amadeus tools (add new tools here)
         └── workspace_tools.py   ← search_workspace tool

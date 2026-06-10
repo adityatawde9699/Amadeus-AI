@@ -1,8 +1,7 @@
 """
 Chat API Routes for Amadeus AI.
 
-Provides the main /chat endpoint for processing user requests,
-plus a server-sent events (SSE) streaming endpoint for lower TTFT.
+Provides the main /chat endpoint for processing user requests.
 """
 
 import asyncio
@@ -20,6 +19,7 @@ from dependency_injector.wiring import Provide, inject
 from src.app.services.agent_loop import QueueFullError
 from src.app.services.amadeus_service import AmadeusService
 from src.container import Container
+from src.core.domain.context import RequestContext
 from src.core.domain.models import (
     ChatRequest,
     ChatResponse,
@@ -61,7 +61,7 @@ async def chat(
     try:
         async with _chat_semaphore:
             active_session_id = (
-                str(user.id) if user is not None else request.session_id or amadeus.session_id
+                str(user.id) if user is not None else request.session_id or "default-session"
             )
 
             # Extract Permission Profile
@@ -69,13 +69,17 @@ async def chat(
             if user is not None and user.role.value.lower() == "guest":
                 profile = PermissionProfile.READ_ONLY
 
+            # Construct RequestContext — required by AmadeusService.handle_command()
+            context = RequestContext(
+                session_id=active_session_id,
+                user_id=str(user.id) if user else "anonymous",
+            )
+
             try:
                 response = await amadeus.handle_command(
                     user_input=request.message,
+                    context=context,
                     source=request.source,
-                    request_id=request.request_id,
-                    session_id=active_session_id,
-                    permission_profile=profile,
                 )
             except QueueFullError as e:
                 raise HTTPException(status_code=429, detail=str(e)) from e
@@ -153,6 +157,3 @@ async def clear_conversation(
     """
     await amadeus.clear_conversation()
     return {"status": "ok", "message": "Conversation cleared"}
-
-
-

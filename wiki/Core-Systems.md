@@ -113,7 +113,7 @@ python scripts/index_workspace.py --root "~/Projects" --index-dir "data/my_index
 
 ## Flash Memory Cache
 
-**File:** `src/infra/memory_service.py` — class `FlashMemoryCache`
+**File:** `src/infra/turbovec_memory.py` — class `FlashMemoryCache`
 
 A **Tier-1 L1 cache** that intercepts `TurbovecMemoryService.retrieve()` calls using in-process NumPy.
 
@@ -129,7 +129,7 @@ When a new memory is stored via `TurbovecMemoryService.store()`, its embedding i
 
 ---
 
-## Agent Orchestrator
+## LangGraph Agent Loop
 
 **File:** `src/app/services/agent_loop.py`
 
@@ -141,17 +141,15 @@ Amadeus runs an **Agentic (Reason + Act)** agent implemented as a LangGraph stat
 START → THINK → ACT → OBSERVE → THINK → ... → SYNTHESIZE → END
 ```
 
-The `AgentOrchestrator` runs a **background worker loop** that pulls tasks off a bounded queue (`maxsize=50`). Requests exceeding queue capacity receive `QueueFullError`, surfaced as **HTTP 429**.
+The state machine explicitly orchestrates tool execution and context updates, persisting its state via a SQLite checkpointer to support resumable episodic memory.
 
 ### Sub-Agents
 
 | Agent | Max Iterations | Domain |
 |---|---|---|
-| `SystemAgent` | 3 | OS, volume, screenshots, process control |
-| `ResearchAgent` | 5 | Web search, news, weather, documents |
-| `LangGraphAgent` (general) | 4 | Everything else + multi-step reasoning |
+| `LangGraphAgent` | 4 | Multi-step reasoning and autonomous planning |
 
-Routing between sub-agents uses the legacy SVM classifier if `Model/router_classifier.joblib` exists, falling back to keyword heuristics.
+Routing to tools is handled purely by the `SemanticToolRouter` or direct explicit tool assignments.
 
 ---
 

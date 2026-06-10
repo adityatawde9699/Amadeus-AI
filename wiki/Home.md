@@ -1,6 +1,6 @@
 # Amadeus-AI Wiki
 
-> **v3.2.2 — Model Manager, Goal Tracking & Transport Refactor**
+> **v5.0.0-beta — MCP & Daemon Hardening**
 > A secure autonomous AI operating layer built on Clean Architecture — autonomous tool execution, long-horizon planning, and multi-transport messaging unified under a single service layer.
 
 ---
@@ -20,15 +20,13 @@ Amadeus is a **FastAPI-based autonomous AI backend** that provides:
 
 ---
 
-## What's New in v3.2.2
+## What's New in v5.0.0
 
-- **Transport Layer** — `src/api/server.py` replaced by discrete transport modules: `fastapi_transport.py`, `telegram_transport.py`, `cli_transport.py`
-- **Voice Service Removed** — STT/TTS pipeline and all speech dependencies purged from the DI container
-- **ModelManager** — `src/infra/model_manager.py` auto-downloads embed models and GGUF files into `Model/` on first run
-- **Goal Management** — `create_goal`, `update_goal`, `list_active_goals` tools; `GoalORM` backed by PostgreSQL
-- **Proactive Loop Governance** — Per-session rate limiting (`PROACTIVE_MESSAGE_LIMIT_PER_HOUR`) and dry-run mode (`PROACTIVE_DRY_RUN`)
-- **Deployment** — `docker-compose.yml` and `deploy/amadeus.service` systemd unit added
-- **Repository cleanup** — Removed `scratch/`, `wiki-publish/`, stale dev scripts, and empty files
+- **Cognitive Core (Phase 1)** — Fully migrated to a deterministic `LangGraph` async state machine, resolving brittle ReAct loop parsing errors.
+- **Deep RAG Memory (Phase 2)** — Replaced Qdrant with `Turbovec` + `aiosqlite`. Achieved massive 4-bit quantization compression (up to 16x scale reduction) with zero penalties, while running entirely in-process.
+- **MCP Tool Integration (Phase 3)** — Amadeus now dynamically discovers and consumes external tool capabilities via the Model Context Protocol.
+- **24/7 Daemon Hardening (Phase 6)** — Systemd daemon fully fortified with memory/CPU quotas, burst restarts, and proper ASGI SIGTERM signal handling.
+- **Proactive Garbage Collection** — Background autonomous loops now correctly invoke `prune_stale_memories` to prevent Turbovec index bloating.
 
 ---
 

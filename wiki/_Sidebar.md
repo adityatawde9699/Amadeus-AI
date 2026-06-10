@@ -1,6 +1,6 @@
 ## Amadeus-AI Wiki
 
-**v3.2.1 — Security Hardening & Observability Edition**
+**v5.0.0-beta — MCP & Daemon Hardening**
 
 ---
 

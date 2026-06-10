@@ -55,7 +55,7 @@ class TurbovecMemoryService:
         self._embed_dim = 768  # default for Gemini
 
         # Paths
-        self._persist_dir = Path(str(self._settings.MEMORY_PERSIST_DIR))
+        self._persist_dir = Path(self._settings.MEMORY_PERSIST_DIR)
         self._index_path = self._persist_dir / "turbovec_memory.tvim"
         self._db_path = self._persist_dir / "turbovec_payloads.sqlite"
         self._index = None
@@ -133,7 +133,7 @@ class TurbovecMemoryService:
         try:
             from sentence_transformers import SentenceTransformer
             self._local_embed_model = SentenceTransformer(load_path)
-            self._embed_dim = self._local_embed_model.get_sentence_embedding_dimension() or 384
+            self._embed_dim = self._local_embed_model.get_embedding_dimension() or 384
             self._use_local_embed = True
             return
         except ImportError:
@@ -179,7 +179,9 @@ class TurbovecMemoryService:
                 contents=text,
                 config=types.EmbedContentConfig(task_type=task_type),
             )
-            return list(result.embeddings[0].values)
+            if not result.embeddings:
+                return []
+            return result.embeddings[0].values or []
 
         try:
             loop = asyncio.get_running_loop()
@@ -200,6 +202,9 @@ class TurbovecMemoryService:
     ) -> bool:
         if not self._enabled or not self._initialized:
             return False
+
+        assert self._db is not None
+        assert self._index is not None
 
         tracer = trace.get_tracer(__name__)
         with tracer.start_as_current_span("TurbovecMemoryService.store") as span:
@@ -281,6 +286,9 @@ class TurbovecMemoryService:
         if not self._enabled or not self._initialized:
             return []
 
+        assert self._db is not None
+        assert self._index is not None
+
         tracer = trace.get_tracer(__name__)
         with tracer.start_as_current_span("TurbovecMemoryService.retrieve"):
             embedding = await self._embed_async(query, "retrieval_query")
@@ -352,6 +360,10 @@ class TurbovecMemoryService:
     async def clear_session(self, session_id: str) -> int:
         if not self._enabled or not self._initialized:
             return 0
+            
+        assert self._db is not None
+        assert self._index is not None
+        
         try:
             async with self._db.execute("SELECT id FROM memory_payloads WHERE session_id=?", (session_id,)) as cursor:
                 rows = await cursor.fetchall()
@@ -376,6 +388,10 @@ class TurbovecMemoryService:
     async def delete_by_text(self, text: str) -> int:
         if not self._enabled or not self._initialized:
             return 0
+            
+        assert self._db is not None
+        assert self._index is not None
+        
         try:
             async with self._db.execute("SELECT id FROM memory_payloads WHERE text=?", (text,)) as cursor:
                 rows = await cursor.fetchall()
@@ -400,6 +416,10 @@ class TurbovecMemoryService:
     async def prune_stale_memories(self, session_id: str, older_than_days: int = 90) -> int:
         if not self._enabled or not self._initialized:
             return 0
+            
+        assert self._db is not None
+        assert self._index is not None
+        
         try:
             now = datetime.now(UTC)
             cutoff_seconds = older_than_days * 24 * 3600
@@ -466,6 +486,9 @@ class TurbovecMemoryService:
     async def _increment_access_counts(self, texts: list[str]) -> None:
         if not self._enabled or not self._initialized or not texts:
             return
+            
+        assert self._db is not None
+        
         try:
             unique_texts = list(dict.fromkeys(texts))
             placeholders = ",".join(["?"] * len(unique_texts))
