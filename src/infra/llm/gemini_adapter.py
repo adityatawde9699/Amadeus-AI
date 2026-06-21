@@ -207,7 +207,25 @@ Guidelines:
             response = await asyncio.to_thread(_call_with_retry)
 
             if not response.text:  # type: ignore[union-attr]
-                raise LLMResponseError("Empty response from Gemini")
+                # Gemini sometimes returns an empty body when the structured JSON
+                # suffix triggers a safety filter or quota edge-case.  Retry once
+                # with the bare prompt before giving up.
+                logger.warning(
+                    "Gemini returned empty response for model=%s — retrying without JSON suffix",
+                    _model,
+                )
+                bare_prompt = full_prompt.replace(
+                    "\n\nIMPORTANT: Respond ONLY with a valid JSON object.", ""
+                )
+                retry_response = await asyncio.to_thread(
+                    _client.models.generate_content,
+                    model=_model,
+                    contents=bare_prompt,
+                    config=config,
+                )
+                if not retry_response.text:  # type: ignore[union-attr]
+                    raise LLMResponseError("Empty response from Gemini")
+                response = retry_response
 
             # Store in cache (expire after 24h)
             if self._redis and cache_key:

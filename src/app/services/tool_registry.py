@@ -14,6 +14,7 @@ Usage:
     system_tools = registry.get_by_category("system")
 """
 
+import asyncio
 import importlib
 import inspect
 import logging
@@ -26,16 +27,22 @@ from src.core.domain.models import ToolDefinition
 from src.infra.tools.base import Tool, ToolCategory
 
 
-# Try to import Gemini SDK types (High-Level)
-try:
-    from google.genai.types import FunctionDeclaration
-    from google.genai.types import Tool as GenAITool
-
-    HAS_GENAI = True
-except ImportError:
-    HAS_GENAI = False
-
 logger = logging.getLogger(__name__)
+
+
+def _genai_types() -> tuple[Any, Any] | None:
+    """Lazily import Gemini SDK types.
+
+    google.genai costs ~62MB RSS at import — only pay for it when Gemini
+    declarations are actually requested (never in LOCAL_ONLY_MODE).
+    """
+    try:
+        from google.genai.types import FunctionDeclaration
+        from google.genai.types import Tool as GenAITool
+
+        return FunctionDeclaration, GenAITool
+    except ImportError:
+        return None
 
 
 class ToolRegistry:
@@ -47,7 +54,11 @@ class ToolRegistry:
 
     def __init__(self) -> None:
         self._tools: dict[str, Tool] = {}
-        self._mcp_resources: list[Any] = []
+        # Each MCP server runs in its own task that owns the full lifecycle of
+        # its anyio context managers (stdio_client + ClientSession). We only
+        # ever signal it to stop and await it — we never exit those contexts
+        # from another task, which would trip anyio's cancel-scope guard.
+        self._mcp_tasks: list[tuple[asyncio.Task[None], asyncio.Event]] = []
 
     def register(self, tool: Tool) -> None:
         """
@@ -190,7 +201,9 @@ class ToolRegistry:
         tools = self.list_all() if tool_names is None else self.get_by_names(tool_names)
 
         # If we have the SDK, use its types to be safe
-        if HAS_GENAI:
+        genai = _genai_types()
+        if genai is not None:
+            FunctionDeclaration, GenAITool = genai
             declarations = []
             for t in tools:
                 # Convert dict to FunctionDeclaration using **kwargs
@@ -218,7 +231,9 @@ class ToolRegistry:
     def build_gemini_declarations_for_category(self, category: ToolCategory) -> Any:
         """Build Gemini declarations for a specific category."""
         tools = self.get_by_category(category)
-        if HAS_GENAI:
+        genai = _genai_types()
+        if genai is not None:
+            FunctionDeclaration, GenAITool = genai
             declarations = [FunctionDeclaration(**t.to_gemini_declaration()) for t in tools]
             return [GenAITool(function_declarations=declarations)]
 
@@ -411,56 +426,93 @@ class ToolRegistry:
         """
         Connect an MCP server via stdio and register its tools.
 
+        The server's stdio_client/ClientSession context managers are entered and
+        exited entirely within a single dedicated task (see ``_run_mcp_server``).
+        anyio attaches cancel scopes to those context managers and refuses to let
+        them be closed from a different task than the one that opened them — the
+        old code entered them here and exited them in ``shutdown_mcp`` (a different
+        task), which raised "Attempted to exit cancel scope in a different task".
+
         Args:
             command: The command to run the MCP server (e.g. "npx @modelcontextprotocol/server-github")
             name: Namespace for the tools (e.g. "github")
 
         Returns:
-            Number of tools registered
+            Number of tools registered (0 if the connection failed)
+        """
+        logger.info("Connecting to MCP server '%s' with command: %s", name, command)
+
+        ready = asyncio.Event()
+        shutdown = asyncio.Event()
+        result: dict[str, Any] = {"count": 0, "error": None}
+
+        task = asyncio.create_task(
+            self._run_mcp_server(command, name, ready, shutdown, result),
+            name=f"mcp-{name}",
+        )
+        self._mcp_tasks.append((task, shutdown))
+
+        # Block until the server is initialized and its tools are registered, or
+        # until the lifecycle task fails (it sets `ready` in either case).
+        await ready.wait()
+
+        if result["error"]:
+            return 0
+        return int(result["count"])
+
+    async def _run_mcp_server(
+        self,
+        command: str,
+        name: str,
+        ready: asyncio.Event,
+        shutdown: asyncio.Event,
+        result: dict[str, Any],
+    ) -> None:
+        """Own an MCP server's full connection lifecycle inside one task.
+
+        Opens the stdio + session context managers, registers the tools, signals
+        ``ready``, then parks on ``shutdown`` so the contexts stay open. When
+        signalled, the ``AsyncExitStack`` closes them here — in the same task that
+        opened them — keeping anyio's structured-concurrency invariants intact.
         """
         import shlex
+        from contextlib import AsyncExitStack
 
         from mcp import ClientSession, StdioServerParameters
         from mcp.client.stdio import stdio_client
 
-        logger.info("Connecting to MCP server '%s' with command: %s", name, command)
-
         try:
-            # Parse command into parts for StdioServerParameters
             parts = shlex.split(command)
             if not parts:
+                result["error"] = f"empty command for MCP server '{name}'"
                 logger.error("Empty command for MCP server '%s'", name)
-                return 0
+                return
 
-            server_params = StdioServerParameters(
-                command=parts[0],
-                args=parts[1:],
-            )
+            server_params = StdioServerParameters(command=parts[0], args=parts[1:])
 
-            # To keep the connection alive, we manually enter the context managers
-            # and store them in self._mcp_resources for later cleanup.
-            client_cm = stdio_client(server_params)
-            read, write = await client_cm.__aenter__()
+            async with AsyncExitStack() as stack:
+                read, write = await stack.enter_async_context(stdio_client(server_params))
+                session = await stack.enter_async_context(ClientSession(read, write))
+                await session.initialize()
 
-            session = ClientSession(read, write)
-            await session.__aenter__()
-            await session.initialize()
+                tools_result = await session.list_tools()
+                count = 0
+                for mcp_tool in tools_result.tools:
+                    self._register_mcp_tool(session, mcp_tool, server_name=name)
+                    count += 1
+                result["count"] = count
+                logger.info("Registered %d tools from MCP server '%s'", count, name)
 
-            self._mcp_resources.append((client_cm, session))
-
-            # List tools and register them
-            tools_result = await session.list_tools()
-            count = 0
-            for mcp_tool in tools_result.tools:
-                self._register_mcp_tool(session, mcp_tool, server_name=name)
-                count += 1
-
-            logger.info("Registered %d tools from MCP server '%s'", count, name)
-            return count
-
+                # Unblock connect_mcp_server, then hold the contexts open until
+                # shutdown is requested.
+                ready.set()
+                await shutdown.wait()
         except Exception as e:
+            result["error"] = str(e)
             logger.exception("Failed to connect to MCP server '%s': %s", name, e)
-            return 0
+        finally:
+            # Ensure a stuck/failed startup never leaves connect_mcp_server hung.
+            ready.set()
 
     def _register_mcp_tool(self, session: Any, mcp_tool: Any, server_name: str) -> None:
         """Register a single MCP tool as an Amadeus tool."""
@@ -491,15 +543,23 @@ class ToolRegistry:
         )
 
     async def shutdown_mcp(self) -> None:
-        """Shutdown all MCP sessions."""
-        if not hasattr(self, "_mcp_resources"):
+        """Shut down all MCP sessions.
+
+        Signals each lifecycle task to stop and awaits it. Each task closes its
+        own context managers (in-task), so we never touch anyio cancel scopes
+        from here.
+        """
+        if not self._mcp_tasks:
             return
 
-        for client_cm, session in self._mcp_resources:
-            try:
-                await session.__aexit__(None, None, None)
-                await client_cm.__aexit__(None, None, None)
-            except Exception as e:
-                logger.warning("Error during MCP shutdown: %s", e)
+        for _, shutdown in self._mcp_tasks:
+            shutdown.set()
 
-        self._mcp_resources.clear()
+        results = await asyncio.gather(
+            *(task for task, _ in self._mcp_tasks), return_exceptions=True
+        )
+        for r in results:
+            if isinstance(r, Exception):
+                logger.warning("Error during MCP shutdown: %s", r)
+
+        self._mcp_tasks.clear()

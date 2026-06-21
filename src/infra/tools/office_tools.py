@@ -410,7 +410,13 @@ read_excel_spreadsheet._tool_metadata.get_preview = read_excel_preview  # type: 
 
 
 def get_office_tools() -> list[Tool]:
-    """Get all office tools for registration."""
+    """Get all office tools for registration.
+
+    Returns an empty list when pywin32 is unavailable (non-Windows hosts) so
+    these tools never appear in the LLM tool menu where they cannot work.
+    """
+    if not HAS_PYWIN32:
+        return []
     return [
         create_excel_spreadsheet._tool_metadata,  # type: ignore[attr-defined]
         create_word_document._tool_metadata,  # type: ignore[attr-defined]

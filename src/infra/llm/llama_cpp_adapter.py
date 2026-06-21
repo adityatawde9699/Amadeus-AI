@@ -372,6 +372,11 @@ class LlamaCppAdapter(ILLMService):
                 return _strip_think_tags(raw)
 
             response_text = await asyncio.to_thread(_generate)
+            if not response_text:
+                raise LLMResponseError(
+                    "LlamaCpp returned empty response after think-tag stripping — "
+                    "falling through to next provider"
+                )
             logger.debug(
                 "LlamaCpp generated %d chars (temp=%.2f, max_tokens=%s)",
                 len(response_text),

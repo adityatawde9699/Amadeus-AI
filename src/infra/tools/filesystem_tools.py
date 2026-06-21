@@ -29,9 +29,13 @@ def _safe_resolve(user_path: str) -> Path | None:
     """
     workspace = _get_workspace()
     try:
-        target = (workspace / user_path).resolve()
-        # Security: ensure the resolved path is still inside the workspace
-        if not str(target).startswith(str(workspace.resolve())):
+        root = workspace.resolve()
+        target = (root / user_path).resolve()
+        # Security (Phase 3.3): use real path containment, not a string prefix.
+        # ``str.startswith`` is bypassable — e.g. workspace "/data/ws" would wrongly
+        # accept "/data/ws-evil". ``relative_to`` on the resolved paths also
+        # collapses ``..`` traversal and follows symlinks before the check.
+        if not target.is_relative_to(root):
             logger.warning("sandbox_escape_blocked", extra={"attempted": user_path})
             return None
         return target

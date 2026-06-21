@@ -17,10 +17,14 @@ import secrets
 import sys
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+if TYPE_CHECKING:
+    from src.core.capability import CapabilityProfile
 
 
 def get_project_root() -> Path:
@@ -101,6 +105,10 @@ class Settings(BaseSettings):
     # =========================================================================
     ENV: Literal["development", "staging", "production"] = "development"
     DEBUG: bool = False
+    # Hardware capability tier. "auto" probes RAM/CPU/GPU at startup and gates
+    # heavy agentic features (multi-expert orchestration, parallel tools, larger
+    # models). Force a tier to exercise/limit features regardless of hardware.
+    CAPABILITY_TIER: Literal["auto", "lite", "standard", "power"] = "auto"
     ALLOW_DEBUG_RESPONSES: bool = False  # When true, exposes full stack traces to the API client
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
@@ -122,6 +130,19 @@ class Settings(BaseSettings):
     # Background loops — opt-in so an idle daemon stays quiet and cheap.
     ENABLE_PROACTIVE_LOOP: bool = False  # APScheduler proactive checks
     ENABLE_AUTONOMOUS_LOOP: bool = False  # AutonomousObservationLoop
+    # Phase 3 — event-driven autonomy. When on, watchers emit events onto the
+    # runtime EventBus and a dispatcher wakes the agent. Tier-gated: Lite runs
+    # threshold checks only; Standard/Power also enable the file watcher.
+    ENABLE_EVENT_WATCHERS: bool = False
+    ENABLE_THRESHOLD_WATCHER: bool = True   # system health thresholds (CPU/mem/disk/battery)
+    ENABLE_FILE_WATCHER: bool = True        # directory change watcher (Standard+ only)
+    # Phase 4 — pause risky tool steps *inside* the graph via LangGraph
+    # interrupt(), resuming on approval. Off by default: the tool-executor
+    # confirmation gate already provides HITL for the live Telegram path, and
+    # in-graph interrupts need a transport that calls AmadeusGraph.aresume().
+    ENABLE_INGRAPH_HITL: bool = False
+    # Phase 4 — feed compact past tool outcomes back into expert planning.
+    ENABLE_REFLECTIVE_LEARNING: bool = True
     # Warm the local GGUF model at startup. Off by default to cut startup RAM/CPU
     # on low-end machines; the first message pays the load cost instead.
     SLM_WARMUP_ON_START: bool = False
@@ -134,6 +155,20 @@ class Settings(BaseSettings):
     # =========================================================================
     PROACTIVE_MESSAGE_LIMIT_PER_HOUR: int = 3
     PROACTIVE_DRY_RUN: bool = False
+
+    # =========================================================================
+    # EVENT WATCHERS (Phase 3)
+    # =========================================================================
+    # Poll cadences for the watchers. Threshold checks are cheap; the file
+    # watcher scans mtimes, so keep its interval modest on the floor tier.
+    WATCHER_THRESHOLD_INTERVAL_SECONDS: int = Field(default=120, ge=10, le=3600)
+    WATCHER_FILE_INTERVAL_SECONDS: int = Field(default=30, ge=5, le=3600)
+    # Directories the file watcher monitors for changes (empty = disabled).
+    WATCH_DIRS: list[str] = Field(default_factory=list)
+    # Session used for watcher-originated (system) agent invocations.
+    WATCHER_EVENT_SESSION_ID: str = "system_default_session"
+    # Cap on watcher-triggered agent wake-ups per hour (anti-spam).
+    WATCHER_MAX_EVENTS_PER_HOUR: int = Field(default=6, ge=1, le=120)
 
     # =========================================================================
     # PATHS
@@ -149,6 +184,27 @@ class Settings(BaseSettings):
             base = info.data.get("BASE_DIR") or Path(__file__).parent.parent.parent
             return Path(base) / "data"
         return Path(v)
+
+    # Root directory indexed by the workspace semantic search tool
+    WORKSPACE_INDEX_ROOT: Path = Field(default_factory=Path.home)
+
+    # AMASPACE — the single source of truth for all generated artifacts
+    # (research reports, generated code, exports, execution logs, datasets...).
+    # Defaults to <project_root>/AMASPACE (set in validator).
+    AMASPACE_DIR: Path | None = Field(default=None)
+
+    @field_validator("AMASPACE_DIR", mode="before")
+    @classmethod
+    def set_amaspace_dir(cls, v: Path | str | None, info: Any) -> Path:
+        """Default AMASPACE_DIR to <project_root>/AMASPACE/ if not provided."""
+        if v is None:
+            base = info.data.get("BASE_DIR") or Path(__file__).parent.parent.parent
+            return Path(base) / "AMASPACE"
+        return Path(v)
+
+    # When True, the workspace persistence layer refuses to write artifacts
+    # outside AMASPACE (path-traversal / absolute-path containment guard).
+    WORKSPACE_ENFORCE_CONTAINMENT: bool = True
 
     # =========================================================================
     # API KEYS
@@ -228,10 +284,49 @@ class Settings(BaseSettings):
     TELEGRAM_WEBHOOK_SECRET: str | None = None
     TELEGRAM_WEBHOOK_URL: str | None = None  # e.g. https://yourhost.com/api/v1/messaging/telegram
 
+    # Network tuning — increase these if api.telegram.org times out on your network.
+    # TELEGRAM_PROXY_URL: optional HTTP/SOCKS5 proxy for regions where Telegram is blocked.
+    #   Examples: "http://127.0.0.1:8080"  or  "socks5://user:pass@host:1080"
+    TELEGRAM_CONNECT_TIMEOUT: float = Field(default=20.0, ge=1.0, le=120.0)
+    TELEGRAM_READ_TIMEOUT: float = Field(default=20.0, ge=1.0, le=120.0)
+    TELEGRAM_PROXY_URL: str | None = None
+    # How many times start_polling retries before giving up (exponential backoff).
+    TELEGRAM_MAX_RETRIES: int = Field(default=3, ge=1, le=10)
+
+    # Conversation-only / command-and-control mode (v5). When True, Telegram is a
+    # notification channel only: task results, generated content, research output,
+    # logs, and reasoning chains are persisted to AMASPACE and Telegram receives
+    # only short status notifications (accepted/started/completed/failed) plus the
+    # saved artifact path. Set False to restore the legacy "send everything" reply.
+    TELEGRAM_NOTIFICATION_ONLY: bool = True
+    # Replies longer than this (chars) are treated as artifact-bearing output:
+    # persisted to AMASPACE/exports and replaced with a path notification.
+    TELEGRAM_MAX_REPLY_CHARS: int = Field(default=600, ge=80, le=4000)
+
+    # =========================================================================
+    # RESEARCH ENGINE
+    # =========================================================================
+    # Upper bounds keep deep-research runs cheap on the 4GB/no-GPU host.
+    RESEARCH_MAX_SUBTOPICS: int = Field(default=5, ge=1, le=12)
+    RESEARCH_MAX_SOURCES_PER_QUESTION: int = Field(default=5, ge=1, le=15)
+    RESEARCH_FETCH_TIMEOUT: int = Field(default=15, ge=3, le=60)
+    RESEARCH_MAX_FETCH_PAGES: int = Field(default=8, ge=0, le=30)
+    # Forward per-stage research progress to the chat channel. Off by default so
+    # a run produces only "started" + "completed/failed" notifications.
+    RESEARCH_PROGRESS_NOTIFICATIONS: bool = False
+
     # =========================================================================
     # PROACTIVE MESSAGING (Master Users)
     # =========================================================================
+    # Comma-separated Telegram chat ids authorised to issue commands. REQUIRED
+    # for the Telegram channel: when missing/empty/malformed the channel fails
+    # CLOSED (no input is accepted) rather than open. Authorised users run at the
+    # STANDARD profile by default.
     MASTER_TELEGRAM_CHAT_ID: str | None = None
+    # Subset of authorised chat ids that may run SYSTEM_FULL (host/dev/destructive)
+    # tools. Empty means no Telegram user gets full system access — elevation is
+    # explicit, never implicit.
+    TELEGRAM_ELEVATED_CHAT_IDS: str | None = None
     PROACTIVE_CHECK_INTERVAL_MINUTES: int = Field(default=30, ge=1, le=1440)
 
     # =========================================================================
@@ -272,7 +367,7 @@ class Settings(BaseSettings):
     # ASSISTANT IDENTITY
     # =========================================================================
     ASSISTANT_NAME: str = "Amadeus"
-    ASSISTANT_VERSION: str = "3.2.2"
+    ASSISTANT_VERSION: str = "6.0.0"
     ASSISTANT_PERSONALITY: str = "intelligent, analytical, precise, and slightly sarcastic"
     DEFAULT_LOCATION: str = "India"
     TIMEZONE: str = "Asia/Kolkata"
@@ -304,6 +399,15 @@ class Settings(BaseSettings):
     # Rate Limiting
     RATE_LIMIT_REQUESTS: int = Field(default=100, ge=1)
     RATE_LIMIT_WINDOW_SECONDS: int = Field(default=60, ge=1)
+    # Phase 4.3: per-IP rate limit applied to unauthenticated, abuse-prone auth
+    # endpoints (login / register / forgot-password / verify) BEFORE credentials
+    # are checked, to blunt credential stuffing and account enumeration.
+    RATE_LIMIT_ENABLED: bool = True
+    RATE_LIMIT_AUTH_REQUESTS: int = Field(default=10, ge=1)
+    RATE_LIMIT_AUTH_WINDOW_SECONDS: int = Field(default=60, ge=1)
+    # Only honor X-Forwarded-For for the client IP when explicitly behind a
+    # trusted reverse proxy; otherwise the socket peer is used (unspoofable).
+    TRUST_PROXY_HEADERS: bool = False
 
     # =========================================================================
     # SYSTEM MONITORING THRESHOLDS
@@ -349,8 +453,11 @@ class Settings(BaseSettings):
     # =========================================================================
     # SANDBOX
     # =========================================================================
-    # "docker" for containerized, "local" for multiprocessing, "auto" for auto-detect
-    SANDBOX_MODE: Literal["docker", "local", "auto"] = "auto"
+    # Code-execution sandbox backend. "docker" runs untrusted code in a hardened
+    # ephemeral container; "disabled" refuses to execute code at all. The former
+    # insecure "local"/"auto" (in-process exec) modes were removed — they were
+    # trivially escapable. Defaults to "disabled" (fail closed).
+    SANDBOX_MODE: Literal["disabled", "docker"] = "disabled"
 
     # =========================================================================
     # PRODUCTIVITY: CALENDAR
@@ -366,6 +473,23 @@ class Settings(BaseSettings):
     DISPLAY_PROCESSES_COUNT: int = Field(default=10, ge=1, le=50)
     DISPLAY_TEMPERATURE_SENSORS_LIMIT: int = Field(default=3, ge=1, le=10)
     DISPLAY_ALERTS_LIMIT: int = Field(default=5, ge=1, le=20)
+
+    # =========================================================================
+    # TOOL SECURITY
+    # =========================================================================
+    # When True, tools whose capability metadata was auto-derived (not explicitly
+    # declared) are denied execution outside development. Default off so the
+    # system keeps working until every tool has audited, explicit metadata.
+    STRICT_TOOL_METADATA: bool = False
+
+    # =========================================================================
+    # NETWORK EGRESS (SSRF) — Phase 3.1
+    # =========================================================================
+    # When False (default, fail closed) outbound fetch tools refuse to connect to
+    # non-public addresses (loopback, private RFC1918, link-local incl. cloud
+    # metadata 169.254.169.254, reserved/multicast). Set True ONLY for local
+    # development/testing; it is treated as False in production regardless.
+    ALLOW_PRIVATE_NETWORK_FETCH: bool = False
 
     # =========================================================================
     # VALIDATION CONTROL
@@ -433,6 +557,50 @@ class Settings(BaseSettings):
         ws = base / "agent_workspace"
         ws.mkdir(parents=True, exist_ok=True)
         return ws
+
+    @property
+    def amaspace_root(self) -> Path:
+        """Resolved AMASPACE root — the single source of truth for artifacts."""
+        return self.AMASPACE_DIR or (self.BASE_DIR / "AMASPACE")
+
+    @property
+    def capability(self) -> "CapabilityProfile":
+        """Resolved hardware capability profile (cached; honours CAPABILITY_TIER)."""
+        from src.core.capability import resolve_capability
+
+        return resolve_capability(self.CAPABILITY_TIER)
+
+    @staticmethod
+    def _parse_id_allowlist(raw: str | None) -> tuple[frozenset[int], bool]:
+        """Parse a comma-separated chat-id allowlist, failing CLOSED.
+
+        Returns ``(ids, valid)``. ``valid`` is True only when the input is
+        non-empty and every token parses as an int. A single malformed token
+        invalidates the whole allowlist (so a typo can never be interpreted as
+        "allow everyone").
+        """
+        text = (raw or "").strip()
+        if not text:
+            return frozenset(), False
+        ids: set[int] = set()
+        for tok in text.split(","):
+            tok = tok.strip()
+            if not tok:
+                continue
+            try:
+                ids.add(int(tok))
+            except ValueError:
+                return frozenset(), False  # malformed → invalid (fail closed)
+        return frozenset(ids), bool(ids)
+
+    def parse_telegram_allowlist(self) -> tuple[frozenset[int], bool]:
+        """Authorised Telegram chat ids and whether the allowlist is valid."""
+        return self._parse_id_allowlist(self.MASTER_TELEGRAM_CHAT_ID)
+
+    def telegram_elevated_ids(self) -> frozenset[int]:
+        """Chat ids permitted to run SYSTEM_FULL tools (may be empty)."""
+        ids, valid = self._parse_id_allowlist(self.TELEGRAM_ELEVATED_CHAT_IDS)
+        return ids if valid else frozenset()
 
 
 @lru_cache
@@ -522,6 +690,22 @@ def validate_settings(settings: Settings | None = None) -> dict:
     # Check database URL
     if settings.is_production and settings.database_is_sqlite:
         warnings.append("SQLite is not recommended for production use")
+
+    # Telegram command channel must be allowlisted (fail closed). A configured
+    # bot token without a valid MASTER_TELEGRAM_CHAT_ID would otherwise accept
+    # commands from anyone.
+    if settings.TELEGRAM_BOT_TOKEN:
+        _allowed, _valid = settings.parse_telegram_allowlist()
+        if not _valid:
+            msg = (
+                "TELEGRAM_BOT_TOKEN is set but MASTER_TELEGRAM_CHAT_ID is missing "
+                "or malformed — the Telegram channel would accept commands from "
+                "anyone. Set a valid comma-separated list of numeric chat ids."
+            )
+            if settings.is_production:
+                errors.append(msg)
+            else:
+                warnings.append(msg)
 
     return {
         "valid": len(errors) == 0,

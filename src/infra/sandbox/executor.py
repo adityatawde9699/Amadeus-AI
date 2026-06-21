@@ -7,11 +7,12 @@ that should ever run user-supplied code.
 
 Security constraints:
 - Network disabled (no outbound connections)
-- Memory capped at 128 MB
-- CPU capped at 0.5 cores
+- Read-only root filesystem; only a small writable tmpfs at /tmp
+- All Linux capabilities dropped; no-new-privileges
+- Memory + swap capped (128 MB); CPU capped at 0.5 cores; PID-limited
 - Runs as non-root user (1000:1000)
 - Workspace mounted read-only
-- Container auto-removed on exit
+- Pinned image; container force-killed on timeout and auto-removed
 """
 
 import logging
@@ -35,7 +36,10 @@ class DockerSandboxExecutor:
     tool definitions or the agent loop.
     """
 
-    DEFAULT_IMAGE = "python:3.10-slim"
+    # Pinned to a specific patch version (not ``latest``). For stronger supply-
+    # chain guarantees, operators should pin by digest via the ``image`` ctor arg
+    # or the SANDBOX_IMAGE setting, e.g. "python:3.10.14-slim@sha256:<digest>".
+    DEFAULT_IMAGE = "python:3.10.14-slim"
     DEFAULT_TIMEOUT = 15  # seconds
 
     def __init__(self, image: str | None = None) -> None:
@@ -84,36 +88,60 @@ class DockerSandboxExecutor:
             with open(script_path, "w", encoding="utf-8") as f:
                 f.write(code)
 
+            container = None
             try:
-                container_output = self.client.containers.run(
+                # Run detached so we can enforce a hard wall-clock timeout and
+                # force-kill an overrunning container (docker-py's run() has no
+                # native timeout).
+                container = self.client.containers.run(
                     self.image,
                     command=["python", "/workspace/script.py"],
                     volumes={temp_dir: {"bind": "/workspace", "mode": "ro"}},
                     working_dir="/workspace",
                     # ── Resource clamping ──────────────────────────
                     mem_limit="128m",
+                    memswap_limit="128m",        # no swap beyond the mem limit
                     nano_cpus=500_000_000,       # 0.5 CPU cores
+                    pids_limit=128,              # fork-bomb guard
                     # ── Security hardening ─────────────────────────
                     network_disabled=True,       # No outbound connections
+                    network_mode="none",
                     user="1000:1000",            # Non-root execution
+                    read_only=True,             # Read-only root filesystem
+                    cap_drop=["ALL"],           # Drop all Linux capabilities
+                    security_opt=["no-new-privileges"],
+                    # Minimal writable scratch space (capped, non-exec).
+                    tmpfs={"/tmp": "rw,size=16m,nosuid,nodev,noexec"},
                     # ── Lifecycle ──────────────────────────────────
-                    remove=True,                 # Auto-destroy container
+                    detach=True,
                     stdout=True,
                     stderr=True,
-                    # ── Timeout ────────────────────────────────────
-                    # Note: docker-py does not support a timeout kwarg natively on run().
-                    # We rely on the internal process to complete or we'll need to manually
-                    # kill the container in a background task.
-
                 )
 
-                output = (
-                    container_output.decode("utf-8")
-                    if isinstance(container_output, bytes)
-                    else str(container_output)
-                )
-                logger.info("Sandbox execution succeeded (%d chars output).", len(output))
-                return {"status": "success", "output": output}
+                try:
+                    exit_info = container.wait(timeout=timeout)
+                    status_code = exit_info.get("StatusCode", 0) if isinstance(exit_info, dict) else 0
+                    stdout = container.logs(stdout=True, stderr=False)
+                    stderr = container.logs(stdout=False, stderr=True)
+                    out = stdout.decode("utf-8", errors="replace") if isinstance(stdout, bytes) else str(stdout)
+                    err = stderr.decode("utf-8", errors="replace") if isinstance(stderr, bytes) else str(stderr)
+
+                    if status_code == 0:
+                        logger.info("Sandbox execution succeeded (%d chars output).", len(out))
+                        return {"status": "success", "output": out}
+                    logger.warning("Sandbox execution error (exit %s): %s", status_code, err[:200])
+                    return {"status": "error", "output": err or out}
+                except Exception as wait_exc:
+                    # Timeout or wait failure → force kill.
+                    logger.warning("Sandbox timed out / wait failed: %s — killing container", wait_exc)
+                    try:
+                        container.kill()
+                    except Exception:
+                        pass
+                    return {
+                        "status": "error",
+                        "output": f"Execution timed out after {timeout} seconds.",
+                    }
 
             except docker.errors.ContainerError as e:
                 stderr = (
@@ -127,3 +155,11 @@ class DockerSandboxExecutor:
             except Exception as e:
                 logger.exception("Sandbox system error: %s", e)
                 return {"status": "system_error", "output": str(e)}
+
+            finally:
+                # Always remove the (detached) container.
+                if container is not None:
+                    try:
+                        container.remove(force=True)
+                    except Exception:
+                        pass

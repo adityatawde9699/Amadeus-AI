@@ -35,12 +35,21 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class PendingConfirmation:
-    """State held while waiting for a user approval decision."""
+    """State held while waiting for a user approval decision.
+
+    Carries owner identity (user/session/source/profile) so a confirmation can
+    only be inspected or resolved by the request that created it.
+    """
 
     request_id: str
     tool_name: str
     args: dict[str, Any]
     preview: str = ""
+    # Owner identity — used for ownership checks on resolution.
+    user_id: str | None = None
+    session_id: str | None = None
+    source: str | None = None
+    permission_profile: str | None = None
     created_at: datetime = field(default_factory=datetime.now)
     future: asyncio.Future[bool] = field(
         default_factory=lambda: asyncio.get_event_loop().create_future()

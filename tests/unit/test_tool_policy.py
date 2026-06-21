@@ -46,19 +46,37 @@ def test_critical_tool_must_require_confirmation():
         policy.evaluate(tool, {}, _context(PermissionProfile.SYSTEM_FULL))
 
 
-def test_terminal_command_blocks_forbidden_tokens():
+def test_min_permission_denies_lower_profile():
+    """The min_permission rank check is the authorization boundary."""
     policy = ToolPolicyEngine()
     tool = _tool(
         ToolCapability(
             name="terminal_cmd",
-            risk_level="high",
+            risk_level="critical",
             requires_confirmation=True,
+            min_permission="system_full",
         )
     )
 
+    # STANDARD is below the required SYSTEM_FULL → denied.
     with pytest.raises(ToolPolicyViolation):
-        policy.evaluate(
-            tool,
-            {"command": "rm -rf /"},
-            _context(PermissionProfile.SYSTEM_FULL),
-        )
+        policy.evaluate(tool, {"command": "ls"}, _context(PermissionProfile.STANDARD))
+
+    # READ_ONLY also denied.
+    with pytest.raises(ToolPolicyViolation):
+        policy.evaluate(tool, {"command": "ls"}, _context(PermissionProfile.READ_ONLY))
+
+    # SYSTEM_FULL satisfies the requirement (authorization passes; the actual
+    # confirmation gate is enforced separately by the executor).
+    policy.evaluate(tool, {"command": "ls"}, _context(PermissionProfile.SYSTEM_FULL))
+
+
+def test_standard_profile_allows_standard_tool():
+    policy = ToolPolicyEngine()
+    tool = _tool(ToolCapability(name="add_task", min_permission="standard"))
+
+    # STANDARD and above pass; READ_ONLY is denied.
+    policy.evaluate(tool, {}, _context(PermissionProfile.STANDARD))
+    policy.evaluate(tool, {}, _context(PermissionProfile.SYSTEM_FULL))
+    with pytest.raises(ToolPolicyViolation):
+        policy.evaluate(tool, {}, _context(PermissionProfile.READ_ONLY))
