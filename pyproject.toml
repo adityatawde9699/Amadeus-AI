@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "amadeus-ai"
-version = "5.0.0"
+version = "6.0.0"
 description = "A production-ready AI assistant built with Clean Architecture principles"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -78,14 +78,18 @@ dependencies = [
     # Docker sandbox (docker) is optional — see the [sandbox-docker] extra
     # Telegram Bot (v20+ async, webhook-native)
     "python-telegram-bot[webhooks]>=20.7",
-    "sentence-transformers>=5.4.1",
     "rank-bm25>=0.2.2",
     # pycaw is Windows-only (audio COM API) — installed via [windows] extra
     # "pycaw>=20251023",  # moved to optional-dependencies.windows
     # Search (DDG web results)
     "duckduckgo-search>=8.0.0",
-    # ML (SVM category classifier for tool routing)
-    "scikit-learn>=1.4.0",
+    # NOTE: sentence-transformers + scikit-learn are intentionally NOT core deps.
+    # CLAUDE.md §3 forbids torch/sentence-transformers in the runtime daemon
+    # (~500MB RSS spike) and sklearn at runtime (~70MB). The daemon embeds via
+    # onnxruntime (below) and routes via the pre-trained numpy SVM. The heavy ML
+    # stack (which transitively pulls torch/transformers/scipy) lives in the
+    # [ml-fallback] extra, used only for a fresh-checkout fallback and for
+    # (re)training the classifier. See optional-dependencies.ml-fallback.
     "arq>=0.28.0",
     "opentelemetry-sdk>=1.42.1",
     "opentelemetry-exporter-otlp>=1.42.1",
@@ -95,6 +99,7 @@ dependencies = [
     # MCP (mcp) is optional — see the [mcp] extra
     "PyYAML>=6.0.1",
     "langgraph-checkpoint-sqlite>=3.1.0",
+    "onnxruntime>=1.26.0",
 ]
 
 [project.optional-dependencies]
@@ -118,6 +123,18 @@ mcp = [
 # Docker-backed code sandbox. Enable with ENABLE_DOCKER_SANDBOX=true.
 sandbox-docker = [
     "docker>=7.0.0",
+]
+
+# Heavy ML fallback stack (transitively pulls torch/transformers/scipy).
+# NOT installed in the production runtime image (CLAUDE.md §3 — keeps the daemon
+# within the 4GB / <300MB RSS budget; the daemon uses onnxruntime instead).
+# Install only to:
+#   * (re)train the Stage-1 category SVM (scikit-learn), or
+#   * run a fresh checkout before `scripts/export_embedding_onnx.py` has produced
+#     the ONNX embedder (sentence-transformers fallback).
+ml-fallback = [
+    "sentence-transformers>=5.4.1",
+    "scikit-learn>=1.4.0",
 ]
 
 dev = [
@@ -153,7 +170,7 @@ test = [
 
 # Full installation with all features
 all = [
-    "amadeus-ai[dev,email,mcp,sandbox-docker,archival_memory,llm]",
+    "amadeus-ai[dev,email,mcp,sandbox-docker,archival_memory,llm,ml-fallback]",
 ]
 
 # Multi-LLM providers (optional cost saver)
