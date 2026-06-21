@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 @tool(
     name="get_cpu_usage",
     description="Get current CPU usage percentage",
-    category=ToolCategory.SYSTEM,
+    category=ToolCategory.MONITORING,
 )
 def get_cpu_usage() -> str:
     """Get CPU usage percentage."""
@@ -42,7 +42,7 @@ def get_cpu_usage() -> str:
 @tool(
     name="get_memory_usage",
     description="Get RAM usage statistics",
-    category=ToolCategory.SYSTEM,
+    category=ToolCategory.MONITORING,
 )
 def get_memory_usage() -> str:
     """Get memory (RAM) usage."""
@@ -59,7 +59,7 @@ def get_memory_usage() -> str:
 @tool(
     name="get_disk_usage",
     description="Get disk usage for a path",
-    category=ToolCategory.SYSTEM,
+    category=ToolCategory.MONITORING,
     parameters={"path": {"type": "string", "description": "Disk path (default: C:/ or /)"}},
 )
 def get_disk_usage(path: str = "/") -> str:
@@ -86,7 +86,7 @@ def get_disk_usage(path: str = "/") -> str:
 @tool(
     name="get_battery_info",
     description="Get battery status and percentage",
-    category=ToolCategory.SYSTEM,
+    category=ToolCategory.MONITORING,
 )
 def get_battery_info() -> str:
     """Get battery information."""
@@ -118,7 +118,7 @@ def get_battery_info() -> str:
 @tool(
     name="get_network_info",
     description="Get network statistics (bytes sent/received)",
-    category=ToolCategory.SYSTEM,
+    category=ToolCategory.MONITORING,
 )
 def get_network_info() -> str:
     """Get network usage statistics."""
@@ -140,7 +140,7 @@ def get_network_info() -> str:
 @tool(
     name="get_system_uptime",
     description="Get system uptime (how long system has been running)",
-    category=ToolCategory.SYSTEM,
+    category=ToolCategory.MONITORING,
 )
 def get_system_uptime() -> str:
     """Get system uptime."""
@@ -167,7 +167,7 @@ def get_system_uptime() -> str:
 @tool(
     name="get_running_processes",
     description="List top processes by memory usage",
-    category=ToolCategory.SYSTEM,
+    category=ToolCategory.MONITORING,
     parameters={"count": {"type": "integer", "description": "Number of processes to show"}},
 )
 def get_running_processes(count: int = 10) -> str:
@@ -212,7 +212,7 @@ def get_running_processes(count: int = 10) -> str:
 @tool(
     name="get_gpu_stats",
     description="Get GPU statistics (usage, memory, temperature)",
-    category=ToolCategory.SYSTEM,
+    category=ToolCategory.MONITORING,
 )
 def get_gpu_stats() -> str:
     """Get GPU statistics."""
@@ -243,7 +243,7 @@ def get_gpu_stats() -> str:
 @tool(
     name="get_temperature_sensors",
     description="Get hardware temperature sensors (CPU/GPU)",
-    category=ToolCategory.SYSTEM,
+    category=ToolCategory.MONITORING,
 )
 def get_temperature_sensors() -> str:
     """Get temperature sensor readings."""
@@ -275,7 +275,7 @@ def get_temperature_sensors() -> str:
 @tool(
     name="system_status",
     description="General system summary (CPU + RAM + Disk + Battery). Trigger: 'system status', 'performance'",
-    category=ToolCategory.SYSTEM,
+    category=ToolCategory.MONITORING,
 )
 def generate_system_summary() -> str:
     """Generate a comprehensive system status summary."""
@@ -329,7 +329,7 @@ def generate_system_summary() -> str:
 @tool(
     name="check_system_alerts",
     description="Check for performance alerts (CPU/RAM/disk warnings)",
-    category=ToolCategory.SYSTEM,
+    category=ToolCategory.MONITORING,
 )
 def check_system_alerts() -> str:
     """Check for system alerts and warnings."""
@@ -377,7 +377,7 @@ def check_system_alerts() -> str:
 @tool(
     name="get_full_system_report",
     description="Comprehensive detailed system report (all metrics). Trigger: 'full system report'",
-    category=ToolCategory.SYSTEM,
+    category=ToolCategory.MONITORING,
 )
 def get_full_system_report() -> str:
     """Generate a full detailed system report."""

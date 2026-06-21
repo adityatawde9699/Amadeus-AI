@@ -398,7 +398,7 @@ def move_file(
         "Requires confirmation before executing. "
         "Trigger: 'delete file X', 'remove this file', 'trash report.pdf'"
     ),
-    category=ToolCategory.SYSTEM,
+    category=ToolCategory.FILE_SYSTEM,
     parameters={"file_path": {"type": "string", "description": "Path to file to delete"}},
     requires_confirmation=True,
 )
