@@ -16,279 +16,6 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# VOLUME CONTROL
-# =============================================================================
-
-
-@tool(
-    name="set_volume",
-    description=(
-        "Sets the system audio volume to a percentage (0-100). "
-        "Special values: -1 to mute, -2 to unmute. "
-        "Works on Windows (via pycaw), Linux (amixer), and macOS. "
-        "Trigger: 'set volume to 50', 'volume 70%', 'mute', 'unmute', 'make it louder'"
-    ),
-    category=ToolCategory.OS_CONTROL,
-    parameters={
-        "level": {
-            "type": "integer",
-            "description": "Volume level 0-100. Use -1 to mute, -2 to unmute.",
-        }
-    },
-)
-def set_volume(level: int = 50, **kwargs: Any) -> str:
-    """Set system volume using OS-native commands."""
-    # Support keyword aliases: 'volume', 'percent', 'value'
-    level = kwargs.get("volume", kwargs.get("percent", kwargs.get("value", level)))
-    try:
-        level = int(level)
-    except (ValueError, TypeError):
-        return "Error: volume level must be an integer between 0 and 100."
-
-    if platform.system() == "Windows":
-        try:
-            # Use pycaw if available (best approach on Windows)
-            from ctypes import POINTER, cast
-
-            from comtypes import CLSCTX_ALL  # type: ignore[import-not-found]
-            from pycaw.pycaw import (  # type: ignore[import-not-found]
-                AudioUtilities,
-                IAudioEndpointVolume,
-            )
-
-            devices = AudioUtilities.GetSpeakers()
-            interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-            volume_ctrl = cast(interface, POINTER(IAudioEndpointVolume))
-
-            if level == -1:  # mute
-                volume_ctrl.SetMute(1, None)
-                return "System muted."
-            if level == -2:  # unmute
-                volume_ctrl.SetMute(0, None)
-                return "System unmuted."
-
-            clamped = max(0, min(100, level))
-            scalar = clamped / 100.0
-            volume_ctrl.SetMasterVolumeLevelScalar(scalar, None)
-            return f"Volume set to {clamped}%."
-        except ImportError:
-            pass  # fall through to PowerShell
-        except Exception as e:
-            logger.warning("pycaw volume control failed: %s", e)
-
-        # Final fallback: PowerShell with Audio API
-        try:
-            clamped = max(0, min(100, level))
-            ps_script = """
-$code = @"
-using System.Runtime.InteropServices;
-[Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-public interface IAudioEndpointVolume {
-    int f(); int g(); int h(); int i();
-    int SetMasterVolumeLevelScalar(float fLevel, System.Guid pEventContext);
-    int j();
-    int GetMasterVolumeLevelScalar(out float pfLevel);
-    int k(); int l(); int m(); int n();
-    int SetMute([MarshalAs(UnmanagedType.Bool)] bool bMute, System.Guid pEventContext);
-    int GetMute(out bool pbMute);
-}
-[Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-public interface IMMDevice {
-    int Activate(ref System.Guid id, int clsCtx, int activationParams, out IAudioEndpointVolume aev);
-}
-[Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-public interface IMMDeviceEnumerator {
-    int f();
-    int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice endpoint);
-}
-[ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] public class MMDeviceEnumeratorComObject { }
-public class Audio {
-    static IAudioEndpointVolume Vol() {
-        var enumerator = new MMDeviceEnumeratorComObject() as IMMDeviceEnumerator;
-        IMMDevice dev = null;
-        enumerator.GetDefaultAudioEndpoint(0, 1, out dev);
-        IAudioEndpointVolume epv = null;
-        var epvid = typeof(IAudioEndpointVolume).GUID;
-        dev.Activate(ref epvid, 23, 0, out epv);
-        return epv;
-    }
-    public static float Volume {
-        get { float v = -1; Vol().GetMasterVolumeLevelScalar(out v); return v; }
-        set { Vol().SetMasterVolumeLevelScalar(value, System.Guid.Empty); }
-    }
-    public static bool Mute {
-        get { bool m = false; Vol().GetMute(out m); return m; }
-        set { Vol().SetMute(value, System.Guid.Empty); }
-    }
-}
-"@
-Add-Type -TypeDefinition $code
-"""
-            if level == -1:
-                ps_script += "\n[Audio]::Mute = $true"
-            elif level == -2:
-                ps_script += "\n[Audio]::Mute = $false"
-            else:
-                ps_script += f"\n[Audio]::Volume = {clamped / 100.0}"
-
-            result = subprocess.run(check=False, 
-                ["powershell", "-Command", ps_script],
-                timeout=10,
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode == 0:
-                return f"Volume adjusted to {clamped}%." if level >= 0 else "Mute state toggled."
-            return f"Failed to set volume via PowerShell. Output: {result.stderr.strip() or result.stdout.strip()}"
-        except Exception as e:
-            return f"Failed to set volume: {e}"
-
-    elif platform.system() == "Linux":
-        try:
-            clamped = max(0, min(100, level))
-            subprocess.run(check=False, ["amixer", "sset", "Master", f"{clamped}%"], capture_output=True, timeout=5)
-            return f"Volume set to {clamped}%."
-        except Exception as e:
-            return f"Failed to set volume on Linux: {e}"
-
-    elif platform.system() == "Darwin":
-        try:
-            clamped = max(0, min(100, level))
-            subprocess.run(check=False, ["osascript", "-e", f"set volume output volume {clamped}"], timeout=5)
-            return f"Volume set to {clamped}%."
-        except Exception as e:
-            return f"Failed to set volume on macOS: {e}"
-
-    return f"Volume control not supported on {platform.system()}."
-
-
-@tool(
-    name="get_volume",
-    description=(
-        "Returns the current system volume level as a percentage (0-100) and muted state. "
-        "Trigger: 'what is the volume', 'current volume', 'how loud is it', 'am I muted'"
-    ),
-    category=ToolCategory.OS_CONTROL,
-)
-def get_volume(**kwargs: Any) -> str:
-    """Get current system volume."""
-    if platform.system() == "Windows":
-        try:
-            from ctypes import POINTER, cast
-
-            from comtypes import CLSCTX_ALL  # type: ignore[import-not-found]
-            from pycaw.pycaw import (  # type: ignore[import-not-found]
-                AudioUtilities,
-                IAudioEndpointVolume,
-            )
-
-            devices = AudioUtilities.GetSpeakers()
-            interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-            volume_ctrl = cast(interface, POINTER(IAudioEndpointVolume))
-            current = round(volume_ctrl.GetMasterVolumeLevelScalar() * 100)
-            muted = volume_ctrl.GetMute()
-            status = " (muted)" if muted else ""
-            return f"Current volume: {current}%{status}"
-        except ImportError:
-            return "Volume info requires pycaw: pip install pycaw"
-        except Exception as e:
-            return f"Could not get volume: {e}"
-    return "Volume query not supported on this platform."
-
-
-# =============================================================================
-# BRIGHTNESS CONTROL
-# =============================================================================
-
-
-@tool(
-    name="set_brightness",
-    description=(
-        "Sets screen brightness to a percentage (0-100). "
-        "Works on Windows (WMI), Linux (xrandr), and macOS. May require admin rights on some systems. "
-        "Trigger: 'set brightness to 70', 'brightness 50%', 'dim screen', 'make screen brighter'"
-    ),
-    category=ToolCategory.OS_CONTROL,
-    parameters={
-        "level": {
-            "type": "integer",
-            "description": "Brightness level 0-100.",
-        }
-    },
-)
-def set_brightness(level: int = 70, **kwargs: Any) -> str:
-    """Set screen brightness."""
-    level = kwargs.get("brightness", kwargs.get("percent", kwargs.get("value", level)))
-    try:
-        level = int(level)
-        clamped = max(0, min(100, level))
-    except (ValueError, TypeError):
-        return "Error: brightness level must be an integer between 0 and 100."
-
-    if platform.system() == "Windows":
-        try:
-            import wmi  # type: ignore[import-not-found]
-            c = wmi.WMI(namespace="wmi")
-            methods = c.WmiMonitorBrightnessMethods()[0]
-            methods.WmiSetBrightness(clamped, 0)
-            return f"Brightness set to {clamped}%."
-        except ImportError:
-            pass
-        except Exception as e:
-            logger.warning("WMI brightness control failed: %s", e)
-
-        # PowerShell fallback
-        try:
-            ps_cmd = (
-                f"(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightnessMethods)"
-                f".WmiSetBrightness(1,{clamped})"
-            )
-            result = subprocess.run(check=False, 
-                ["powershell", "-Command", ps_cmd],
-                capture_output=True,
-                timeout=10,
-            )
-            if result.returncode == 0:
-                return f"Brightness set to {clamped}%."
-            return f"Brightness adjustment attempted (may require admin rights). Level: {clamped}%."
-        except Exception as e:
-            return f"Failed to set brightness: {e}"
-
-    elif platform.system() == "Linux":
-        try:
-            # Try xrandr
-            result = subprocess.run(check=False, 
-                ["xrandr", "--listmonitors"], capture_output=True, text=True, timeout=5
-            )
-            monitors = [
-                line.split()[-1]
-                for line in result.stdout.splitlines()
-                if "+" in line
-            ]
-            for monitor in monitors:
-                subprocess.run(check=False, 
-                    ["xrandr", "--output", monitor, "--brightness", str(clamped / 100)],
-                    timeout=5,
-                )
-            return f"Brightness set to {clamped}%."
-        except Exception as e:
-            return f"Failed to set brightness on Linux: {e}"
-
-    elif platform.system() == "Darwin":
-        try:
-            # brightness 0.0-1.0
-            subprocess.run(check=False, 
-                ["brightness", str(clamped / 100)],
-                timeout=5,
-            )
-            return f"Brightness set to {clamped}%."
-        except Exception as e:
-            return f"Failed to set brightness on macOS: {e}"
-
-    return f"Brightness control not supported on {platform.system()}."
-
-
-# =============================================================================
 # SCREENSHOT TOOL
 # =============================================================================
 
@@ -394,14 +121,37 @@ def take_screenshot(filename: str | None = None, **kwargs: Any) -> str:
                 f"$bmp.Save('{save_path}'); "
                 f"$g.Dispose(); $bmp.Dispose() }}"
             )
-            result = subprocess.run(check=False, 
-                ["powershell", "-Command", ps_cmd], capture_output=True, timeout=15
+            result = subprocess.run(
+                ["powershell", "-Command", ps_cmd],
+                check=False, capture_output=True, timeout=15,
             )
             if result.returncode == 0 and save_path.exists():
                 return f"Screenshot saved to: {save_path}"
             return f"Screenshot failed (PowerShell exit code {result.returncode}). Install Pillow: pip install Pillow"
         except Exception as e:
             return f"Screenshot unavailable: {e}. Install Pillow: pip install Pillow"
+
+    if platform.system() == "Linux":
+        # Try the common CLI screenshot tools in order (XFCE first on Mint)
+        candidates = [
+            ["xfce4-screenshooter", "-f", "-s", str(save_path)],
+            ["gnome-screenshot", "-f", str(save_path)],
+            ["scrot", str(save_path)],
+            ["import", "-window", "root", str(save_path)],  # ImageMagick
+        ]
+        for cmd in candidates:
+            try:
+                result = subprocess.run(cmd, check=False, capture_output=True, timeout=15)
+                if result.returncode == 0 and save_path.exists():
+                    return f"Screenshot saved to: {save_path}"
+            except FileNotFoundError:
+                continue
+            except Exception as e:
+                logger.warning("Screenshot via %s failed: %s", cmd[0], e)
+        return (
+            "Screenshot failed. Install Pillow (pip install Pillow) or a CLI tool "
+            "(xfce4-screenshooter, gnome-screenshot, scrot)."
+        )
 
     return "Screenshot requires Pillow: pip install Pillow"
 
@@ -479,9 +229,9 @@ def list_open_apps(**kwargs: Any) -> str:
 
     elif platform.system() == "Darwin":
         try:
-            result = subprocess.run(check=False, 
+            result = subprocess.run(
                 ["osascript", "-e", 'tell application "System Events" to get name of every process whose background only is false'],
-                capture_output=True, text=True, timeout=5,
+                check=False, capture_output=True, text=True, timeout=5,
             )
             apps = result.stdout.strip().split(", ")
             return "Open apps: " + ", ".join(apps)
@@ -490,11 +240,31 @@ def list_open_apps(**kwargs: Any) -> str:
 
     elif platform.system() == "Linux":
         try:
-            result = subprocess.run(check=False, 
-                ["wmctrl", "-l"], capture_output=True, text=True, timeout=5
+            result = subprocess.run(
+                ["wmctrl", "-l"], check=False, capture_output=True, text=True, timeout=5
             )
             titles = [line.split(None, 3)[-1] for line in result.stdout.splitlines() if line]
-            return "Open windows: " + "; ".join(titles[:15])
+            if titles:
+                return "Open windows: " + "; ".join(titles[:15])
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            return f"Could not list apps on Linux: {e}"
+
+        # Fallback: psutil process scan (works without wmctrl/X11)
+        try:
+            import psutil
+
+            seen = set()
+            for proc in psutil.process_iter(["name", "username"]):
+                try:
+                    name = proc.info["name"]
+                    if name and name not in seen:
+                        seen.add(name)
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+            apps = sorted(seen)[:20]
+            return "Running processes: " + ", ".join(apps)
         except Exception as e:
             return f"Could not list apps on Linux: {e}. Try: sudo apt install wmctrl"
 
@@ -595,9 +365,6 @@ def launch_app(app_name: str, **kwargs: Any) -> str:
 def get_system_control_tools() -> list[Tool]:
     """Get all system control tools."""
     return [
-        set_volume._tool_metadata,  # type: ignore[attr-defined]
-        get_volume._tool_metadata,  # type: ignore[attr-defined]
-        set_brightness._tool_metadata,  # type: ignore[attr-defined]
         take_screenshot._tool_metadata,  # type: ignore[attr-defined]
         list_open_apps._tool_metadata,  # type: ignore[attr-defined]
         terminate_process._tool_metadata,  # type: ignore[attr-defined]

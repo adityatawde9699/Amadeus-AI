@@ -113,6 +113,128 @@ class SearchRouter:
         # Fallback: return whatever DDG returned, even if short
         return ddg_result or "Search results unavailable at this time."
 
+    async def search_results(
+        self, query: str, max_results: int = 5
+    ) -> list[dict[str, str]]:
+        """Structured multi-provider search for the Research Engine.
+
+        Unlike :meth:`search` (which returns a pre-formatted prose blob for the
+        conversational LLM), this returns a list of source dicts with keys
+        ``title``, ``snippet``, ``url`` and ``provider`` so downstream stages
+        can score reliability, deduplicate, and emit citations.
+        """
+        self._reset_if_new_day()
+        results: list[dict[str, str]] = []
+        seen: set[str] = set()
+
+        def _extend(items: list[dict[str, str]]) -> None:
+            for item in items:
+                url = (item.get("url") or "").strip()
+                key = url or item.get("title", "")
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                results.append(item)
+
+        if self._is_factual(query):
+            wiki = await self._wikipedia_result(query)
+            if wiki:
+                _extend([wiki])
+
+        _extend(await self._ddg_results(query, max_results))
+
+        if self._tavily_key and len(results) < max_results:
+            _extend(await self._tavily_results(query))
+
+        return results[:max_results]
+
+    async def _wikipedia_result(self, query: str) -> dict[str, str] | None:
+        """Structured Wikipedia summary lookup for :meth:`search_results`."""
+        try:
+            url = "https://en.wikipedia.org/api/rest_v1/page/summary/"
+            session = await self._get_session()
+            subject = (
+                query.replace("who is ", "").replace("what is ", "").replace("define ", "").strip()
+            )
+            async with session.get(
+                url + subject.replace(" ", "_"), timeout=aiohttp.ClientTimeout(total=5)
+            ) as r:
+                if r.status == 200:
+                    data = await r.json()
+                    extract = data.get("extract", "")
+                    if extract:
+                        page = data.get("content_urls", {}).get("desktop", {}).get("page", "")
+                        return {
+                            "title": data.get("title", subject),
+                            "snippet": extract[:800],
+                            "url": page or f"https://en.wikipedia.org/wiki/{subject.replace(' ', '_')}",
+                            "provider": "wikipedia",
+                        }
+        except Exception as e:
+            logger.debug("Wikipedia structured search failed: %s", type(e).__name__)
+        return None
+
+    async def _ddg_results(self, query: str, max_results: int) -> list[dict[str, str]]:
+        """Structured DuckDuckGo results for :meth:`search_results`."""
+        try:
+            try:
+                from ddgs import DDGS
+            except ImportError:
+                from duckduckgo_search import DDGS  # legacy name
+
+            def _do_search() -> list[dict]:
+                with DDGS() as ddgs:
+                    return list(ddgs.text(query, max_results=max_results))
+
+            raw = await asyncio.to_thread(_do_search)
+            out: list[dict[str, str]] = []
+            for r in raw:
+                title = r.get("title", "")
+                body = r.get("body", "")
+                href = r.get("href", "")
+                if title and href:
+                    out.append(
+                        {"title": title, "snippet": body, "url": href, "provider": "duckduckgo"}
+                    )
+            return out
+        except ImportError:
+            logger.warning("ddgs/duckduckgo-search not installed — structured DDG disabled")
+            return []
+        except Exception as e:
+            logger.debug("DuckDuckGo structured search failed: %s", type(e).__name__)
+            return []
+
+    async def _tavily_results(self, query: str) -> list[dict[str, str]]:
+        """Structured Tavily results for :meth:`search_results`."""
+        try:
+            url = "https://api.tavily.com/search"
+            session = await self._get_session()
+            payload = {
+                "api_key": self._tavily_key,
+                "query": query,
+                "search_depth": "advanced",
+                "max_results": 5,
+            }
+            async with session.post(
+                url, json=payload, timeout=aiohttp.ClientTimeout(total=15)
+            ) as r:
+                if r.status == 200:
+                    data = await r.json()
+                    out: list[dict[str, str]] = []
+                    for result in data.get("results", []):
+                        out.append(
+                            {
+                                "title": result.get("title", ""),
+                                "snippet": (result.get("content", "") or "")[:500],
+                                "url": result.get("url", ""),
+                                "provider": "tavily",
+                            }
+                        )
+                    return out
+        except Exception as e:
+            logger.debug("Tavily structured search failed: %s", type(e).__name__)
+        return []
+
     async def _wikipedia_search(self, query: str) -> str:
         """Query Wikipedia REST API for a summary."""
         try:
