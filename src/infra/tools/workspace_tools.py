@@ -43,11 +43,10 @@ def _get_indexer():
             index_dir = settings.BASE_DIR / "data" / "workspace_index"
 
             _indexer = WorkspaceIndexer(
-                root=r"C:\Users\ASUS\Downloads",
+                root=str(settings.WORKSPACE_INDEX_ROOT),
                 index_dir=index_dir,
                 max_chunks=15_000,  # ~46 MB matrix + ~20 MB BM25 — safe on 4 GB RAM
             )
-
 
             # Try to load an existing index from disk.
             # If none exists, the tool will still work but return a helpful message.
@@ -77,7 +76,7 @@ def _get_indexer():
         "'search my files for', 'look in my projects for'. "
         "Returns verbatim snippets with file paths and line numbers."
     ),
-    category=ToolCategory.INFORMATION,
+    category=ToolCategory.DEVELOPER,
     parameters={
         "query": {
             "type": "string",

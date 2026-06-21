@@ -97,14 +97,18 @@ def build_web_research_tools(search_router: Any = None) -> list[Tool]:
         if not url.startswith(("http://", "https://")):
             return "❌ Invalid URL — must start with http:// or https://"
 
+        # SSRF egress guard (Phase 3.1): refuse non-public targets, validate
+        # every redirect hop (DNS off the event loop), and cap downloaded size.
+        from src.core.config import get_settings
+        from src.infra.tools.net_guard import UrlNotAllowedError, fetch_text
+
+        settings = get_settings()
+        allow_private = bool(
+            getattr(settings, "ALLOW_PRIVATE_NETWORK_FETCH", False)
+        ) and not settings.is_production
+
         try:
-            async with httpx.AsyncClient(
-                timeout=15,
-                follow_redirects=True,
-                headers={"User-Agent": "AmadeusAI/2.0 WebResearchBot"},
-            ) as client:
-                resp = await client.get(url)
-                resp.raise_for_status()
+            resp = await fetch_text(url, allow_private=allow_private)
 
             content_type = resp.headers.get("content-type", "")
             if "text/html" not in content_type and "text/plain" not in content_type:
@@ -116,6 +120,8 @@ def build_web_research_tools(search_router: Any = None) -> list[Tool]:
 
             return f"🌐 **Content from** `{url}`:\n\n{text}"
 
+        except UrlNotAllowedError as exc:
+            return f"🚫 Refused to fetch URL: {exc}"
         except httpx.HTTPStatusError as exc:
             return f"❌ HTTP error {exc.response.status_code} fetching {url}"
         except httpx.TimeoutException:

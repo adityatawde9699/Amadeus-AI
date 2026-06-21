@@ -183,7 +183,7 @@ async def get_weather_async(location: str = "India") -> str:
         "Returns up to N headlines with source names. Defaults to 5 general headlines from India. "
         "Trigger: 'latest news', 'tech news today', 'sports headlines', 'news in India'"
     ),
-    category=ToolCategory.WEB_RESEARCH,
+    category=ToolCategory.NEWS,
     parameters={
         "category": {
             "type": "string",
@@ -566,6 +566,74 @@ def convert_length(value: float, from_unit: str, to_unit: str) -> str:
 
     return f"{value} {from_unit} = {result:.4f} {to_unit}"
 
+# Cached FX rates: base currency → (fetched_at_timestamp, {code: rate})
+_fx_cache: dict[str, tuple[float, dict[str, float]]] = {}
+_FX_CACHE_TTL = 3600  # rates update daily upstream; 1h cache is plenty
+
+
+@tool(
+    name="convert_currency",
+    description=(
+        "Converts an amount between currencies using live exchange rates (no API key). "
+        "Use ISO codes: USD, EUR, INR, GBP, JPY, AUD, etc. "
+        "Trigger: 'convert 100 USD to INR', 'how much is 50 euros in dollars', 'USD to INR rate'"
+    ),
+    category=ToolCategory.CALCULATION,
+    parameters={
+        "amount": {"type": "number", "description": "Amount to convert (default: 1)"},
+        "from_currency": {"type": "string", "description": "Source ISO currency code, e.g. 'USD'"},
+        "to_currency": {"type": "string", "description": "Target ISO currency code, e.g. 'INR'"},
+    },
+)
+async def convert_currency(
+    amount: float = 1, from_currency: str = "USD", to_currency: str = "INR", **kwargs: Any
+) -> str:
+    """Convert between currencies using the open.er-api.com daily rates."""
+    import time
+
+    try:
+        amount = float(amount)
+    except (TypeError, ValueError):
+        return "Error: amount must be a number."
+
+    src = (from_currency or "USD").strip().upper()
+    dst = (to_currency or "INR").strip().upper()
+    if src == dst:
+        return f"{amount:,.2f} {src} = {amount:,.2f} {dst}"
+
+    cached = _fx_cache.get(src)
+    rates: dict[str, float] | None = None
+    if cached and (time.time() - cached[0]) < _FX_CACHE_TTL:
+        rates = cached[1]
+
+    if rates is None:
+        try:
+            session = await _get_http_session()
+            async with session.get(
+                f"https://open.er-api.com/v6/latest/{src}",
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as response:
+                if response.status != 200:
+                    return f"Currency service error (status {response.status})."
+                data = await response.json()
+        except TimeoutError:
+            return "Currency request timed out. Please try again."
+        except aiohttp.ClientError as e:
+            return f"Network error fetching exchange rates: {e}"
+
+        if data.get("result") != "success":
+            return f"Unknown source currency '{src}'. Use ISO codes like USD, EUR, INR."
+        rates = data.get("rates", {})
+        _fx_cache[src] = (time.time(), rates)
+
+    rate = rates.get(dst)
+    if rate is None:
+        return f"Unknown target currency '{dst}'. Use ISO codes like USD, EUR, INR."
+
+    converted = amount * rate
+    return f"{amount:,.2f} {src} = {converted:,.2f} {dst} (rate: 1 {src} = {rate:,.4f} {dst})"
+
+
 # =============================================================================
 # ENTERTAINMENT TOOLS
 # =============================================================================
@@ -709,6 +777,7 @@ def get_info_tools() -> list[Tool]:
         calculate._tool_metadata,  # type: ignore[attr-defined]
         convert_temperature._tool_metadata,  # type: ignore[attr-defined]
         convert_length._tool_metadata,  # type: ignore[attr-defined]
+        convert_currency._tool_metadata,  # type: ignore[attr-defined]
         tell_joke._tool_metadata,  # type: ignore[attr-defined]
         set_timer_async._tool_metadata,  # type: ignore[attr-defined]
         web_search_async._tool_metadata,  # type: ignore[attr-defined]
