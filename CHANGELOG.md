@@ -7,6 +7,113 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [6.0.0] — 2026-06-21
+
+Security & build hardening release. Implements the four-phase remediation of the
+internal security assessment plus a build/supply-chain pass. The guiding
+principle is **fail closed**: when a security-relevant precondition is missing or
+ambiguous, deny rather than allow. See `plan.md` for the full phased plan.
+
+> ⚠️ **Breaking changes** — existing deployments must review the items below.
+> Several previously fail-*open* behaviors now fail *closed* and will reject
+> traffic/operations that used to be silently allowed.
+
+### ⚠️ Breaking
+- **Telegram now fails closed.** A bot with no valid `MASTER_TELEGRAM_CHAT_ID`
+  allowlist rejects *every* sender (previously it processed all messages with
+  full privileges). `start_polling()` refuses to start, and production startup
+  errors, without a valid allowlist.
+- **Code execution is disabled by default.** `SANDBOX_MODE` is now
+  `Literal["disabled", "docker"]`, default `disabled`. `execute_python_script`
+  returns "unavailable" unless Docker is configured and reachable.
+- **In-process `LocalSandboxExecutor` removed entirely** (file deleted). It was
+  trivially escapable and falsely advertised as isolated; there is no local
+  execution fallback.
+- **Public registration no longer accepts `role` / `tenant_id`** on `UserCreate`
+  *or* `UserUpdate` (closed a `PATCH /users/me` privilege-escalation path). New
+  users default to `GUEST`; role/tenant changes are admin/out-of-band.
+- **`ToolExecutor.execute()` defaults to `READ_ONLY`** (was `SYSTEM_FULL`). It now
+  takes a `RequestContext`; callers must pass permissions explicitly.
+- **`POST /chat/clear` now requires authentication** and is scoped to the
+  caller's own session (also fixed a latent crash — it called the service without
+  the required `session_id`).
+- **Docker Compose no longer publishes datastore ports.** Postgres/Redis/Qdrant
+  and Jaeger OTLP are reachable only on the internal network; the API and Jaeger
+  UI bind to loopback (`127.0.0.1`). Run host-side admin tools via
+  `docker compose exec`.
+- **`sentence-transformers` and `scikit-learn` are no longer core dependencies.**
+  They moved to the new `[ml-fallback]` extra. The runtime daemon embeds via
+  `onnxruntime` and routes via the pre-trained numpy SVM. Install
+  `amadeus-ai[ml-fallback]` to (re)train the classifier or use the ST fallback.
+
+### Security
+- **Graduated permission profiles** — added `STANDARD` between `READ_ONLY` and
+  `SYSTEM_FULL`, with strict rank ordering and a role→profile mapping
+  (`guest→READ_ONLY`, `user→STANDARD`, `admin→SYSTEM_FULL`). The API chat route
+  maps the authenticated role; anonymous callers get `READ_ONLY`. Telegram
+  allowlisted users get `STANDARD`; `SYSTEM_FULL` requires the new
+  `TELEGRAM_ELEVATED_CHAT_IDS` allowlist.
+- **`min_permission` authorization boundary** — `ToolCapability` gained
+  `min_permission` + `explicit`; the policy engine denies tools whose required
+  profile outranks the caller. The bypassable command-substring denylist was
+  **removed** as an authorization mechanism. `STRICT_TOOL_METADATA` (default off)
+  can deny auto-derived metadata after a full audit.
+- **Hardened Docker sandbox** — read-only root FS, all capabilities dropped,
+  `no-new-privileges`, PID/memory/swap/CPU caps, networking disabled, non-root
+  user, small writable `tmpfs`, pinned image, and an enforced kill timeout.
+- **SSRF egress guard** (`net_guard.py`) for `fetch_webpage_content` — rejects
+  non-public addresses (loopback, RFC1918, link-local incl. cloud metadata
+  `169.254.169.254`, multicast, reserved, IPv4-mapped IPv6), validates every
+  redirect hop, caps the body at 2 MiB, and resolves DNS off the event loop with
+  a fail-closed timeout. Dev-only escape hatch `ALLOW_PRIVATE_NETWORK_FETCH`
+  (forced off in production).
+- **Plugin management locked down** — `manage_plugins` is admin-only
+  (`min_permission=system_full`) + confirmation-gated, containment-checks the
+  plugin name (no traversal), and no longer imports/executes freshly written code
+  in the same request (loads on restart).
+- **Filesystem path containment** — `_safe_resolve` uses `Path.is_relative_to`
+  instead of a bypassable string-prefix check.
+- **Request-scoped, owner-aware confirmations** — per-session callback registry
+  on `ToolExecutor` removes the global-singleton race; the Telegram callback
+  handler verifies the click originates from the owning chat.
+- **Per-IP pre-auth rate limiting** (`RateLimitMiddleware`) on
+  login/register/forgot/reset/verify, with bounded memory (stale-IP eviction +
+  hard cap). Configurable via `RATE_LIMIT_*` / `TRUST_PROXY_HEADERS`.
+- **Stopped logging password-reset / verification tokens** (DEBUG-only in dev).
+- **Least-privilege background work** — scheduler, watchers, autonomous loop,
+  goal executor, and container background dispatch run at `STANDARD`, not
+  `SYSTEM_FULL`.
+
+### Build & Supply Chain
+- **Reproducible image** — the Dockerfile installs with `uv sync --frozen` (exact
+  `uv.lock` versions CI/`pip-audit` vet) instead of `pip install .`, which
+  re-resolved `>=` ranges at build time.
+- **Leaner runtime image** — the torch/transformers/scipy/sklearn stack is no
+  longer installed in the runtime image (moved to `[ml-fallback]`), keeping the
+  daemon within the 4 GB / <300 MB RSS budget (CLAUDE.md §3).
+- `.dockerignore` now blocks `.env` / `.env.*` (keeps `!.env.example`); the dead
+  `model_cache` build stage was collapsed.
+
+### Fixed
+- `RateLimitMiddleware` unbounded per-IP table (memory leak) — now evicted.
+- SSRF guard performed blocking DNS on the event loop — now off-loop with timeout.
+- `clear_conversation` invoked without its required `session_id`.
+
+### Tests
+- New `tests/unit/test_security_phase1_2.py`, `test_security_phase3_4.py`, and
+  `test_build_hardening.py` (allowlist parsing, registration lockdown, fail-closed
+  sandbox, profile/min-permission enforcement, owner-scoped confirmations, SSRF,
+  plugin/path containment, token-log suppression, rate-limit eviction/reset,
+  reproducible-build asserts, no-torch-at-runtime guard).
+
+### Known Issues
+- `uv.lock` carries a yanked transitive `grpcio==1.78.1` (via the OTLP exporter);
+  `pip-audit`/CI may flag it. A pin/upgrade is a follow-up change.
+- The SSRF guard retains a small validate-then-connect TOCTOU/DNS-rebind window;
+  full closure requires pinning the validated IP into the connection.
+
+---
+
 ## [5.0.0] — 2026-06-10
 
 ### Architecture & Capabilities
@@ -172,6 +279,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Initial prototype — single-file assistant with basic Gemini integration.
 
+[6.0.0]: https://github.com/adityatawde9699/Amadeus-AI/compare/v5.0.0...v6.0.0
+[5.0.0]: https://github.com/adityatawde9699/Amadeus-AI/compare/v4.0.0...v5.0.0
 [3.2.2]: https://github.com/adityatawde9699/Amadeus-AI/compare/v3.2.1...v3.2.2
 [3.2.1]: https://github.com/adityatawde9699/Amadeus-AI/compare/v3.2.0...v3.2.1
 [3.2.0]: https://github.com/adityatawde9699/Amadeus-AI/compare/v3.1.0...v3.2.0

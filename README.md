@@ -11,7 +11,7 @@
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
 > **Tech Stack:**
-> `Python 3.11+` · `FastAPI` · `SQLAlchemy 2.0` · `Groq (Llama 3.3)` · `Gemini` · `Redis` · `Turbovec` · `PostgreSQL` · `JWT Auth` · `Telegram` · `Docker` · `sentence-transformers` · `llama-cpp-python`
+> `Python 3.11+` · `FastAPI` · `SQLAlchemy 2.0` · `Groq (Llama 3.3)` · `Gemini` · `Redis` · `Turbovec` · `PostgreSQL` · `JWT Auth` · `Telegram` · `Docker` · `ONNX Runtime` · `llama-cpp-python`
 
 </div>
 
@@ -26,7 +26,7 @@ Building a secure autonomous AI operating layer that is both capable and safe in
 | **Brittle Agent Loops** | Standard ReAct loops are fragile and lose state. There is no explicit execution graph to audit or resume. |
 | **Monolithic Capabilities** | Adding new tools requires modifying core code. There is no standard for hot-loading third-party plugins. |
 | **No Execution Policy** | Tool-calling agents often lack a deterministic security layer to block high-risk actions based on user permissions. |
-| **Docker Dependency** | Most sandboxes require Docker. There is often no lightweight local alternative for restricted environments. |
+| **Unsafe Code Execution** | "Local" sandboxes (restricted `exec`/multiprocessing) are trivially escapable, yet are often shipped as if isolated. |
 | **No offline / privacy mode** | Cloud-only inference means every message leaves the machine. Local GGUF options are often secondary. |
 | **Memory amnesia** | Assistants lose context between sessions. Semantic search over past conversations is often unimplemented. |
 
@@ -42,10 +42,10 @@ It is a **clean-architecture system** with the following defining properties:
 Replaces implicit chat loops with a deterministic **LangGraph async state machine**. Every task is decomposed into an explicit execution graph (`Plan` → `PlanStep` → `Observation` → `Reflection`), allowing Amadeus to pause, audit, resume, and recover from failures.
 
 ### Dynamic Plugin System
-Amadeus features a **hot-pluggable tool architecture**. New capabilities can be added by simply dropping `.py` files into the `plugins/` directory. The agent can even **manage its own plugins** at runtime, writing and registering new tools autonomously.
+Amadeus features a **hot-pluggable tool architecture**. New capabilities can be added by dropping `.py` files into the `plugins/` directory. The `manage_plugins` tool is **administrator-only** and writes plugin files inside a contained directory; newly written plugins are loaded and registered on the next restart (never imported/executed in the same request).
 
 ### Tool Execution Policy Engine
-A centralized **security gatekeeper** evaluates every tool call. It maps tools to `RiskLevels` (LOW to CRITICAL) and enforces `PermissionProfiles` (READ_ONLY vs SYSTEM_FULL), ensuring the agent never crosses safety boundaries without explicit authorization.
+A centralized **security gatekeeper** evaluates every tool call. It maps tools to `RiskLevels` (LOW to CRITICAL) and enforces graduated `PermissionProfiles` (`READ_ONLY < STANDARD < SYSTEM_FULL`) via a per-tool `min_permission` boundary — the agent never crosses safety boundaries without explicit authorization. Authorization **fails closed**: callers default to `READ_ONLY` and anonymous API requests are never elevated.
 
 ### Local-First & Cloud-Fallback
 A **priority-ordered fallback chain** routes inference:
@@ -75,8 +75,8 @@ Amadeus solves each pain point with a concrete, implemented mechanism:
 |---|---|
 | Brittle Agent Loops | **Cognitive Core** async state machine with explicit execution graphs |
 | Monolithic Capabilities | **Dynamic Plugin System** for hot-loading tools from `plugins/` |
-| No Execution Policy | **Tool Policy Engine** enforcing risk levels and permissions |
-| Docker Dependency | **Dual Sandbox**: epemeral Docker containers OR local multiprocessing |
+| No Execution Policy | **Tool Policy Engine** enforcing risk levels and graduated permission profiles (fail closed) |
+| Untrusted Code | **Hardened Docker Sandbox** (read-only rootfs, no network, dropped caps); disabled by default — fails closed when Docker is unavailable |
 | No offline mode | LlamaCpp priority; `LOCAL_ONLY_MODE=true` for 100% privacy |
 | Memory amnesia | Persistent SQL episodic memory + Turbovec semantic long-term memory |
 
@@ -92,8 +92,8 @@ Amadeus solves each pain point with a concrete, implemented mechanism:
 
 ### Tool Execution Engine
 - **70+ Built-in Tools** across categories: OS Control, Network, Filesystem, Productivity, and Research.
-- **Human-in-the-Loop (HITL)**: Destructive or high-risk actions (e.g., `terminate_process`) require explicit user approval.
-- **Multi-Sandbox Support**: Runs untrusted code in Docker containers or an isolated local process.
+- **Human-in-the-Loop (HITL)**: Destructive or high-risk actions (e.g., `terminate_process`) require explicit user approval, scoped to the requesting session.
+- **Hardened Docker Sandbox**: Runs untrusted code in an ephemeral, locked-down container (read-only rootfs, no network, dropped capabilities, resource caps). Disabled by default — fails closed (refuses to execute) when Docker is unavailable.
 
 ### Omni-Workspace RAG (Hybrid Search)
 - **WorkspaceIndexer**: Hybrid BM25 + dense vector retrieval over local project files.
@@ -101,9 +101,13 @@ Amadeus solves each pain point with a concrete, implemented mechanism:
 - **search_workspace Tool**: Enables the agent to search its own codebase or local projects to answer technical questions.
 
 ### Security & Safety
+- **Fail-Closed Authorization**: Graduated permission profiles + per-tool `min_permission`; callers default to `READ_ONLY`, anonymous requests are never elevated.
 - **Prompt Injection Resistance**: `<user_task>` XML boundaries + control token neutralization.
-- **Authorization Guard**: Telegram chat ID allowlists for inbound messages.
-- **Secure Secret Handling**: Auto-generated ephemeral keys and persistent secret tokens with strict file permissions.
+- **Fail-Closed Authorization Guard**: Telegram chat-ID allowlist that rejects all senders (and refuses to start) when unset/invalid; elevated access requires an explicit allowlist.
+- **SSRF Egress Protection**: Web fetches are blocked from reaching internal/loopback/cloud-metadata addresses, with per-hop redirect validation and a size cap.
+- **Pre-Auth Rate Limiting**: Per-IP throttling on login/register/reset endpoints to blunt credential stuffing.
+- **Hardened, Fail-Closed Code Sandbox**: Docker-only, disabled by default; the escapable in-process executor was removed.
+- **Secure Secret Handling**: Auto-generated ephemeral keys and persistent secret tokens with strict file permissions; reset/verification tokens are never logged.
 
 ---
 
@@ -128,7 +132,7 @@ Amadeus solves each pain point with a concrete, implemented mechanism:
 | **SQLite** | 3.35+ | Development only | Zero-config alternative to PostgreSQL (not suitable for multi-worker deployments) |
 | **Redis** | 6+ | Recommended | Rate limiting, LLM daily quota tracking, TTS + tool result caching. Falls back to in-memory if unavailable. |
 | **Turbovec** | 0.7+ | Recommended | Vector memory store for long-term semantic recall. Runs local file-based by default (no server needed) with massive 4-bit compression. |
-| **Docker** | 24+ | Optional | Required only for the Python code-execution sandbox (`execute_python_script` tool) |
+| **Docker** | 24+ | Optional | Required only for the Python code-execution sandbox (`execute_python_script`). Set `SANDBOX_MODE=docker`; it is **disabled by default** (fail closed). |
 
 ### LLM Model Requirements *(if using local inference)*
 
@@ -221,20 +225,23 @@ uv run python -m src.transports.fastapi_transport
 uv run python -m src.transports.cli_transport
 ```
 
-### Option B — Docker (Development)
+### Option B — Docker Compose
 
 ```bash
-# Starts API + PostgreSQL
-docker-compose up --build
+# Requires POSTGRES_PASSWORD and SECRET_KEY in your environment / .env
+docker-compose up --build -d        # API + worker + Postgres + Redis + Qdrant + Jaeger
 ```
 
-### Option C — Docker (Production)
-
-```bash
-docker-compose --profile prod up --build -d
-```
-
-The production profile runs gunicorn with 4 Uvicorn workers (`UvicornWorker`) and resource limits (2 CPU / 1 GB RAM).
+**Security posture of the bundled `docker-compose.yml`:**
+- Datastores (Postgres / Redis / Qdrant) publish **no host ports** — they are
+  reachable only on the internal compose network. Use `docker compose exec` for
+  host-side admin (e.g. `docker compose exec postgres psql ...`); migrations run
+  automatically in-container on startup.
+- The API and the Jaeger UI bind to **loopback** (`127.0.0.1`). For external
+  access, terminate TLS at a reverse proxy in front of the API.
+- Images are pinned to explicit versions; pin by digest (`image@sha256:...`) for
+  full reproducibility. The runtime image is built from the frozen lockfile and
+  excludes the heavy ML stack (ONNX-only) to stay within the memory budget.
 
 ---
 
