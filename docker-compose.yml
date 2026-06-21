@@ -1,3 +1,17 @@
+# =============================================================================
+# Amadeus AI — docker-compose (hardened, Phase 4.4)
+# =============================================================================
+# Security posture:
+#   * Datastores (postgres / redis / qdrant) and tracing publish NO host ports —
+#     they are reachable only on the internal compose network by service name.
+#     This removes the public, often-unauthenticated attack surface (an exposed
+#     Redis/Qdrant on 0.0.0.0 is a well-known RCE/data-exfil vector).
+#   * The API publishes only on loopback (127.0.0.1) — put a TLS reverse proxy
+#     in front for external access rather than binding 0.0.0.0 directly.
+#   * Images are pinned to explicit versions (not :latest). Operators SHOULD
+#     additionally pin by digest (image@sha256:...) after verifying the tag, for
+#     full supply-chain reproducibility.
+# =============================================================================
 version: '3.8'
 
 services:
@@ -13,7 +27,8 @@ services:
       - QDRANT_HOST=qdrant
       - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY via .env or environment}
     ports:
-      - "8000:8000"
+      # Loopback-only: do not expose the API directly on a public interface.
+      - "127.0.0.1:8000:8000"
     depends_on:
       - postgres
       - redis
@@ -37,45 +52,41 @@ services:
       - ./data:/app/data
 
   postgres:
-    image: postgres:15-alpine
+    image: postgres:15.7-alpine  # pin by digest in production after verifying
     container_name: amadeus_postgres
     restart: always
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-amadeus}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB:-amadeus}
-    ports:
-      - "5432:5432"
+    # No host port mapping — reachable only as "postgres" on the compose network.
     volumes:
       - pgdata:/var/lib/postgresql/data
 
   redis:
-    image: redis:7-alpine
+    image: redis:7.2-alpine  # pin by digest in production after verifying
     container_name: amadeus_redis
     restart: always
-    ports:
-      - "6379:6379"
+    # No host port mapping — an exposed Redis is a critical RCE/exfil risk.
     volumes:
       - redisdata:/data
 
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:v1.9.2  # pin by digest in production after verifying
     container_name: amadeus_qdrant
     restart: always
-    ports:
-      - "6333:6333"
-      - "6334:6334"
+    # No host port mapping — reachable only as "qdrant" on the compose network.
     volumes:
       - qdrantdata:/qdrant/storage
 
   jaeger:
-    image: jaegertracing/all-in-one:latest
+    image: jaegertracing/all-in-one:1.57  # pin by digest in production after verifying
     container_name: amadeus_jaeger
     restart: always
     ports:
-      - "16686:16686"
-      - "4317:4317"
-      - "4318:4318"
+      # Only the UI, bound to loopback. OTLP ingest (4317/4318) stays on the
+      # internal network — the app sends spans by service name, no host exposure.
+      - "127.0.0.1:16686:16686"
 
 volumes:
   pgdata:
