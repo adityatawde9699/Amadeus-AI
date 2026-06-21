@@ -1,14 +1,23 @@
 # =============================================================================
-# Amadeus AI - Multi-stage Dockerfile
+# Amadeus AI — Multi-stage Dockerfile (reproducible, ONNX-only runtime)
 # =============================================================================
-# Stage 1: Builder (installs Python packages)
-# Stage 2: Model Cache (downloads Whisper + Edge TTS voices)
-# Stage 3: Production runtime (final slim image)
+# Stage 1: Builder — installs locked dependencies into /opt/venv via uv.
+# Stage 2: Production runtime — slim image with the venv + source.
 #
-# TRADE-OFF:
-#   - Without pre-baked Whisper: ~400MB image, 45-90s cold start (Railway)
-#   - With pre-baked Whisper:    ~900MB image, <5s cold start
-#   Baking into the image is STRONGLY recommended for Railway deployments.
+# REPRODUCIBILITY / SUPPLY CHAIN:
+#   Dependencies are installed with `uv sync --frozen`, which installs EXACTLY
+#   the versions in uv.lock (the same set CI tests and `pip-audit` vets). The
+#   previous `pip install .` re-resolved `>=` ranges at build time, so the image
+#   could ship untested/unaudited versions. Never reintroduce that.
+#
+# MEMORY BUDGET (CLAUDE.md §1/§3):
+#   `uv sync` installs only core dependencies — NOT the [ml-fallback] extra —
+#   so torch / transformers / scikit-learn are NOT in the image. The daemon
+#   embeds via onnxruntime and routes via the pre-trained numpy SVM, keeping it
+#   within the 4GB / <300MB RSS budget. Do NOT add `--extra ml-fallback` here.
+#
+# Operators SHOULD additionally pin the base image by digest
+# (FROM python:3.11-slim@sha256:...) after verifying it for their registry.
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -18,59 +27,49 @@ FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
-# Install build tools
+# uv provides fast, lockfile-faithful installs. Its own version does not affect
+# the resolved app dependency set (that is fixed by --frozen + uv.lock).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir uv
 
-COPY pyproject.toml README.md ./
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PROJECT_ENVIRONMENT=/opt/venv
 
-# Create virtual environment and install ALL extras
-RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir .
-
-# -----------------------------------------------------------------------------
-# STAGE 2: Model Cache
-# Pre-download Whisper 'small' model and Edge TTS voice list into the venv.
-# This layer is cached by Docker — only re-runs if the base image changes.
-# -----------------------------------------------------------------------------
-FROM builder AS model_cache
-
-ENV PATH="/opt/venv/bin:$PATH"
-
-# (model_cache stage: add any pre-bake steps here when packages are added to pyproject.toml)
+# Dependency layer: copy only resolution inputs so this layer is cached unless
+# pyproject.toml / uv.lock change. --no-dev excludes test/lint tooling;
+# --no-install-project installs deps only (the app runs from /app/src, matching
+# the runtime layout and BASE_DIR detection).
+COPY pyproject.toml uv.lock README.md ./
+RUN uv sync --frozen --no-dev --no-install-project
 
 # -----------------------------------------------------------------------------
-# STAGE 3: Production Runtime
+# STAGE 2: Production Runtime
 # -----------------------------------------------------------------------------
 FROM python:3.11-slim AS runtime
 
 WORKDIR /app
 
-# Runtime system dependencies
+# Runtime system dependencies (onnxruntime needs libgomp1).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy pre-built venv (with models baked in) from the model_cache stage
-COPY --from=model_cache /opt/venv /opt/venv
-COPY --from=model_cache /root/.cache /root/.cache
-
+# Copy the locked virtual environment from the builder.
+COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy application source
+# Copy application source.
 COPY src/ ./src/
 COPY pyproject.toml alembic.ini ./
-# Only copy the example env — NEVER copy .env, .env.prod, .env.staging into the image.
+# Only copy the example env — NEVER copy .env / .env.* into the image.
 # Real secrets are injected via Railway/Docker environment variables at runtime.
 COPY .env.example ./
 COPY alembic/ ./alembic/
 
-
-# Create non-root user for security
+# Create non-root user for security.
 RUN useradd --create-home --shell /bin/bash amadeus && \
     chown -R amadeus:amadeus /app && \
     mkdir -p /app/data && \
@@ -78,7 +77,7 @@ RUN useradd --create-home --shell /bin/bash amadeus && \
 
 USER amadeus
 
-# Environment defaults (override via Railway environment variables)
+# Environment defaults (override via Railway / Docker environment variables).
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     ENV=production \
@@ -90,7 +89,7 @@ ENV PYTHONUNBUFFERED=1 \
     WHISPER_COMPUTE_TYPE=int8 \
     DATABASE_URL=postgresql://postgres:postgres@postgres:5432/amadeus
 
-# Health check using the /health endpoint
+# Health check using the /health endpoint.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
 

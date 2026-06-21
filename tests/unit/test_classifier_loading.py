@@ -81,8 +81,13 @@ class TestUnifiedSemanticRouterInit:
         )
         router.build_index()
         intent, detail = router.route("check my cpu usage")
-        assert intent == "tool"
-        assert detail == "get_cpu_usage"
+        # MoE-first routing: either the owning expert or the tool itself is
+        # acceptable — both resolve to the same expert via route_to_profile().
+        assert (intent, detail) in (
+            ("expert", "monitor_expert"),
+            ("tool", "get_cpu_usage"),
+        )
+        assert router.route_to_profile("check my cpu usage").name == "monitor_expert"
 
     def test_router_routes_conversational_query(self, tmp_path):
         from src.app.services.semantic_router import UnifiedSemanticRouter

@@ -27,7 +27,12 @@ venv/
 amadeus_venv/
 ENV/
 env/
-.env.local
+
+# Secrets — never copy real env files into the image (defense-in-depth: the
+# Dockerfile copies only .env.example explicitly, but block these regardless).
+.env
+.env.*
+!.env.example
 
 # IDE
 .idea/
