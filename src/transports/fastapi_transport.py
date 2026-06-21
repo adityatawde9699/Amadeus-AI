@@ -213,6 +213,11 @@ app.add_middleware(
 app.add_middleware(TracingMiddleware)
 app.add_middleware(AuditLoggerMiddleware)
 
+# Phase 4.3: per-IP rate limiting on pre-auth endpoints (credential stuffing).
+from src.api.middleware.rate_limit import RateLimitMiddleware  # noqa: E402
+
+app.add_middleware(RateLimitMiddleware)
+
 # Rate limiting — per user (JWT sub) with IP fallback
 # P6-T5: Probe Redis connectivity at startup; fall back to in-memory
 # storage if Redis is unavailable so the server starts cleanly.

@@ -10,12 +10,23 @@ class UserRead(schemas.BaseUser[int]):
 
 
 class UserCreate(schemas.BaseUserCreate):
+    """Public registration payload.
+
+    SECURITY: ``role`` and ``tenant_id`` are intentionally NOT accepted here.
+    Allowing them would let anyone self-register as ``admin`` (privilege
+    escalation). New users default to ``GUEST`` via the ORM column default;
+    role/tenant assignment is an admin/out-of-band operation.
+    """
+
     username: str
-    role: UserRoleDB = UserRoleDB.GUEST
-    tenant_id: str | None = None
 
 
 class UserUpdate(schemas.BaseUserUpdate):
+    """Self-service update payload.
+
+    SECURITY: ``role`` and ``tenant_id`` are NOT accepted — ``PATCH /users/me``
+    must never be a privilege-escalation path. Role/tenant changes are performed
+    out-of-band through a trusted administrative process.
+    """
+
     username: str | None = None
-    role: UserRoleDB | None = None
-    tenant_id: str | None = None

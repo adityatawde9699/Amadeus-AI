@@ -149,11 +149,12 @@ class AutonomousObservationLoop:
             from src.core.domain.context import RequestContext
             from src.core.domain.models import PermissionProfile
 
+            # Least privilege: autonomous observations run at STANDARD.
             bg_context = RequestContext(
                 request_id=str(uuid.uuid4()),
                 session_id=session_id,
                 user_id="system",
-                permissions=PermissionProfile.SYSTEM_FULL,
+                permissions=PermissionProfile.STANDARD,
                 memory_scope="global",
                 trace_id=str(uuid.uuid4()),
                 cancellation_token=asyncio.Event(),

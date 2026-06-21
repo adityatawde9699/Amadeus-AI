@@ -24,7 +24,6 @@ import re
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
-from google import genai
 from opentelemetry import trace
 
 from src.app.services.argument_extractor import ArgumentExtractor
@@ -76,7 +75,7 @@ class AmadeusService:
         self.debug_mode = debug_mode
         self.cache_service = cache_service
 
-        self.client: genai.Client | None = None
+        self.client: Any | None = None  # genai.Client when GEMINI_API_KEY is set
         self.model_name: str = self.settings.GEMINI_MODEL
         self._conversation_repo = conversation_repo
         self.goal_repository = goal_repository
@@ -143,14 +142,13 @@ class AmadeusService:
 
         # ── LangGraph Agent (multi-step) ─────────────────────────────
         from src.app.services.agent_loop import AmadeusGraph
-        import sqlite3
-        from langgraph.checkpoint.sqlite import SqliteSaver
 
-        # Setup persistent checkpointer for crash recovery and MoE tracking
-        checkpoint_db_path = self.settings.BASE_DIR / "langgraph_checkpoints.sqlite"
-        conn = sqlite3.connect(str(checkpoint_db_path), check_same_thread=False)
-        self._checkpointer = SqliteSaver(conn)
-        self._checkpointer.setup()
+        # AsyncSqliteSaver is opened in initialize() so we have a running
+        # event loop. Store the path and CM reference here; the graph is
+        # also built there once the checkpointer is ready.
+        self._checkpoint_db_path = self.settings.BASE_DIR / "langgraph_checkpoints.sqlite"
+        self._checkpointer_cm = None  # async context manager handle
+        self._checkpointer = None
 
         llm_generate = self._make_llm_generate()
         self.graph = AmadeusGraph(
@@ -158,7 +156,7 @@ class AmadeusService:
             tool_executor=self.tool_executor,
             llm_generate=llm_generate,
             memory_service=self.memory_service,
-            checkpointer=self._checkpointer,
+            checkpointer=None,  # patched in initialize()
         )
 
         logger.info(
@@ -174,6 +172,18 @@ class AmadeusService:
         """Async startup: warm memory service and hydrate conversation cache from DB."""
         await self.memory_service.initialize()
         await self.queue_manager.initialize()
+
+        # Open the async SQLite checkpointer now that the event loop is running.
+        from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+
+        self._checkpointer_cm = AsyncSqliteSaver.from_conn_string(
+            str(self._checkpoint_db_path)
+        )
+        self._checkpointer = await self._checkpointer_cm.__aenter__()
+        # Patch the already-constructed graph with the live checkpointer.
+        self.graph.set_checkpointer(self._checkpointer)
+        logger.info("AsyncSqliteSaver checkpointer ready: %s", self._checkpoint_db_path)
+
         if not self._semantic_router.is_ready:
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, self._semantic_router.build_index)
@@ -617,6 +627,15 @@ class AmadeusService:
     async def shutdown(self) -> None:
         if hasattr(self, "graph"):
             await self.graph.shutdown()
+        # Close the async SQLite checkpointer cleanly.
+        if self._checkpointer_cm is not None:
+            try:
+                await self._checkpointer_cm.__aexit__(None, None, None)
+            except Exception:
+                logger.warning("Error closing AsyncSqliteSaver", exc_info=True)
+            finally:
+                self._checkpointer_cm = None
+                self._checkpointer = None
 
     async def send_outbound_message(self, user_id: str, platform: str, message: str) -> bool:
         try:
@@ -647,6 +666,10 @@ class AmadeusService:
             self.client = None
             self.model_name = self.settings.GEMINI_MODEL
             return
+        # Lazy import: google.genai costs ~62MB RSS — only load it when a
+        # Gemini key is actually configured.
+        from google import genai
+
         self.client = genai.Client(api_key=self.settings.GEMINI_API_KEY)
         self.model_name = self.settings.GEMINI_MODEL
         logger.info("Gemini API configured with model: %s", self.model_name)

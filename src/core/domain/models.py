@@ -27,10 +27,47 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class PermissionProfile(StrEnum):
-    """Declared permission profile for the agent session."""
+    """Declared permission profile for the agent session (ascending privilege).
+
+    READ_ONLY   — info/monitoring only; no mutating or high-risk tools.
+    STANDARD    — read + everyday productivity tools (tasks, notes, email, files
+                  within the workspace); NOT host control, code execution, or
+                  destructive operations.
+    SYSTEM_FULL — full host/dev/destructive access. Requires explicit elevation.
+    """
 
     READ_ONLY = "read_only"
+    STANDARD = "standard"
     SYSTEM_FULL = "system_full"
+
+    @property
+    def rank(self) -> int:
+        """Numeric privilege rank for ordered comparisons."""
+        return _PROFILE_RANK[self]
+
+    def satisfies(self, required: "PermissionProfile") -> bool:
+        """True if this profile is at least as privileged as ``required``."""
+        return self.rank >= required.rank
+
+
+_PROFILE_RANK: dict[PermissionProfile, int] = {
+    PermissionProfile.READ_ONLY: 0,
+    PermissionProfile.STANDARD: 1,
+    PermissionProfile.SYSTEM_FULL: 2,
+}
+
+
+def profile_for_role(role: str | None) -> PermissionProfile:
+    """Map an RBAC role to its default permission profile (least privilege).
+
+    Unknown/None roles map to the most restrictive profile.
+    """
+    mapping = {
+        "admin": PermissionProfile.SYSTEM_FULL,
+        "user": PermissionProfile.STANDARD,
+        "guest": PermissionProfile.READ_ONLY,
+    }
+    return mapping.get((role or "").strip().lower(), PermissionProfile.READ_ONLY)
 
 
 class RequestSource(StrEnum):

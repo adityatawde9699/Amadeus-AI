@@ -83,7 +83,27 @@ TRAINING_DATA: dict[str, list[str]] = {
         # apps list
         "what programs are running", "list open windows", "show running apps",
         "what is currently open", "show open apps",
-        "which applications are active", "running processes",
+        "which applications are active",
+    ],
+    "monitoring": [
+        # cpu / memory
+        "cpu usage", "how much cpu is being used", "check cpu load",
+        "memory usage", "ram usage", "how much memory is free",
+        "is my ram full", "running processes", "top processes by memory",
+        # disk
+        "disk space", "how much disk space is left", "is my disk full",
+        "storage usage",
+        # battery / power
+        "battery level", "battery status", "how much battery is left",
+        "is the laptop charging",
+        # network health
+        "is my internet working", "network info", "check my connection",
+        "am i online", "what is my local ip",
+        # temps / uptime / overall
+        "system temperature", "is the cpu overheating",
+        "how long has the pc been on", "system uptime",
+        "system status", "system health report", "full system report",
+        "any system alerts", "is the system healthy",
     ],
     "web_research": [
         # web search
@@ -105,14 +125,43 @@ TRAINING_DATA: dict[str, list[str]] = {
         "explain photosynthesis", "who invented the telephone",
         "what is the history of rome", "look up recursion definition",
         "who was gandhi", "what are neural networks",
-        # news
-        "latest tech news", "headlines today", "news about cricket",
-        "top news in india", "current events", "show me todays news",
-        "tech headlines", "sports news today", "business news",
-        "breaking news", "what happened in the stock market",
         # web page reading
         "read this webpage", "fetch content from this URL",
         "get text from this website", "scrape this page",
+    ],
+    "news": [
+        "latest tech news", "headlines today", "news about cricket",
+        "top news in india", "current events", "show me todays news",
+        "tech headlines", "sports news today", "business news",
+        "breaking news", "world news", "news update",
+        "what's happening in the world", "today's top stories",
+        "entertainment news", "science news", "health news",
+        "political news today", "any news about the election",
+        "show me the latest headlines",
+    ],
+    "finance": [
+        "stock price of apple", "how is tesla stock doing",
+        "share price of reliance", "what is the nifty at",
+        "check microsoft stock", "price of google shares",
+        "stock market today", "is the market up or down",
+        "bitcoin price", "how much is ethereum",
+        "btc to usd", "crypto prices", "what is dogecoin worth",
+        "solana price today", "check crypto market",
+        "ethereum in inr", "current value of bitcoin",
+        "how are my stocks doing", "tsla quote", "aapl stock",
+    ],
+    "developer": [
+        "write and run a python script", "execute this code",
+        "run python code", "execute a script", "run this program",
+        "write code to compute fibonacci", "code this up and run it",
+        "calculate using code", "run a python script for primes",
+        "execute python", "test this code snippet",
+        "run command ping google.com", "run a terminal command",
+        "what is my ip address", "run ifconfig", "nslookup this domain",
+        "show network info via command", "run hostname command",
+        "search my codebase for the router", "where is this function defined",
+        "find the class that handles auth", "search the workspace for config",
+        "look in my projects for the docker port", "grep my code for TODO",
     ],
     "weather": [
         "what is the weather in mumbai", "is it raining", "temperature today",
@@ -206,42 +255,51 @@ TRAINING_DATA: dict[str, list[str]] = {
 
 class CategoryClassifier:
     """
-    TF-IDF + LinearSVC classifier for coarse tool category prediction.
+    TF-IDF + linear-SVM classifier for coarse tool category prediction.
+
+    Training uses scikit-learn ONCE (first run), then the fitted model is
+    persisted as plain numpy arrays. Inference re-implements the TF-IDF
+    transform and the SVM decision function in numpy, so the runtime daemon
+    never imports sklearn/scipy (~70MB RSS saved — CLAUDE.md §6).
 
     Usage
     -----
     clf = CategoryClassifier(model_dir=Path("Model"))
     clf.train()
-    category, confidence = clf.predict("set volume to 60")
+    category, confidence = clf.predict("take a screenshot")
     # -> ("os_control", 1.23)
     """
 
-    CACHE_FILENAME = "category_classifier.joblib"
+    CACHE_FILENAME = "category_classifier.npz"
+    # Must mirror TfidfVectorizer defaults used in train()
+    _TOKEN_PATTERN = r"(?u)\b\w\w+\b"
 
     def __init__(self, model_dir: Path | str = Path("Model")) -> None:
         self._model_dir = Path(model_dir)
-        self._vectorizer: Any = None
-        self._classifier: Any = None
+        self._vocab: dict[str, int] = {}
+        self._idf: Any = None        # np.ndarray (n_features,)
+        self._coef: Any = None       # np.ndarray (n_classes, n_features)
+        self._intercept: Any = None  # np.ndarray (n_classes,)
         self._classes: list[str] = []
+        self._token_re: Any = None
         self._ready = False
 
     # ------------------------------------------------------------------
-    # Training
+    # Training (build-time only — the single place sklearn is imported)
     # ------------------------------------------------------------------
 
     def train(self) -> None:
-        """Fit TF-IDF + LinearSVC on TRAINING_DATA and persist to disk."""
+        """Fit TF-IDF + LinearSVC on TRAINING_DATA and persist numpy arrays."""
         try:
             from sklearn.feature_extraction.text import TfidfVectorizer
             from sklearn.svm import LinearSVC
         except ImportError:
             logger.error(
-                "CategoryClassifier requires scikit-learn. "
+                "CategoryClassifier requires scikit-learn for training. "
                 "Install with: pip install scikit-learn"
             )
             return
 
-        # Flatten to parallel (text, label) lists
         texts: list[str] = []
         labels: list[str] = []
         for category, phrases in TRAINING_DATA.items():
@@ -255,56 +313,81 @@ class CategoryClassifier:
             len(TRAINING_DATA),
         )
 
-        self._vectorizer = TfidfVectorizer(
+        vectorizer = TfidfVectorizer(
             analyzer="word",
             ngram_range=(1, 2),   # unigrams + bigrams
             sublinear_tf=True,     # log-frequency scaling
             min_df=1,
         )
-        X = self._vectorizer.fit_transform(texts)
+        X = vectorizer.fit_transform(texts)
 
-        self._classifier = LinearSVC(
+        classifier = LinearSVC(
             C=1.0,
             max_iter=2000,
             class_weight="balanced",  # handles category size imbalance
         )
-        self._classifier.fit(X, labels)
-        self._classes = list(self._classifier.classes_)
+        classifier.fit(X, labels)
+
+        import numpy as np
+
+        self._vocab = {t: int(i) for t, i in vectorizer.vocabulary_.items()}
+        self._idf = np.asarray(vectorizer.idf_, dtype=np.float32)
+        self._coef = np.asarray(classifier.coef_, dtype=np.float32)
+        self._intercept = np.asarray(classifier.intercept_, dtype=np.float32)
+        self._classes = [str(c) for c in classifier.classes_]
+        self._compile_tokenizer()
         self._ready = True
 
-        # Persist
         self._persist()
         logger.info("CategoryClassifier: trained and saved. Classes: %s", self._classes)
 
     def _persist(self) -> None:
         try:
-            import joblib
+            import numpy as np
 
             self._model_dir.mkdir(parents=True, exist_ok=True)
             cache_path = self._model_dir / self.CACHE_FILENAME
-            joblib.dump(
-                {
-                    "vectorizer": self._vectorizer,
-                    "classifier": self._classifier,
-                    "classes": self._classes,
-                },
+            tokens = np.array(list(self._vocab.keys()))
+            indices = np.array(list(self._vocab.values()), dtype=np.int64)
+            np.savez(
                 cache_path,
+                tokens=tokens,
+                indices=indices,
+                idf=self._idf,
+                coef=self._coef,
+                intercept=self._intercept,
+                classes=np.array(self._classes),
             )
         except Exception as exc:
             logger.warning("CategoryClassifier: could not persist model: %s", exc)
 
     def load(self) -> bool:
-        """Load a previously persisted model. Returns True on success."""
+        """Load persisted numpy arrays. Returns True on success."""
         cache_path = self._model_dir / self.CACHE_FILENAME
         if not cache_path.exists():
             return False
         try:
-            import joblib
+            import numpy as np
 
-            data = joblib.load(cache_path)
-            self._vectorizer = data["vectorizer"]
-            self._classifier = data["classifier"]
-            self._classes = data["classes"]
+            data = np.load(cache_path, allow_pickle=False)
+            classes = [str(c) for c in data["classes"]]
+
+            # Invalidate stale caches: if the trained classes no longer match
+            # TRAINING_DATA (categories added/removed), force a retrain.
+            if set(classes) != set(TRAINING_DATA.keys()):
+                logger.info(
+                    "CategoryClassifier: cached classes differ from TRAINING_DATA — retraining."
+                )
+                return False
+
+            self._vocab = {
+                str(t): int(i) for t, i in zip(data["tokens"], data["indices"], strict=True)
+            }
+            self._idf = data["idf"]
+            self._coef = data["coef"]
+            self._intercept = data["intercept"]
+            self._classes = classes
+            self._compile_tokenizer()
             self._ready = True
             logger.info(
                 "CategoryClassifier: loaded from cache. Classes: %s", self._classes
@@ -315,8 +398,42 @@ class CategoryClassifier:
             return False
 
     # ------------------------------------------------------------------
-    # Inference
+    # Inference (numpy only)
     # ------------------------------------------------------------------
+
+    def _compile_tokenizer(self) -> None:
+        import re
+
+        self._token_re = re.compile(self._TOKEN_PATTERN)
+
+    def _transform(self, query: str) -> Any:
+        """Numpy re-implementation of the fitted TfidfVectorizer transform."""
+        import numpy as np
+
+        tokens = self._token_re.findall(query.lower())
+        # unigrams + bigrams, mirroring ngram_range=(1, 2)
+        grams = tokens + [" ".join(pair) for pair in zip(tokens, tokens[1:], strict=False)]
+
+        counts: dict[int, int] = {}
+        for gram in grams:
+            idx = self._vocab.get(gram)
+            if idx is not None:
+                counts[idx] = counts.get(idx, 0) + 1
+
+        x = np.zeros(self._idf.shape[0], dtype=np.float32)
+        for idx, count in counts.items():
+            # sublinear_tf: 1 + ln(tf), then multiply idf
+            x[idx] = (1.0 + np.log(count)) * self._idf[idx]
+
+        norm = np.linalg.norm(x)
+        if norm > 0:
+            x /= norm
+        return x
+
+    def _decision_scores(self, query: str) -> Any:
+        """SVM decision function: X @ coef.T + intercept."""
+        x = self._transform(query)
+        return self._coef @ x + self._intercept
 
     def predict(self, query: str) -> tuple[str, float]:
         """
@@ -329,23 +446,15 @@ class CategoryClassifier:
             the winning class — higher = more confident.
             Returns ("unknown", 0.0) if the classifier is not ready.
         """
-        if not self._ready or self._vectorizer is None or self._classifier is None:
+        if not self._ready or self._coef is None:
             return "unknown", 0.0
 
         try:
             import numpy as np
 
-            x_vec = self._vectorizer.transform([query])
-            scores = self._classifier.decision_function(x_vec)[0]
-
-            if len(self._classes) == 1:
-                return self._classes[0], float(scores)
-
-            # Multi-class: decision_function returns shape (n_classes,)
+            scores = self._decision_scores(query)
             best_idx = int(np.argmax(scores))
-            category = self._classes[best_idx]
-            confidence = float(scores[best_idx])
-            return category, confidence
+            return self._classes[best_idx], float(scores[best_idx])
         except Exception as exc:
             logger.error("CategoryClassifier: prediction error: %s", exc)
             return "unknown", 0.0
@@ -355,20 +464,16 @@ class CategoryClassifier:
         Return the top-2 most likely category names (for wider candidate pools).
         Returns empty list if not ready.
         """
-        if not self._ready or self._vectorizer is None or self._classifier is None:
+        if not self._ready or self._coef is None:
             return []
 
         try:
             import numpy as np
 
-            x_vec = self._vectorizer.transform([query])
-            scores = self._classifier.decision_function(x_vec)[0]
-
+            scores = self._decision_scores(query)
             if len(self._classes) <= 1:
                 return list(self._classes)
-
-            sorted_indices = np.argsort(scores)[::-1]
-            top2_idx = sorted_indices[:2]
+            top2_idx = np.argsort(scores)[::-1][:2]
             return [self._classes[i] for i in top2_idx]
         except Exception as exc:
             logger.error("CategoryClassifier: top2 prediction error: %s", exc)

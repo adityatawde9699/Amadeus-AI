@@ -209,26 +209,32 @@ class ResponseComposer:
         Wrap a raw tool result in a natural, concise sentence for the user.
         Falls back to the raw output if the LLM is unavailable.
         """
-        instruction_text = instruction or "Compose a brief, natural, conversational response to the user based on this result. Be concise — 1-2 sentences max."
+        instruction_text = (
+            instruction
+            or "Summarise the result in 1-2 conversational sentences."
+        )
 
+        # Structured completion prompt: the model sees a clear RESPONSE: target
+        # so it fills in the answer rather than echoing the instruction block.
         prompt = (
             "/no_think "
-            f"You are Amadeus, a personal AI assistant created by Aditya Tawde.\n"
-            f"The user asked: '{user_input}'\n"
-            f"You ran the tool '{tool_name}' and got this result:\n{tool_output}\n\n"
-            f"{instruction_text}\n"
-            "CRITICAL: Respond in 1-2 sentences ONLY. No thinking, no reasoning, no preamble. "
-            "Output ONLY the final response. "
-            "CRITICAL: If the tool output indicates an error, failure, or says 'not found', "
-            "accurately report this failure. Do NOT pretend the action succeeded. "
-            "If it failed, apologise briefly. Do NOT blame the user or ask them to check parameters."
+            "You are Amadeus, a personal AI assistant.\n"
+            f"User asked: {user_input}\n"
+            f"Tool '{tool_name}' returned:\n{tool_output}\n\n"
+            "Rules: respond in 1-2 sentences ONLY. "
+            "If the result shows an error or failure, report it honestly and briefly. "
+            "Do NOT echo these instructions. Do NOT say 'The user asked' or 'I need to'. "
+            "Output the final answer directly after RESPONSE:.\n"
+            "RESPONSE:"
         )
         try:
             if self._llm_router:
                 text, provider = await self._llm_router.generate(
-                    prompt=prompt, complexity="auto", max_tokens=128
+                    prompt=prompt, complexity="auto", max_tokens=192
                 )
                 logger.info("Tool response composed by router (provider=%s)", provider)
+                # Strip the RESPONSE: prefix if the model echoed it
+                text = text.removeprefix("RESPONSE:").strip()
                 return self._sanitize_llm_output(text)
         except Exception as exc:
             logger.warning("LLMRouter failed for tool response composition: %s", exc)
@@ -326,9 +332,42 @@ class ResponseComposer:
         """
         if not text:
             return text
+
+        # Strip leading CoT preamble blocks
         cleaned = _COT_SANITIZE_RE.sub("", text)
         cleaned = _NUMBERED_META_RE.sub("", cleaned)
-        return cleaned.strip() or text  # fallback to original if everything was stripped
+        cleaned = cleaned.strip()
+
+        # Strip mid-text meta-narration sentences that survived the above.
+        # These are sentences like "The user's request requires me to..." or
+        # "Looking at the content provided, it does contain..."
+        # We split on sentence boundaries and drop the offending ones.
+        _MID_META_PREFIXES = (
+            "the user",
+            "i need to",
+            "i should",
+            "i will",
+            "i must",
+            "i have to",
+            "i want to",
+            "looking at",
+            "based on the",
+            "the response should",
+            "the content provided",
+        )
+        sentences = cleaned.split(". ")
+        filtered = [
+            s for s in sentences
+            if not s.strip().lower().startswith(_MID_META_PREFIXES)
+        ]
+        if filtered:
+            cleaned = ". ".join(filtered).strip()
+            # Re-add trailing period if we removed it
+            if cleaned and not cleaned.endswith((".", "!", "?", "\n")):
+                cleaned += "."
+
+        return cleaned or text  # fallback to original if everything was stripped
+
 
     async def compose_long_form(
         self,

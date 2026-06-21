@@ -142,7 +142,7 @@ class ToolDispatcher:
 
             try:
                 result = await asyncio.wait_for(
-                    self._executor.execute(tool, args, permission_profile=context.permissions),
+                    self._executor.execute(tool, args, context=context),
                     timeout=timeout_s,
                 )
             except TimeoutError:

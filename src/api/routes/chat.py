@@ -6,6 +6,7 @@ Provides the main /chat endpoint for processing user requests.
 
 import asyncio
 import logging
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -27,6 +28,7 @@ from src.core.domain.models import (
     MessageResponse,
     PermissionProfile,
     ToolListResponse,
+    profile_for_role,
 )
 from src.infra.persistence.database import get_db_session
 from src.infra.persistence.repositories.conversation_repository import SQLConversationRepository
@@ -64,15 +66,19 @@ async def chat(
                 str(user.id) if user is not None else request.session_id or "default-session"
             )
 
-            # Extract Permission Profile
-            profile = PermissionProfile.SYSTEM_FULL
-            if user is not None and user.role.value.lower() == "guest":
+            # Map the authenticated user's RBAC role to a least-privilege profile.
+            # Anonymous (unauthenticated) callers get READ_ONLY — never elevated.
+            if user is not None:
+                profile = profile_for_role(user.role.value)
+            else:
                 profile = PermissionProfile.READ_ONLY
 
             # Construct RequestContext — required by AmadeusService.handle_command()
             context = RequestContext(
+                request_id=str(uuid.uuid4()),
                 session_id=active_session_id,
                 user_id=str(user.id) if user else "anonymous",
+                permissions=profile,
             )
 
             try:
@@ -151,9 +157,15 @@ async def list_tools(
 @inject
 async def clear_conversation(
     amadeus: AmadeusService = Depends(Provide[Container.amadeus_service]),
+    user: UserORM = Depends(current_active_user),
 ) -> dict[str, str]:
     """
-    Clear conversation history (cache and database).
+    Clear the *authenticated user's own* conversation history (cache + database).
+
+    Phase 4.1: requires authentication and is scoped to the caller's session id
+    (``str(user.id)``) — a user can no longer wipe another user's (or the global)
+    conversation, and the previously missing required ``session_id`` argument is
+    now supplied.
     """
-    await amadeus.clear_conversation()
+    await amadeus.clear_conversation(session_id=str(user.id))
     return {"status": "ok", "message": "Conversation cleared"}

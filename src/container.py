@@ -170,6 +170,42 @@ def _build_tool_registry() -> ToolRegistry:
         except Exception as e:
             logger.warning("Failed to register developer_tools: %s", e)
 
+        # Register OS control tools (screenshot, open/close apps)
+        try:
+            from src.infra.tools.system_control_tools import get_system_control_tools
+
+            for tool in get_system_control_tools():
+                registry.register(tool)
+        except Exception as e:
+            logger.warning("Failed to register system_control_tools: %s", e)
+
+        # Register workspace semantic search
+        try:
+            from src.infra.tools.workspace_tools import get_workspace_tools
+
+            for tool in get_workspace_tools():
+                registry.register(tool)
+        except Exception as e:
+            logger.warning("Failed to register workspace_tools: %s", e)
+
+        # Register finance tools (stocks + crypto, keyless APIs)
+        try:
+            from src.infra.tools.finance_tools import get_finance_tools
+
+            for tool in get_finance_tools():
+                registry.register(tool)
+        except Exception as e:
+            logger.warning("Failed to register finance_tools: %s", e)
+
+        # Register office tools (Windows/pywin32 only — no-op elsewhere)
+        try:
+            from src.infra.tools.office_tools import get_office_tools
+
+            for tool in get_office_tools():
+                registry.register(tool)
+        except Exception as e:
+            logger.warning("Failed to register office_tools: %s", e)
+
         # Register web_research and email tools
         try:
             from src.infra.search.search_router import SearchRouter
@@ -226,13 +262,26 @@ def _build_tool_registry() -> ToolRegistry:
                 from src.core.domain.context import RequestContext
                 from src.core.domain.models import PermissionProfile
                 svc = get_amadeus_service()
+                # Least privilege: agent-scheduled background work runs at STANDARD.
                 context = RequestContext(
                     request_id="bg-task",
                     session_id="background",
                     user_id="system",
-                    permissions=PermissionProfile.SYSTEM_FULL
+                    permissions=PermissionProfile.STANDARD
                 )
                 await svc.handle_background_event(prompt, context=context)
+
+            # Durable scheduling: persist a row that the scheduler sweeper runs.
+            async def _schedule_task(prompt: str, session_id: str, minutes: float) -> int:
+                from src.runtime.scheduler import enqueue_task
+
+                return await enqueue_task(
+                    prompt, session_id or "background", delay_minutes=minutes
+                )
+
+            # Durable long-horizon goal execution (Phase 2).
+            async def _execute_goal(goal_id: int) -> str:
+                return await get_goal_executor().start_goal(goal_id)  # type: ignore[attr-defined]
 
             for tool in build_agent_tools(
                 memory_service=memory_service,
@@ -240,7 +289,9 @@ def _build_tool_registry() -> ToolRegistry:
                 task_repository=task_repo_proxy,
                 tool_registry=registry,
                 llm_generate=_llm_generate,
-                dispatch_background_event=_dispatch_bg
+                dispatch_background_event=_dispatch_bg,
+                schedule_task=_schedule_task,
+                execute_goal_fn=_execute_goal,
             ):
                 registry.register(tool)
         except Exception as e:
@@ -271,7 +322,8 @@ def _build_tool_registry() -> ToolRegistry:
 
 
 def _build_llm_router() -> LLMRouter:
-    from src.infra.llm.gemini_adapter import GeminiAdapter
+    # NOTE: GeminiAdapter is imported inside the GEMINI_API_KEY check below —
+    # importing it pulls google.genai (~62MB RSS), which LOCAL_ONLY_MODE must avoid.
     from src.infra.llm.router import LLMRouter
 
     settings = get_settings()
@@ -279,9 +331,15 @@ def _build_llm_router() -> LLMRouter:
     groq_adapter = None
     if settings.GROQ_API_KEY:
         try:
+            import groq as _groq_pkg  # noqa: F401 — availability check
             from src.infra.llm.groq_adapter import GroqAdapter
 
             groq_adapter = GroqAdapter(api_key=settings.GROQ_API_KEY)
+        except ImportError:
+            logger.warning(
+                "groq package is not installed — GroqAdapter disabled. "
+                "Run: pip install groq  (or remove GROQ_API_KEY to silence this warning)"
+            )
         except Exception as e:
             logger.warning("Failed to configure GroqAdapter: %s", type(e).__name__)
 
@@ -337,6 +395,100 @@ def _build_search_router() -> SearchRouter:
     )
 
 
+# ── AMASPACE workspace persistence ────────────────────────────────────────────
+
+
+def _build_workspace_manager() -> object:
+    from src.infra.workspace.workspace_manager import WorkspaceManager
+
+    settings = get_settings()
+    manager = WorkspaceManager(
+        settings.amaspace_root,
+        enforce_containment=settings.WORKSPACE_ENFORCE_CONTAINMENT,
+    )
+    manager.ensure_layout()
+    return manager
+
+
+def _build_artifact_registry(workspace: object) -> object:
+    from src.infra.workspace.artifact_registry import ArtifactRegistry
+
+    return ArtifactRegistry(workspace.root / ".index")  # type: ignore[attr-defined]
+
+
+def _build_storage_service(workspace: object, registry: object) -> object:
+    from src.infra.workspace.storage_service import StorageService
+
+    return StorageService(workspace, registry)  # type: ignore[arg-type]
+
+
+def _build_output_policy(storage_service: object) -> object:
+    from src.app.services.notification_policy import OutputDeliveryPolicy
+
+    return OutputDeliveryPolicy(storage_service, get_settings())  # type: ignore[arg-type]
+
+
+# ── Research engine ───────────────────────────────────────────────────────────
+
+
+def _build_research_orchestrator(
+    search_router: object, storage_service: object
+) -> object:
+    from src.research.collector import InformationCollector
+    from src.research.orchestrator import ResearchOrchestrator
+    from src.research.planner import QueryPlanner
+    from src.research.storage import ResearchStorage
+    from src.research.synthesizer import KnowledgeSynthesizer
+    from src.research.validator import SourceValidator
+
+    settings = get_settings()
+
+    # LLM closure (planner + synthesizer). None if no router → heuristic fallback.
+    llm_generate = None
+    try:
+        router = get_llm_router()
+    except Exception:
+        router = None
+
+    if router is not None:
+        async def llm_generate(  # type: ignore[misc]
+            prompt: str, complexity: str = "high", structured: bool = False
+        ) -> str:
+            text, _ = await router.generate(
+                prompt, complexity=complexity, structured=structured
+            )
+            return text
+
+    planner = QueryPlanner(llm_generate, max_subtopics=settings.RESEARCH_MAX_SUBTOPICS)
+    collector = InformationCollector(
+        search_router,  # type: ignore[arg-type]
+        max_sources_per_question=settings.RESEARCH_MAX_SOURCES_PER_QUESTION,
+        fetch_timeout=settings.RESEARCH_FETCH_TIMEOUT,
+        max_fetch_pages=settings.RESEARCH_MAX_FETCH_PAGES,
+    )
+    validator = SourceValidator()
+    synthesizer = KnowledgeSynthesizer(llm_generate)
+    research_storage = ResearchStorage(storage_service)  # type: ignore[arg-type]
+
+    return ResearchOrchestrator(
+        planner=planner,
+        collector=collector,
+        validator=validator,
+        synthesizer=synthesizer,
+        storage=research_storage,
+    )
+
+
+def _build_command_router(research_orchestrator: object) -> object:
+    from src.app.services.command_router import CommandRouter
+
+    settings = get_settings()
+    return CommandRouter(
+        research_orchestrator,  # type: ignore[arg-type]
+        forward_progress=settings.RESEARCH_PROGRESS_NOTIFICATIONS,
+    )
+
+
 
 # =============================================================================
 # DEPENDENCY INJECTOR CONTAINER
@@ -372,6 +524,30 @@ class Container(containers.DeclarativeContainer):
     # so dependency-injector can resolve them as constructor arguments.
     llm_router = providers.Singleton(_build_llm_router)
     search_router = providers.Singleton(_build_search_router)
+
+    # AMASPACE workspace persistence (Tasks 3 & 4)
+    workspace_manager = providers.Singleton(_build_workspace_manager)
+    artifact_registry = providers.Singleton(
+        _build_artifact_registry, workspace=workspace_manager
+    )
+    storage_service = providers.Singleton(
+        _build_storage_service,
+        workspace=workspace_manager,
+        registry=artifact_registry,
+    )
+    output_policy = providers.Singleton(
+        _build_output_policy, storage_service=storage_service
+    )
+
+    # Research engine (Task 2) + command-and-control router (Task 1)
+    research_orchestrator = providers.Singleton(
+        _build_research_orchestrator,
+        search_router=search_router,
+        storage_service=storage_service,
+    )
+    command_router = providers.Singleton(
+        _build_command_router, research_orchestrator=research_orchestrator
+    )
 
     queue_manager = providers.Singleton(QueueManager)
     email_adapter = providers.Singleton(EmailAdapter)
@@ -421,12 +597,85 @@ def get_search_router() -> SearchRouter:
     return global_container.search_router()
 
 
+def get_storage_service() -> object:
+    return global_container.storage_service()
+
+
+def get_workspace_manager() -> object:
+    return global_container.workspace_manager()
+
+
+def get_output_policy() -> object:
+    return global_container.output_policy()
+
+
+def get_research_orchestrator() -> object:
+    return global_container.research_orchestrator()
+
+
+def get_command_router() -> object:
+    return global_container.command_router()
+
+
 def get_queue_manager() -> QueueManager:
     return global_container.queue_manager()
 
 
 def get_messaging_service() -> MessagingService:
     return global_container.messaging_service()
+
+
+_goal_executor: object | None = None
+
+
+def get_goal_executor() -> object:
+    """Lazily build the singleton :class:`GoalExecutor` (Phase 2).
+
+    Wired to the live agent graph: each goal step is dispatched through
+    ``AmadeusGraph.ainvoke`` on its own ``thread_id`` (so the checkpointer can
+    resume it), and decomposition reuses the orchestrator's ``_decompose``.
+    """
+    global _goal_executor
+    if _goal_executor is not None:
+        return _goal_executor
+
+    from typing import cast
+
+    from src.app.services.goal_executor import GoalExecutor
+    from src.core.interfaces.repositories import IGoalRepository
+
+    async def _run_subtask(subtask: str, thread_id: str, expert: str | None) -> str:
+        from src.core.domain.context import RequestContext
+        from src.core.domain.models import PermissionProfile
+
+        svc = get_amadeus_service()
+        # Least privilege: durable goal steps run at STANDARD (background origin).
+        ctx = RequestContext(
+            request_id="goal-step",
+            session_id=thread_id,
+            user_id="system",
+            permissions=PermissionProfile.STANDARD,
+        )
+        intent = "expert" if (expert and expert != "generalist") else "conversational"
+        result = await svc.graph.ainvoke(
+            task=subtask,
+            context=ctx,
+            routing_intent=intent,
+            routing_target=expert or "",
+        )
+        return result.final_answer or result.error or ""
+
+    async def _decompose(goal_text: str, max_steps: int) -> list[dict]:
+        svc = get_amadeus_service()
+        # Reuse the orchestrator's decomposition (returns [{expert, subtask}]).
+        return await svc.graph._decompose(goal_text, max_steps)
+
+    _goal_executor = GoalExecutor(
+        goal_repository=cast("IGoalRepository", _build_goal_repo_factory()),
+        run_subtask=_run_subtask,
+        decompose=_decompose,
+    )
+    return _goal_executor
 
 
 def inject_confirmation_callback(confirmation_callback: ConfirmationCallback) -> None:
