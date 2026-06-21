@@ -48,13 +48,41 @@ class TestTelegramAuthorizationGuard:
         mock_update.message.chat_id = 99999
         mock_update.message.text = "rm -rf /"
 
-        with patch("src.transports.telegram_transport.get_settings") as mock_cfg:
-            mock_cfg.return_value.MASTER_TELEGRAM_CHAT_ID = "111111"
+        from src.core.config import Settings
+
+        real_settings = Settings(MASTER_TELEGRAM_CHAT_ID="111111", SKIP_CONFIG_VALIDATION=True)
+        with patch("src.transports.telegram_transport.get_settings", return_value=real_settings):
             await adapter._handle_message(mock_update, None)
 
         assert len(sent_messages) == 1
         assert sent_messages[0][1] == "Unauthorized."
         assert sent_messages[0][0] == 99999
+
+    @pytest.mark.asyncio
+    async def test_missing_allowlist_fails_closed(self):
+        """No MASTER_TELEGRAM_CHAT_ID configured → every sender is rejected."""
+        from src.core.config import Settings
+        from src.transports.telegram_transport import TelegramTransport
+
+        adapter = TelegramTransport.__new__(TelegramTransport)
+        adapter._active_tasks = set()
+        adapter.runtime = None
+        sent_messages: list[tuple] = []
+
+        async def fake_send(chat_id: int, text: str) -> None:
+            sent_messages.append((chat_id, text))
+
+        adapter.send_message = fake_send  # type: ignore[method-assign]
+
+        mock_update = MagicMock()
+        mock_update.message.chat_id = 111111  # would-be "master", but none configured
+        mock_update.message.text = "hello"
+
+        real_settings = Settings(MASTER_TELEGRAM_CHAT_ID=None, SKIP_CONFIG_VALIDATION=True)
+        with patch("src.transports.telegram_transport.get_settings", return_value=real_settings):
+            await adapter._handle_message(mock_update, None)
+
+        assert sent_messages and sent_messages[0][1] == "Unauthorized."
 
     @pytest.mark.asyncio
     async def test_authorized_chat_id_passes_guard(self):
@@ -75,11 +103,13 @@ class TestTelegramAuthorizationGuard:
         mock_update.message.chat_id = 111111
         mock_update.message.text = "hello"
 
+        from src.core.config import Settings
+
+        real_settings = Settings(MASTER_TELEGRAM_CHAT_ID="111111", SKIP_CONFIG_VALIDATION=True)
         with (
-            patch("src.transports.telegram_transport.get_settings") as mock_cfg,
+            patch("src.transports.telegram_transport.get_settings", return_value=real_settings),
             patch("asyncio.create_task") as mock_task,
         ):
-            mock_cfg.return_value.MASTER_TELEGRAM_CHAT_ID = "111111"
             await adapter._handle_message(mock_update, None)
 
         # Task should have been created (auth guard passed)

@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
         "Returns basic network information like local IP address, hostname, and connectivity status. "
         "Trigger: 'network info', 'what is my ip', 'check internet connection', 'show hostname'"
     ),
-    category=ToolCategory.SYSTEM,
+    category=ToolCategory.MONITORING,
 )
 def get_network_info(**kwargs: Any) -> str:
     """Get network info."""
@@ -47,7 +47,7 @@ def get_network_info(**kwargs: Any) -> str:
         "Pings a remote host to check latency and connectivity. "
         "Trigger: 'ping google.com', 'test connection to server', 'check latency'"
     ),
-    category=ToolCategory.SYSTEM,
+    category=ToolCategory.MONITORING,
     parameters={
         "host": {
             "type": "string",

@@ -25,13 +25,18 @@ class ToolPolicyEngine:
     Evaluates execution requests against established security policies.
     """
 
-    def __init__(self, is_development_mode: bool = False):
+    def __init__(self, is_development_mode: bool = False, strict_metadata: bool = False):
         self.is_development_mode = is_development_mode
+        self._strict_metadata = strict_metadata
 
     def evaluate(self, tool: "Tool", args: dict[str, Any], context: RequestContext) -> None:
         """
         Evaluate if the tool can be safely executed in the given context.
         Raises ToolPolicyViolation if the execution is unsafe.
+
+        The primary authorization boundary is the profile-rank check against the
+        tool's declared ``min_permission``. This replaces the old, trivially
+        bypassable command-substring denylist as a security control.
         """
         capability = tool.capability
 
@@ -44,7 +49,23 @@ class ToolPolicyEngine:
                 )
             return
 
-        # 1. Permission Profile Checks
+        # 0. Strict metadata gate (opt-in). Outside development, refuse tools whose
+        #    security metadata was auto-derived rather than explicitly declared.
+        if getattr(self, "_strict_metadata", False) and not getattr(capability, "explicit", True):
+            if not self.is_development_mode:
+                raise ToolPolicyViolation(
+                    f"Tool {tool.name} lacks explicit security metadata (denied by policy)."
+                )
+
+        # 1. Minimum-permission check — the core authorization boundary.
+        required = self._resolve_required_profile(capability)
+        if not context.permissions.satisfies(required):
+            raise ToolPolicyViolation(
+                f"Tool {tool.name} requires '{required.value}' but session is "
+                f"'{context.permissions.value}'."
+            )
+
+        # 2. Defense-in-depth: READ_ONLY never mutates state, regardless of metadata.
         if context.permissions == PermissionProfile.READ_ONLY:
             if capability.modifies_filesystem or capability.modifies_system_state:
                 raise ToolPolicyViolation(
@@ -55,9 +76,7 @@ class ToolPolicyEngine:
                     f"READ_ONLY session cannot execute high-risk tool: {tool.name}"
                 )
 
-        # 2. Risk & Confirmation Checks
-        # The executor handles the actual confirmation flow, but the policy engine
-        # ensures that critical tools are never executed implicitly without the flag set.
+        # 3. Critical tools must declare confirmation so they cannot run implicitly.
         if (
             capability.risk_level == "critical"
             and not capability.requires_confirmation
@@ -67,33 +86,19 @@ class ToolPolicyEngine:
                 f"Critical tool {tool.name} must declare requires_confirmation=True"
             )
 
-        # 3. Sandbox Checks
-        # Currently, if a tool says it requires a sandbox, we verify it is categorized correctly.
+        # 4. Sandbox sanity check.
         if getattr(capability, "sandbox_required", False) and "execute_python" not in tool.name:
-            logger.warning("Tool %s requests sandbox but is not a recognized sandboxed executor.", tool.name)
+            logger.warning(
+                "Tool %s requests sandbox but is not a recognized sandboxed executor.", tool.name
+            )
 
-        # 4. Argument Tokenization & Sanitization (Future enhancement)
-        # Here we could block specific arguments, e.g., 'rm -rf /' in terminal commands.
-        self._check_argument_safety(tool, args)
-
-    def _check_argument_safety(self, tool: "Tool", args: dict[str, Any]) -> None:
-        """Heuristic checks for dangerous arguments."""
-        if tool.name in {"terminal_cmd", "run_shell_command"}:
-            cmd = str(args.get("command") or args.get("cmd") or "").lower()
-            dangerous_tokens = [
-                "rm -rf /",
-                "mkfs",
-                "dd if=",
-                ":(){ :|:& };:",
-                "shutdown",
-                "reboot",
-            ]
-            for token in dangerous_tokens:
-                if token in cmd:
-                    raise ToolPolicyViolation(f"Command contains forbidden token '{token}'")
-
-        if tool.name == "terminate_process":
-            proc = str(args.get("process_name", "")).lower()
-            protected_procs = ["explorer.exe", "svchost.exe", "system", "kernel"]
-            if any(proc == p for p in protected_procs):
-                raise ToolPolicyViolation(f"Cannot terminate protected system process: {proc}")
+    @staticmethod
+    def _resolve_required_profile(capability: Any) -> PermissionProfile:
+        """Map a capability's min_permission string to a PermissionProfile."""
+        raw = str(getattr(capability, "min_permission", "read_only")).lower()
+        try:
+            return PermissionProfile(raw)
+        except ValueError:
+            # Unknown value → fail closed at the highest privilege requirement.
+            logger.warning("Unknown min_permission %r — requiring SYSTEM_FULL", raw)
+            return PermissionProfile.SYSTEM_FULL
