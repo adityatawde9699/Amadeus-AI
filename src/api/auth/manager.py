@@ -31,12 +31,20 @@ class UserManager(IntegerIDMixin, BaseUserManager[UserORM, int]):
     async def on_after_forgot_password(
         self, user: UserORM, token: str, request: Request | None = None
     ) -> None:
-        logger.info("User %s has forgot their password. Reset token: %s", user.id, token)
+        # SEC (Phase 4.1): never log the reset token — logs are a credential sink
+        # (anyone with log access could reset the password). The token must be
+        # delivered only to the user out-of-band (email). Log the event, not the
+        # secret; surface the token solely in local development for testing.
+        logger.info("Password reset requested for user %s.", user.id)
+        if get_settings().is_development:
+            logger.debug("[dev-only] Reset token for user %s: %s", user.id, token)
 
     async def on_after_request_verify(
         self, user: UserORM, token: str, request: Request | None = None
     ) -> None:
-        logger.info("Verification requested for user %s. Verification token: %s", user.id, token)
+        logger.info("Verification requested for user %s.", user.id)
+        if get_settings().is_development:
+            logger.debug("[dev-only] Verification token for user %s: %s", user.id, token)
 
 
 async def get_user_manager(

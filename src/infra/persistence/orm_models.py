@@ -60,6 +60,16 @@ class GoalStatusDB(enum.StrEnum):
     ABANDONED = "abandoned"
 
 
+class ScheduledTaskStatusDB(enum.StrEnum):
+    """Durable scheduled-task status enum for database."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    DONE = "done"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
 class ReminderStatusDB(enum.StrEnum):
     """Reminder status enum for database."""
 
@@ -163,6 +173,38 @@ class TaskORM(Base):
         return f"<Task(id={self.id}, status={self.status.value})>"
 
 
+class ScheduledTaskORM(Base):
+    """Durable agent-scheduled task — survives daemon restarts.
+
+    Rows are enqueued by the ``schedule_future_task`` tool and executed by the
+    scheduler sweeper once ``run_at`` is due. Unlike the previous in-memory
+    ``asyncio.create_task`` approach, a restart re-loads pending rows from here.
+    """
+
+    __tablename__ = "scheduled_tasks"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
+    prompt: Mapped[str] = mapped_column(Text)
+    session_id: Mapped[str] = mapped_column(String(256), default="background", index=True)
+    run_at: Mapped[datetime] = mapped_column(index=True)
+    status: Mapped[ScheduledTaskStatusDB] = mapped_column(
+        SAEnum(ScheduledTaskStatusDB, values_callable=_enum_values),
+        default=ScheduledTaskStatusDB.PENDING,
+        index=True,
+    )
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now(), index=True)
+    executed_at: Mapped[datetime | None] = mapped_column(nullable=True, index=True)
+
+    __table_args__ = (
+        Index("idx_scheduled_status_runat", "status", "run_at"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<ScheduledTask(id={self.id}, status={self.status.value}, run_at={self.run_at})>"
+
+
 class GoalORM(Base):
     """ORM model for long-term goals."""
 
@@ -191,6 +233,51 @@ class GoalORM(Base):
 
     def __repr__(self) -> str:
         return f"<Goal(id={self.id}, title='{self.title[:30]}', status={self.status.value})>"
+
+
+class GoalStepORM(Base):
+    """Durable, ordered execution step belonging to a long-horizon goal.
+
+    Phase 2 promotes the agent's transient string ``plan`` into a persisted
+    goal/step DAG. Each row is one expert subtask of a parent goal; the
+    :class:`GoalExecutor` claims and runs steps sequentially and records the
+    result. Because steps live in the database, a daemon restart can scan for
+    goals with open steps and resume exactly where it left off.
+
+    Reuses :class:`ScheduledTaskStatusDB` (pending/running/done/failed/cancelled)
+    so no new status enum (or DB enum type) is introduced.
+    """
+
+    __tablename__ = "goal_steps"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
+    goal_id: Mapped[int] = mapped_column(
+        ForeignKey("goals.id", ondelete="CASCADE"), index=True
+    )
+    seq: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    expert: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    subtask: Mapped[str] = mapped_column(Text)
+    status: Mapped[ScheduledTaskStatusDB] = mapped_column(
+        SAEnum(ScheduledTaskStatusDB, values_callable=_enum_values),
+        default=ScheduledTaskStatusDB.PENDING,
+        index=True,
+    )
+    result: Mapped[str | None] = mapped_column(Text, nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now(), index=True)
+    completed_at: Mapped[datetime | None] = mapped_column(nullable=True, index=True)
+
+    __table_args__ = (
+        Index("idx_goal_step_goal_status", "goal_id", "status"),
+        Index("idx_goal_step_goal_seq", "goal_id", "seq"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<GoalStep(id={self.id}, goal={self.goal_id}, seq={self.seq}, "
+            f"status={self.status.value})>"
+        )
 
 
 class NoteORM(Base):

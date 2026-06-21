@@ -1,0 +1,9 @@
+# AMASPACE holds runtime artifacts only — keep the directory skeleton in git,
+# ignore everything Amadeus generates at runtime.
+*
+!.gitignore
+!.gitkeep
+!README.md
+# Preserve the empty sub-directory structure (placeholders only).
+!*/
+!*/.gitkeep

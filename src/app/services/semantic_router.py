@@ -7,9 +7,11 @@ architecture.
 
 Architecture:
 - At startup, every AgentProfile's description + anchor_phrases are embedded
-  into dense vectors using sentence-transformers/all-MiniLM-L6-v2.
+  into dense vectors using a quantized ONNX all-MiniLM-L6-v2 model
+  (onnxruntime — no torch/sentence-transformers in the daemon, CLAUDE.md §3).
+  Falls back to sentence-transformers only if the ONNX export is missing.
 - At query time, cosine similarity determines which Expert to activate.
-- Stage 1 (SVM) narrows the candidate pool, Stage 2 (Transformer) selects.
+- Stage 1 (SVM) narrows the candidate pool, Stage 2 (embeddings) selects.
 
 Benefits over per-tool routing:
 - Fewer embedding vectors (5 experts vs 70+ tools) → faster routing.
@@ -45,7 +47,11 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _EMBED_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+_ONNX_EMBED_SUBDIR = Path("embed") / "all-MiniLM-L6-v2-onnx"
 _CACHE_FILENAME = "unified_semantic_cache.npz"
+# Bump when the embedded-text format changes (anchors, prefixes, etc.) so
+# stale caches with the old format are invalidated.
+_INDEX_FORMAT_VERSION = "2"
 _DEFAULT_THRESHOLD = 0.30
 _NARROW_THRESHOLD = 0.42
 _SVM_CONFIDENCE_CUTOFF = 0.35
@@ -119,13 +125,22 @@ def _registry_fingerprint(
     tool_names: list[str],
     tool_descs: list[str] | None = None,
     profile_names: list[str] | None = None,
+    backend: str = "",
 ) -> str:
-    """Stable hash for cache invalidation."""
+    """Stable hash for cache invalidation.
+
+    Includes the embedding backend name: vectors from the int8 ONNX model and
+    the fp32 torch model are NOT interchangeable, so switching backends must
+    rebuild the index.
+    """
     all_keys = sorted(tool_names) + sorted(_GLOBAL_INTENTS.keys())
     if tool_descs:
         all_keys += sorted(tool_descs)
     if profile_names:
         all_keys += sorted(profile_names)
+    if backend:
+        all_keys.append(f"backend:{backend}")
+    all_keys.append(f"format:{_INDEX_FORMAT_VERSION}")
     key = "|".join(all_keys)
     return hashlib.md5(key.encode()).hexdigest()  # noqa: S324 — non-security hash
 
@@ -167,17 +182,43 @@ class UnifiedSemanticRouter:
         # Fast lookup: label (tool/expert name) → category string
         self._tool_category_map: dict[str, str] = {}
 
+    def _load_embed_model(self) -> Any:
+        """Load the embedding backend: ONNX first (mandated), torch fallback.
+
+        The ONNX backend (onnxruntime + tokenizers) keeps daemon RSS low.
+        The sentence-transformers fallback exists only so a fresh checkout
+        still works before `scripts/export_embedding_onnx.py` has been run.
+        """
+        try:
+            from src.infra.embeddings.onnx_embedder import OnnxEmbedder
+
+            return OnnxEmbedder(self._model_dir / _ONNX_EMBED_SUBDIR)
+        except FileNotFoundError:
+            logger.warning(
+                "UnifiedSemanticRouter: ONNX embed model missing — run "
+                "`python scripts/export_embedding_onnx.py` to avoid the "
+                "~500MB PyTorch fallback. Falling back to sentence-transformers."
+            )
+        except ImportError as exc:
+            logger.warning(
+                "UnifiedSemanticRouter: onnxruntime/tokenizers unavailable (%s) — "
+                "falling back to sentence-transformers.", exc,
+            )
+
+        from sentence_transformers import SentenceTransformer
+
+        return SentenceTransformer(_EMBED_MODEL_NAME)
+
     def build_index(self) -> None:
         """Load the model and build the unified embedding matrix."""
         try:
             import numpy as np
-            from sentence_transformers import SentenceTransformer
         except ImportError as exc:
-            logger.exception("UnifiedSemanticRouter requires sentence-transformers and numpy: %s", exc)
+            logger.exception("UnifiedSemanticRouter requires numpy: %s", exc)
             return
 
         try:
-            self._embed_model = SentenceTransformer(_EMBED_MODEL_NAME)
+            self._embed_model = self._load_embed_model()
         except Exception as exc:
             logger.exception("UnifiedSemanticRouter: failed to load embedding model: %s", exc)
             return
@@ -185,8 +226,26 @@ class UnifiedSemanticRouter:
         all_tools = self._registry.list_all()
         tool_names = [t.name for t in all_tools]
         tool_descs = [t.description for t in all_tools]
-        profile_names = [p.name for p in AGENT_PROFILES]
-        current_fp = _registry_fingerprint(tool_names, tool_descs, profile_names)
+        # Include anchors + descriptions, not just names — editing a profile's
+        # anchor phrases must invalidate the cached embedding matrix.
+        profile_names = [
+            f"{p.name}:{p.description}:{'|'.join(p.anchor_phrases)}"
+            for p in AGENT_PROFILES
+        ]
+        current_fp = _registry_fingerprint(
+            tool_names, tool_descs, profile_names,
+            backend=getattr(
+                self._embed_model, "fingerprint", type(self._embed_model).__name__
+            ),
+        )
+
+        # Populate tool→category map and the Stage-1 classifier regardless of
+        # whether the embedding matrix comes from cache or a fresh build —
+        # both are required by route() at query time.
+        self._tool_category_map = {t.name: t.category.value for t in all_tools}
+        if not self._category_clf.load():
+            logger.info("UnifiedSemanticRouter: training category classifier...")
+            self._category_clf.train()
 
         cache_path = self._model_dir / _CACHE_FILENAME
         if self._try_load_cache(cache_path, current_fp, np):
@@ -208,9 +267,11 @@ class UnifiedSemanticRouter:
             labels.append(profile.name)
             types.append("expert")
 
-            # Embed each anchor phrase mapped to this expert
+            # Embed each anchor phrase RAW — prefixing with the expert name
+            # dilutes cosine similarity against short user queries (~0.49 for
+            # an exact phrase match instead of 1.0).
             for phrase in profile.anchor_phrases:
-                texts.append(f"Expert: {profile.display_name}\nQuery: {phrase}")
+                texts.append(phrase)
                 labels.append(profile.name)
                 types.append("expert")
 
@@ -221,10 +282,10 @@ class UnifiedSemanticRouter:
             types.append("tool")
             self._tool_category_map[t.name] = t.category.value
 
-        # 3. Global intents
+        # 3. Global intents — also embedded raw (see anchor note above)
         for intent, anchors in _GLOBAL_INTENTS.items():
             for phrase in anchors:
-                texts.append(f"Intent: {intent}\nExample: {phrase}")
+                texts.append(phrase)
                 labels.append(intent)
                 types.append("intent")
 
@@ -249,11 +310,6 @@ class UnifiedSemanticRouter:
             )
             self._ready = True
             logger.info("UnifiedSemanticRouter: index built with %d vectors.", len(labels))
-
-            # Stage-1: train/load category classifier
-            if not self._category_clf.load():
-                logger.info("UnifiedSemanticRouter: training category classifier...")
-                self._category_clf.train()
         except Exception as exc:
             logger.exception("UnifiedSemanticRouter: index build failed: %s", exc)
 
@@ -334,6 +390,11 @@ class UnifiedSemanticRouter:
                 return "conversational", None
 
             if kind == "expert":
+                # The generalist has no tool categories — it IS the
+                # conversational path, so report it as such for the cheaper
+                # direct-chat handling in AmadeusService.
+                if label == "generalist":
+                    return "conversational", None
                 return "expert", label
 
             if kind == "tool":

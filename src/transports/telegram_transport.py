@@ -70,7 +70,8 @@ class TelegramConfirmationCallback(ConfirmationCallback):
     ) -> bool:
         loop = asyncio.get_running_loop()
         future = loop.create_future()
-        self.transport._pending_confirmations[request_id] = future
+        # Record the owning chat_id so only that chat can resolve this request.
+        self.transport._pending_confirmations[request_id] = (future, self.chat_id)
 
         text = (
             f"⚠️ *Confirmation Required*\n\n"
@@ -123,7 +124,9 @@ class TelegramTransport:
         self._token = bot_token or settings.TELEGRAM_BOT_TOKEN
         self._application: Any = None
         self._bot: Any = None
-        self._pending_confirmations: dict[str, asyncio.Future[bool]] = {}
+        # request_id -> (future, owning_chat_id). The chat id makes resolution
+        # owner-aware: a click from any other chat is ignored.
+        self._pending_confirmations: dict[str, tuple[asyncio.Future[bool], int]] = {}
         self._active_tasks: set[asyncio.Task] = set()
 
         if not self._token:
@@ -145,7 +148,22 @@ class TelegramTransport:
             # Using ApplicationBuilder is required for v20+ polling
             if self._token is None:
                 raise ValueError("Token must be set at this point")
-            self._application = ApplicationBuilder().token(self._token).build()
+
+            settings = get_settings()
+            builder = (
+                ApplicationBuilder()
+                .token(self._token)
+                .connect_timeout(settings.TELEGRAM_CONNECT_TIMEOUT)
+                .read_timeout(settings.TELEGRAM_READ_TIMEOUT)
+            )
+            if settings.TELEGRAM_PROXY_URL:
+                builder = builder.proxy(settings.TELEGRAM_PROXY_URL)
+                logger.info(
+                    "Telegram using proxy: %s",
+                    settings.TELEGRAM_PROXY_URL,
+                )
+
+            self._application = builder.build()
             self._bot = self._application.bot
 
             # Register the main message handler
@@ -157,7 +175,12 @@ class TelegramTransport:
                 CallbackQueryHandler(self._handle_callback_query)
             )
 
-            logger.info("python-telegram-bot Application instance created for long polling")
+            logger.info(
+                "python-telegram-bot Application instance created "
+                "(connect_timeout=%.1fs, read_timeout=%.1fs)",
+                settings.TELEGRAM_CONNECT_TIMEOUT,
+                settings.TELEGRAM_READ_TIMEOUT,
+            )
         except ImportError:
             logger.exception(
                 "python-telegram-bot is not installed. Run: pip install 'python-telegram-bot>=20.7'"
@@ -222,18 +245,24 @@ class TelegramTransport:
         chat_id = msg.chat_id
         text = msg.text
 
-        # ── Authorization guard (SEC-03) ─────────────────────────────────────
+        # ── Authorization guard (SEC-03) — FAIL CLOSED ───────────────────────
+        # The allowlist must be explicitly configured and valid. A missing,
+        # empty, or malformed MASTER_TELEGRAM_CHAT_ID denies ALL input rather
+        # than falling through to full-privilege processing.
         settings = get_settings()
-        master_id_raw = settings.MASTER_TELEGRAM_CHAT_ID
-        if master_id_raw:
-            try:
-                allowed_ids: set[int] = {int(mid.strip()) for mid in master_id_raw.split(",") if mid.strip()}
-            except ValueError:
-                allowed_ids = set()
-            if allowed_ids and chat_id not in allowed_ids:
-                logger.warning("Unauthorized Telegram access attempt from chat_id=%s", chat_id)
-                await self.send_message(chat_id, "Unauthorized.")
-                return
+        allowed_ids, allowlist_valid = settings.parse_telegram_allowlist()
+        if not allowlist_valid:
+            logger.error(
+                "Telegram allowlist missing/invalid — denying chat_id=%s (set "
+                "MASTER_TELEGRAM_CHAT_ID to a comma-separated list of numeric ids)",
+                chat_id,
+            )
+            await self.send_message(chat_id, "Unauthorized.")
+            return
+        if chat_id not in allowed_ids:
+            logger.warning("Unauthorized Telegram access attempt from chat_id=%s", chat_id)
+            await self.send_message(chat_id, "Unauthorized.")
+            return
         # ─────────────────────────────────────────────────────────────────────
 
         logger.info("Received telegram message from chat_id=%s", chat_id)
@@ -243,25 +272,94 @@ class TelegramTransport:
         self._active_tasks.add(task)
         task.add_done_callback(self._active_tasks.discard)
 
+    def _get_command_router(self) -> Any:
+        """Lazily resolve the CommandRouter from the DI container (cached)."""
+        if not getattr(self, "_command_router_loaded", False):
+            self._command_router: Any = None
+            try:
+                from src.container import get_command_router
+
+                self._command_router = get_command_router()
+            except Exception:
+                logger.warning("CommandRouter unavailable — commands disabled", exc_info=True)
+            self._command_router_loaded = True
+        return self._command_router
+
+    def _apply_output_policy(
+        self, text: str, *, request_id: str | None, session_id: str | None
+    ) -> str:
+        """Apply the conversation-only OutputDeliveryPolicy to a runtime reply."""
+        try:
+            from src.container import get_output_policy
+
+            policy = get_output_policy()
+            return policy.deliver(text, request_id=request_id, session_id=session_id)
+        except Exception:
+            logger.warning("Output policy unavailable — sending raw reply", exc_info=True)
+            return text
+
     async def _process_and_reply_background(self, chat_id: int, text: str) -> None:
-        """Runs the singleton AmadeusRuntime inside a background task."""
+        """Runs the singleton AmadeusRuntime inside a background task.
+
+        v5 conversation-only mode: explicit commands (e.g. ``research <topic>``)
+        are handled by the CommandRouter, which persists output to AMASPACE and
+        sends only status notifications. Everything else flows through the
+        runtime; its reply is passed through the OutputDeliveryPolicy so large
+        outputs are saved and replaced with a path notification rather than
+        dumped into the chat.
+        """
         try:
             if not self.runtime or not self.runtime.amadeus_service:
                 logger.error("Telegram transport has no valid runtime")
                 return
 
             service = self.runtime.amadeus_service
+            request_id = str(uuid.uuid4())
+            session_id = str(chat_id)
 
-            # Temporarily inject a Telegram-specific HITL confirmation callback
-            previous_callback = service.tool_executor.confirmation_callback
-            service.tool_executor.confirmation_callback = TelegramConfirmationCallback(self, chat_id)
+            async def _notify(notification: Any) -> None:
+                await self.send_message(chat_id, notification.render())
+
+            # ── Command-and-control: explicit task commands ──────────────────
+            command_router = self._get_command_router()
+            if command_router is not None:
+                try:
+                    handled = await command_router.try_handle(
+                        text,
+                        notify=_notify,
+                        request_id=request_id,
+                        session_id=session_id,
+                    )
+                    if handled:
+                        return
+                except Exception:
+                    logger.exception("telegram_command_handling_failed")
+                    await self.send_message(chat_id, "⚠️ Sorry, that command failed.")
+                    return
+
+            # ── Conversational / runtime task path ───────────────────────────
+            # Register a request-scoped, per-session confirmation callback rather
+            # than mutating the shared executor (which would let concurrent
+            # requests cross-talk approval channels).
+            settings = get_settings()
+            elevated = settings.telegram_elevated_ids()
+            # Allowlisted users run at STANDARD; SYSTEM_FULL requires explicit
+            # elevation via TELEGRAM_ELEVATED_CHAT_IDS.
+            profile = (
+                PermissionProfile.SYSTEM_FULL
+                if chat_id in elevated
+                else PermissionProfile.STANDARD
+            )
+            service.tool_executor.register_confirmation_callback(
+                session_id, TelegramConfirmationCallback(self, chat_id)
+            )
 
             try:
                 context = RequestContext(
-                    request_id=str(uuid.uuid4()),
-                    session_id=str(chat_id),
-                    user_id=str(chat_id),
-                    permissions=PermissionProfile.SYSTEM_FULL,
+                    request_id=request_id,
+                    session_id=session_id,
+                    user_id=session_id,
+                    permissions=profile,
                     memory_scope="global",
                     trace_id=str(uuid.uuid4()),
                     cancellation_token=asyncio.Event()
@@ -269,10 +367,13 @@ class TelegramTransport:
                 response = await self.runtime.process_task(context, text)
                 logger.info("Telegram response for chat_id=%s: %s", chat_id, str(response)[:100])
             finally:
-                # Always restore the previous callback, even if an exception occurs
-                service.tool_executor.confirmation_callback = previous_callback
+                # Always remove the per-session callback, even on exception.
+                service.tool_executor.unregister_confirmation_callback(session_id)
 
             reply_text = response if isinstance(response, str) else str(response)
+            reply_text = self._apply_output_policy(
+                reply_text, request_id=request_id, session_id=session_id
+            )
             await self.send_message(chat_id, reply_text)
         except Exception as exc:
             # Chaos-03: Surface QueueFullError as a user-readable "busy" message
@@ -302,7 +403,21 @@ class TelegramTransport:
             approved = data.startswith("confirm_yes:")
             request_id = data.split(":", 1)[1]
 
-            future = self._pending_confirmations.get(request_id)
+            pending = self._pending_confirmations.get(request_id)
+            if not pending:
+                return
+            future, owner_chat_id = pending
+
+            # Owner check: only the chat that the confirmation was sent to may
+            # resolve it. Reject clicks forged/replayed from any other chat.
+            clicker_chat_id = getattr(getattr(query, "message", None), "chat_id", None)
+            if clicker_chat_id is not None and clicker_chat_id != owner_chat_id:
+                logger.warning(
+                    "Ignoring confirmation for request_id=%s from non-owner chat_id=%s",
+                    request_id, clicker_chat_id,
+                )
+                return
+
             if future and not future.done():
                 future.set_result(approved)
                 status = "✅ Approved" if approved else "❌ Denied"
@@ -317,21 +432,75 @@ class TelegramTransport:
         """
         Start the background long-polling loop.
         Call this in the FastAPI lifespan startup event.
+
+        Retries up to TELEGRAM_MAX_RETRIES times with exponential back-off
+        so that transient network errors (e.g. ConnectTimeout at startup)
+        don't permanently disable the Telegram interface.
         """
         if not self._application:
             return False
 
-        try:
-            # Initialize and start the application
-            await self._application.initialize()
-            await self._application.start()
-            # Start fetching updates
-            await self._application.updater.start_polling()
-            logger.info("Telegram long polling started successfully")
-            return True
-        except Exception as exc:
-            logger.exception("Failed to start telegram polling: %s", exc)
+        settings = get_settings()
+
+        # Fail closed: never expose the command channel without a valid allowlist.
+        _allowed, allowlist_valid = settings.parse_telegram_allowlist()
+        if not allowlist_valid:
+            logger.error(
+                "Refusing to start Telegram polling: MASTER_TELEGRAM_CHAT_ID is "
+                "missing or malformed. Set a comma-separated list of numeric chat "
+                "ids to authorise users."
+            )
             return False
+
+        max_retries = settings.TELEGRAM_MAX_RETRIES
+
+        for attempt in range(1, max_retries + 1):
+            try:
+                await self._application.initialize()
+                await self._application.start()
+                await self._application.updater.start_polling()
+                logger.info(
+                    "Telegram long polling started successfully (attempt %d/%d)",
+                    attempt,
+                    max_retries,
+                )
+                return True
+            except Exception as exc:
+                # Distinguish a network-level timeout from a bad token / other error
+                is_timeout = "timeout" in type(exc).__name__.lower() or "timed out" in str(exc).lower()
+                if is_timeout:
+                    logger.warning(
+                        "Telegram connect timed out (attempt %d/%d): %s — "
+                        "check connectivity to api.telegram.org or set TELEGRAM_PROXY_URL.",
+                        attempt,
+                        max_retries,
+                        exc,
+                    )
+                else:
+                    logger.exception(
+                        "Failed to start telegram polling (attempt %d/%d): %s",
+                        attempt,
+                        max_retries,
+                        exc,
+                    )
+
+                if attempt < max_retries:
+                    backoff = 2 ** (attempt - 1)  # 1 s, 2 s, 4 s ...
+                    logger.info("Retrying Telegram polling in %ds...", backoff)
+                    await asyncio.sleep(backoff)
+                    # Re-initialize application state before next attempt
+                    try:
+                        self._init_application()
+                    except Exception:
+                        logger.exception("Failed to reinitialize Telegram application")
+
+        logger.error(
+            "Telegram polling failed after %d attempts. "
+            "Tip: check api.telegram.org reachability, token validity, "
+            "or set TELEGRAM_PROXY_URL / increase TELEGRAM_CONNECT_TIMEOUT in .env.",
+            max_retries,
+        )
+        return False
 
     async def stop_polling(self) -> bool:
         """
@@ -357,6 +526,17 @@ class TelegramTransport:
     # Outbound — send replies
     # -----------------------------------------------------------------------
 
+    # Telegram hard-limits all messages to 4096 UTF-16 code units.
+    # We use a slightly smaller cap to leave room for the parse-mode overhead.
+    _TELEGRAM_MAX_LEN: int = 4000
+
+    def _truncate(self, text: str) -> str:
+        """Clip text to Telegram's message length limit."""
+        if len(text) <= self._TELEGRAM_MAX_LEN:
+            return text
+        suffix = "\n\n… [message truncated]"
+        return text[: self._TELEGRAM_MAX_LEN - len(suffix)] + suffix
+
     async def send_message(self, chat_id: int, text: str, parse_mode: str = "Markdown") -> bool:
         """
         Send a text message to a Telegram chat.
@@ -378,6 +558,8 @@ class TelegramTransport:
             logger.warning("send_message called with empty text for chat_id=%s — using fallback", chat_id)
             text = "I couldn't generate a response. Please try again."
 
+        text = self._truncate(text)
+
         try:
             await self._bot.send_message(
                 chat_id=chat_id,
@@ -386,6 +568,20 @@ class TelegramTransport:
             )
             logger.info("telegram_message_sent chat_id=%s", chat_id)
             return True
+        except RuntimeError as exc:
+            # Raised by python-telegram-bot when the HTTP client is already torn
+            # down during application shutdown (race between a long LLM call and
+            # Ctrl-C).  The response was ready but the transport is gone — drop it
+            # gracefully rather than filling the log with a full traceback.
+            if "not initialized" in str(exc).lower():
+                logger.warning(
+                    "telegram_send_skipped chat_id=%s — bot HTTP client already "
+                    "shut down (response arrived after shutdown started): %s",
+                    chat_id, exc,
+                )
+                return False
+            logger.exception("telegram_send_failed chat_id=%s error=%s", chat_id, exc)
+            return False
         except Exception as exc:
             if "parse entities" in str(exc).lower() or "bad request" in str(exc).lower():
                 logger.warning(
@@ -399,12 +595,21 @@ class TelegramTransport:
                     )
                     logger.info("telegram_message_sent (raw text fallback) chat_id=%s", chat_id)
                     return True
+                except RuntimeError as re_exc:
+                    if "not initialized" in str(re_exc).lower():
+                        logger.warning(
+                            "telegram_send_skipped (fallback) chat_id=%s — bot shut down", chat_id
+                        )
+                        return False
+                    logger.exception("telegram_send_failed (fallback) chat_id=%s error=%s", chat_id, re_exc)
+                    return False
                 except Exception as fallback_exc:
                     logger.exception("telegram_send_failed (fallback) chat_id=%s error=%s", chat_id, fallback_exc)
                     return False
 
             logger.exception("telegram_send_failed chat_id=%s error=%s", chat_id, exc)
             return False
+
 
     async def send_buttons(
         self,
@@ -433,6 +638,9 @@ class TelegramTransport:
         if self._bot is None:
             logger.error("Cannot send buttons — Telegram bot not initialized")
             return False
+
+        # Truncate before sending to avoid 400 "Message is too long".
+        text = self._truncate(text)
 
         try:
             from telegram import (

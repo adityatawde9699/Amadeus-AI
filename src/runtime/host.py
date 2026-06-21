@@ -92,10 +92,12 @@ class RuntimeHost:
         else:
             logger.info("ENABLE_MCP disabled — skipping MCP server connections")
 
-        # 6. Shared HTTP session used by the info tools
+        # 6. Shared HTTP sessions used by the info and finance tools
+        from src.infra.tools.finance_tools import initialize_finance_tools_http_session
         from src.infra.tools.info_tools import initialize_info_tools_http_session
 
         await initialize_info_tools_http_session()
+        await initialize_finance_tools_http_session()
 
         # 7. Telegram long polling (primary client). Safe no-op without a token.
         logger.info("Starting Telegram long polling...")
@@ -103,8 +105,10 @@ class RuntimeHost:
         started = await self.telegram.start_polling()
         if not started:
             logger.warning(
-                "Telegram polling not started — TELEGRAM_BOT_TOKEN missing or "
-                "python-telegram-bot unavailable"
+                "Telegram polling not started — see logs above for details. "
+                "Common causes: missing TELEGRAM_BOT_TOKEN, network timeout "
+                "(set TELEGRAM_CONNECT_TIMEOUT / TELEGRAM_PROXY_URL in .env), "
+                "or python-telegram-bot not installed."
             )
 
         # 8. Proactive checks (opt-in)
@@ -141,9 +145,11 @@ class RuntimeHost:
         if self.observation_loop is not None:
             self.observation_loop.stop()
 
+        from src.infra.tools.finance_tools import close_finance_tools_http_session
         from src.infra.tools.info_tools import close_info_tools_http_session
 
         await close_info_tools_http_session()
+        await close_finance_tools_http_session()
 
         if self.runtime is not None:
             if self.runtime.tools is not None:
@@ -167,13 +173,18 @@ class RuntimeHost:
             if alembic_cfg_path.exists() and alembic_script_location.exists():
                 # alembic/env.py calls asyncio.run() which deadlocks inside the
                 # already-running loop; run it out-of-process instead.
+                # Wrap in a lambda so the type-checker can resolve the return type
+                # as CompletedProcess[str] rather than FunctionType (subprocess.run
+                # has many overloads that confuse inference when passed as a bare
+                # callable reference with forwarded *args/**kwargs).
                 result = await asyncio.to_thread(
-                    subprocess.run,
-                    [sys.executable, "-m", "alembic", "upgrade", "head"],
-                    cwd=str(settings.BASE_DIR),
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
+                    lambda: subprocess.run(
+                        [sys.executable, "-m", "alembic", "upgrade", "head"],
+                        cwd=str(settings.BASE_DIR),
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                    )
                 )
                 if result.returncode == 0:
                     logger.info("Database migrations complete")

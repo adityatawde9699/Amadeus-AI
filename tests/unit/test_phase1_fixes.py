@@ -83,9 +83,14 @@ class TestConfirmationGate:
             async def request_approval(self, tool_name, args, request_id, preview=None):
                 return False
 
+        from src.core.domain.models import PermissionProfile
+
         executor = ToolExecutor(confirmation_callback=_DenyAll())
         tool = _make_tool(requires_confirmation=True)
-        result = await executor.execute(tool, {})
+        # Authorize (SYSTEM_FULL) so the request reaches the confirmation gate.
+        result = await executor.execute(
+            tool, {}, permission_profile=PermissionProfile.SYSTEM_FULL
+        )
 
         assert result.success is False
         assert "denied" in result.error_message.lower()
@@ -100,9 +105,13 @@ class TestConfirmationGate:
             async def request_approval(self, tool_name, args, request_id, preview=None):
                 return True
 
+        from src.core.domain.models import PermissionProfile
+
         executor = ToolExecutor(confirmation_callback=_ApproveAll())
         tool = _make_tool(requires_confirmation=True)
-        result = await executor.execute(tool, {})
+        result = await executor.execute(
+            tool, {}, permission_profile=PermissionProfile.SYSTEM_FULL
+        )
 
         assert result.success is True
 
@@ -111,9 +120,13 @@ class TestConfirmationGate:
         """No callback configured + requires_confirmation=True → denied."""
         from src.infra.tools.base import ToolExecutor
 
+        from src.core.domain.models import PermissionProfile
+
         executor = ToolExecutor(confirmation_callback=None)
         tool = _make_tool(requires_confirmation=True)
-        result = await executor.execute(tool, {})
+        result = await executor.execute(
+            tool, {}, permission_profile=PermissionProfile.SYSTEM_FULL
+        )
 
         assert result.success is False
         assert (
@@ -154,9 +167,13 @@ class TestConfirmationGate:
                 received_names.append(tool_name)
                 return False
 
+        from src.core.domain.models import PermissionProfile
+
         executor = ToolExecutor(confirmation_callback=_RecordingCallback())
         tool = _make_tool(requires_confirmation=True, name="delete_file")
-        await executor.execute(tool, {})
+        await executor.execute(
+            tool, {}, permission_profile=PermissionProfile.SYSTEM_FULL
+        )
 
         assert received_names == ["delete_file"]
 

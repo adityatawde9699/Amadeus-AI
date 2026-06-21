@@ -32,6 +32,10 @@ class AmadeusRuntime:
         self.watchdog = DependencyWatchdog(config)
         self._watchdog_task: asyncio.Task | None = None
 
+        # Phase 2/3 subsystems (wired in start()).
+        self.goal_executor: Any | None = None
+        self._watchers: list[Any] = []
+
         # We will lazy-initialize AmadeusService or hold it here
         self.amadeus_service = None
 
@@ -64,15 +68,68 @@ class AmadeusRuntime:
         # Start watchdog
         self._watchdog_task = asyncio.create_task(self.watchdog.run())
 
-        # Wire EventBus
-        # TODO: Wire watchdog, tool dispatcher, llm router to event_bus
+        # Start the durable scheduler sweeper. The queue is the database, so
+        # any tasks scheduled before this point (or before a restart) are
+        # picked up here and dispatched back through the agent loop.
+        await self.scheduler.start(self._dispatch_scheduled_task)
+
+        # Resume durable long-horizon goals left incomplete by a previous run
+        # (Phase 2). The step queue is the database, so this picks up any goal
+        # with open steps and continues it from where it stopped.
+        try:
+            from src.container import get_goal_executor
+
+            self.goal_executor = get_goal_executor()
+            resumed = await self.goal_executor.resume_incomplete()  # type: ignore[attr-defined]
+            if resumed:
+                logger.info("Resumed %d incomplete goal(s) on startup", resumed)
+        except Exception:
+            logger.exception("Failed to resume incomplete goals on startup")
+
+        # Wire EventBus watchers (Phase 3) — event-driven autonomy. Tier-gated
+        # and individually flag-disablable; a no-op when disabled.
+        try:
+            from src.runtime.watchers import start_watchers
+
+            self._watchers = await start_watchers(
+                self.config, self.event_bus, self.amadeus_service
+            )
+        except Exception:
+            logger.exception("Failed to start event watchers")
 
         await self.event_bus.emit("runtime.started", {"version": self.config.ASSISTANT_VERSION})
         logger.info("AmadeusRuntime started successfully.")
 
+    async def _dispatch_scheduled_task(self, prompt: str, session_id: str) -> None:
+        """Execute a due scheduled task through the agent loop (proactive path)."""
+        if not self.amadeus_service:
+            raise RuntimeError("AmadeusRuntime not started")
+        from src.core.domain.context import RequestContext
+        from src.core.domain.models import PermissionProfile
+
+        # Least privilege: background/scheduled work runs at STANDARD, not full
+        # system access. Tasks needing host/dev tools must be designed explicitly.
+        context = RequestContext(
+            request_id="scheduled-task",
+            session_id=session_id or "background",
+            user_id="system",
+            permissions=PermissionProfile.STANDARD,
+        )
+        await self.amadeus_service.handle_background_event(prompt, context=context)
+
     async def stop(self) -> None:
         logger.info("Stopping AmadeusRuntime...")
         await self.event_bus.emit("runtime.stopping", {})
+
+        # Stop Phase 3 watchers.
+        for watcher in self._watchers:
+            try:
+                await watcher.stop()
+            except Exception:
+                logger.exception("Error stopping watcher %s", watcher)
+        self._watchers = []
+
+        await self.scheduler.stop()
 
         if self.watchdog:
             self.watchdog.stop()
