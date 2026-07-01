@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="https://raw.githubusercontent.com/adityatawde9699/Amadeus-AI/master/docs/assets/banner.svg" alt="Amadeus AI — Local-first autonomous AI runtime" width="760">
+</div>
+
 # Amadeus-AI Wiki
 
 > **v6.0.0 — Security & Build Hardening**
