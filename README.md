@@ -1,6 +1,6 @@
 <div align="center">
 
-# Amadeus AI
+<img src="docs/assets/banner.svg" alt="Amadeus AI — Local-first autonomous AI runtime" width="100%">
 
 **Local-first autonomous AI runtime — persistent memory, a tool-permission engine, and LangGraph orchestration, running headless on your own machine.**
 
