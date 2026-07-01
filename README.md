@@ -70,10 +70,10 @@ Full walkthrough → [Quick Start wiki](https://github.com/adityatawde9699/Amade
 - **Local-first inference** — priority-ordered LLM routing with Redis-backed daily quota tracking; `LOCAL_ONLY_MODE` for 100% privacy.
 - **Persistent memory** — every plan, step, and reflection is stored in PostgreSQL for a full behavioral audit; semantic recall via a local vector store.
 - **Omni-Workspace RAG** — hybrid BM25 + dense retrieval so the agent can search your codebase and local files.
-- **Multi-transport** — one `AmadeusService` behind FastAPI (REST + voice WebSocket), Telegram, and a CLI.
+- **Multi-transport** — one `AmadeusService` behind FastAPI (REST), Telegram, and a CLI.
 
 ```text
-LLM routing:  LlamaCpp (local GGUF)  →  Groq (Llama 3.3 70B)  →  Gemini 2.5 Flash
+LLM routing:  LlamaCpp (local GGUF)  →  Groq (Llama 3.3 70B)  →  Gemini 3 Flash
 ```
 
 ## Architecture
@@ -106,7 +106,7 @@ The full documentation lives in the **[project wiki](https://github.com/adityata
 | [Configuration Reference](https://github.com/adityatawde9699/Amadeus-AI/wiki/Configuration-Reference) | Every `.env` variable explained |
 | [Architecture](https://github.com/adityatawde9699/Amadeus-AI/wiki/Architecture) | Layer diagram, request lifecycle, memory tiers |
 | [Tool Registry](https://github.com/adityatawde9699/Amadeus-AI/wiki/Tool-Registry) | All 70+ tools by category |
-| [API Reference](https://github.com/adityatawde9699/Amadeus-AI/wiki/API-Reference) | Chat, messaging, voice, tasks, health endpoints |
+| [API Reference](https://github.com/adityatawde9699/Amadeus-AI/wiki/API-Reference) | Chat, messaging, tasks, health endpoints |
 | [Security Model](https://github.com/adityatawde9699/Amadeus-AI/wiki/Security-Model) | Auth, sandboxing, tool execution safety |
 | [Deployment](https://github.com/adityatawde9699/Amadeus-AI/wiki/Deployment) | Docker Compose, systemd, Railway, Windows service |
 | [Development Guide](https://github.com/adityatawde9699/Amadeus-AI/wiki/Development-Guide) | Adding tools & LLM providers, testing, coding standards |
