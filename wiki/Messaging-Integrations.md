@@ -1,6 +1,6 @@
 # Messaging Integrations
 
-Amadeus supports three inbound/outbound messaging channels: **Telegram**, **WhatsApp**, and **Email**.
+Amadeus supports two messaging channels: **Telegram** and **Email**.
 
 ---
 
@@ -21,7 +21,7 @@ Amadeus uses `python-telegram-bot` v20+ in **long-polling mode** — no webhooks
 
 - Each Telegram message spawns an isolated `AmadeusService` session keyed by `chat_id`.
 - A `TelegramConfirmationCallback` presents **inline keyboard buttons** for HITL approvals.
-- All 60+ tools are available via natural language in the chat.
+- The full tool registry is available via natural language in the chat.
 
 ### Proactive Messaging
 
@@ -31,35 +31,6 @@ Set `MASTER_TELEGRAM_CHAT_ID` to receive scheduled briefings from the APSchedule
 MASTER_TELEGRAM_CHAT_ID=123456789
 PROACTIVE_CHECK_INTERVAL_MINUTES=30
 ```
-
----
-
-## WhatsApp
-
-Uses the **Meta WhatsApp Cloud API**.
-
-### Setup
-
-1. Create a **Meta Business App** and add the WhatsApp product.
-2. Add to `.env`:
-   ```env
-   WHATSAPP_ACCESS_TOKEN=your_access_token
-   WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id
-   WHATSAPP_VERIFY_TOKEN=your_verify_token
-   ```
-3. Register the webhook URL in the Meta dashboard:
-   ```
-   https://your-domain.com/api/v1/webhooks/whatsapp
-   ```
-4. Meta calls the `GET` endpoint with a hub challenge to verify — the adapter handles this automatically.
-
-### Supported Message Types
-
-- Text send/receive
-- Interactive buttons
-- Pre-approved message templates
-
-> **Note:** WhatsApp Cloud API requires a publicly accessible URL (use Railway, a VPS, or a tunnel like `ngrok` for local testing).
 
 ---
 
@@ -91,7 +62,7 @@ Google Account → Security → 2-Step Verification → App passwords
 
 ## Unified Send API
 
-All three channels share the same outbound endpoint:
+Both channels share the same outbound endpoint:
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/messaging/send \
@@ -104,7 +75,7 @@ curl -X POST http://localhost:8000/api/v1/messaging/send \
   }'
 ```
 
-Supported `channel` values: `"telegram"`, `"whatsapp"`, `"email"` (email requires `"subject"` field).
+Supported `channel` values: `"telegram"`, `"email"` (email requires a `"subject"` field).
 
 ---
 

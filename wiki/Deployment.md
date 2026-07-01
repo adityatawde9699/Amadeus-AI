@@ -37,19 +37,22 @@ Set these in the Railway dashboard:
 
 ### Dockerfile Stages
 
-The Dockerfile uses a **3-stage multi-stage build:**
+The Dockerfile uses a **2-stage multi-stage build:**
 
 | Stage | Purpose |
 |---|---|
-| `builder` | Installs Python dependencies |
-| `model_cache` | Pre-bakes `faster-whisper small` model (~460 MB) — eliminates cold-start |
-| `runtime` | Minimal production image, non-root user `amadeus` |
+| `builder` | Installs locked dependencies (`uv sync --frozen --no-dev`) into `/opt/venv` |
+| `runtime` | Minimal ONNX-only production image, non-root user `amadeus` |
+
+> The image ships core deps only (no `torch`/`transformers`/`scikit-learn`); embedding runs via `onnxruntime`. Add the `[ml-fallback]` extra only if you need the heavier stack.
 
 ### Entrypoint
 
 ```bash
-alembic upgrade head && uvicorn src.transports.fastapi_transport:app --host 0.0.0.0 --port $PORT
+uvicorn src.transports.fastapi_transport:app --host 0.0.0.0 --port 8000 --workers 1
 ```
+
+Database migrations are applied on startup by the app itself (`RUN_MIGRATIONS_ON_START=true` for the FastAPI host).
 
 Migrations run automatically before each deploy.
 

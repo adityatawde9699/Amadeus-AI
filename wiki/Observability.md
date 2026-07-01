@@ -44,7 +44,7 @@ GET /api/v1/health/live
 
 Always returns 200 while the process is running. Used by container orchestrators (Kubernetes, Docker Compose) to detect process crashes.
 
-### Readiness Probe (v3.2.1+)
+### Readiness Probe (v6.0.0+)
 
 ```bash
 GET /api/v1/health/ready
@@ -65,7 +65,7 @@ Checks all critical dependencies before accepting traffic. Returns **503** with 
 
 ```bash
 GET /health
-# → {"status": "healthy", "service": "Amadeus", "version": "3.2.1", "environment": "production"}
+# → {"status": "healthy", "service": "Amadeus", "version": "6.0.0", "environment": "production"}
 ```
 
 ---

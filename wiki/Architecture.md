@@ -92,7 +92,7 @@ Incoming Request
        │ exhausted
        ▼
   Gemini    ──(quota < 1,500/day?)──▶  ✅ Response
-  (free tier, Gemini 2.5 Flash)
+  (free tier, Gemini 3 Flash)
        │ exhausted
        ▼
   🚫 LLMRateLimitError → transport returns error message

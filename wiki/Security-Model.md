@@ -13,7 +13,7 @@ Amadeus is designed with defence-in-depth across authentication, network isolati
 | Algorithm | JWT HS256 via `python-jose` |
 | `exp` claim | Required in production; accepted without `exp` in development |
 | Rate limiting | Keyed by `sub` (user ID); falls back to IP for unauthenticated requests (SlowAPI) |
-| Redis fallback | If Redis is unreachable at startup, rate limiter falls back to in-memory storage (v3.2.1+) |
+| Redis fallback | If Redis is unreachable at startup, rate limiter falls back to in-memory storage (v6.0.0+) |
 | RBAC | `admin` / `user` / `guest` roles enforced per route |
 
 ---
@@ -54,7 +54,7 @@ Three strictly rank-ordered profiles, mapped from the caller's role:
 
 ## Messaging Channel Authorization
 
-### SEC-03 — Telegram (v3.2.1+)
+### SEC-03 — Telegram (v6.0.0+)
 
 `TelegramAdapter._handle_message()` enforces a `MASTER_TELEGRAM_CHAT_ID` allowlist. Set comma-separated chat IDs in `.env`:
 
@@ -68,14 +68,14 @@ Messages from any other `chat_id` receive `"Unauthorized."` and are dropped befo
 
 ## Prompt Injection Defence
 
-### SEC-01 (v3.2.1+)
+### SEC-01 (v6.0.0+)
 
 All user task text is sanitised before entering the LangGraph prompt:
 
 1. Wrapped in `<user_task>...</user_task>` XML boundary tags
 2. LangGraph control tokens found in the user input (`Action:`, `Thought:`, `Action Input:`, `Observation:`, `FINISH`) are replaced with `[BLOCKED:TOKEN]` markers
 
-This prevents users from injecting LLM directives via Telegram, WhatsApp, or the HTTP API to make the agent execute arbitrary tools.
+This prevents users from injecting LLM directives via Telegram or the HTTP API to make the agent execute arbitrary tools.
 
 ---
 
@@ -84,8 +84,8 @@ This prevents users from injecting LLM directives via Telegram, WhatsApp, or the
 - All API keys loaded from environment variables — **never hardcoded**.
 - `.env.prod`, `.env.staging`, `.env.local` are in `.gitignore`.
 - **GitGuardian pre-commit hook** scans for leaked secrets before every commit.
-- **SEC-06 (v3.2.1+)**: `SECRET_KEY` auto-generates a cryptographically-secure 32-byte ephemeral key at startup if not set. A `WARNING` is logged urging operators to set a persistent key.
-- **IPC Token (v3.2.1+)**: `data/ipc_secret.token` (`chmod 600`). Corruption (non-UTF-8, empty, OS error) is caught specifically; a `CRITICAL` log entry names the file path and warns that connected IPC clients will need to re-authenticate before regenerating.
+- **SEC-06 (v6.0.0+)**: `SECRET_KEY` auto-generates a cryptographically-secure 32-byte ephemeral key at startup if not set. A `WARNING` is logged urging operators to set a persistent key.
+- **IPC Token (v6.0.0+)**: `data/ipc_secret.token` (`chmod 600`). Corruption (non-UTF-8, empty, OS error) is caught specifically; a `CRITICAL` log entry names the file path and warns that connected IPC clients will need to re-authenticate before regenerating.
 
 ---
 
@@ -100,7 +100,7 @@ terminate_process · terminate_program · delete_file · execute_python_script
 fs_write_file · send_outlook_email · send_email · send_slack_message
 ```
 
-### Filesystem Sandboxing (v3.2.1+)
+### Filesystem Sandboxing (v6.0.0+)
 
 `copy_file`, `move_file`, and `create_folder` all call `_assert_in_allowed_dirs()` which resolves the full canonical path and validates it against `SEARCH_ALLOWED_DIRS`:
 
