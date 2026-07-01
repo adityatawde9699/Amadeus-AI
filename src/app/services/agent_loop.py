@@ -23,7 +23,6 @@ import json
 import logging
 import re
 import uuid
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Annotated, Any, Literal, TypedDict
 
@@ -31,18 +30,21 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.types import Command, interrupt
 
-from src.app.services.tool_registry import ToolRegistry
 from src.core.domain.agent_profiles import (
     AGENT_PROFILES,
     AgentProfile,
 )
-from src.core.domain.context import RequestContext
 from src.core.domain.models import PermissionProfile
-from src.infra.tools.base import ToolExecutor
 
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from langgraph.graph.state import CompiledStateGraph
+
+    from src.app.services.tool_registry import ToolRegistry
+    from src.core.domain.context import RequestContext
+    from src.infra.tools.base import ToolExecutor
 
 logger = logging.getLogger(__name__)
 

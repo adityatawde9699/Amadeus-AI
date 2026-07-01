@@ -15,10 +15,12 @@ Security constraints:
 - Pinned image; container force-killed on timeout and auto-removed
 """
 
+import contextlib
 import logging
-import os
 import tempfile
+from pathlib import Path
 from typing import Any
+
 
 # NOTE: ``docker`` is an optional dependency (the ``[sandbox-docker]`` extra and
 # ENABLE_DOCKER_SANDBOX flag). It is imported lazily inside the methods that use
@@ -84,9 +86,9 @@ class DockerSandboxExecutor:
         timeout = timeout or self.DEFAULT_TIMEOUT
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            script_path = os.path.join(temp_dir, "script.py")
-            with open(script_path, "w", encoding="utf-8") as f:
-                f.write(code)
+            script_path = Path(temp_dir) / "script.py"
+            with script_path.open("w", encoding="utf-8") as file:
+                file.write(code)
 
             container = None
             try:
@@ -134,10 +136,8 @@ class DockerSandboxExecutor:
                 except Exception as wait_exc:
                     # Timeout or wait failure → force kill.
                     logger.warning("Sandbox timed out / wait failed: %s — killing container", wait_exc)
-                    try:
+                    with contextlib.suppress(Exception):
                         container.kill()
-                    except Exception:
-                        pass
                     return {
                         "status": "error",
                         "output": f"Execution timed out after {timeout} seconds.",
@@ -159,7 +159,5 @@ class DockerSandboxExecutor:
             finally:
                 # Always remove the (detached) container.
                 if container is not None:
-                    try:
+                    with contextlib.suppress(Exception):
                         container.remove(force=True)
-                    except Exception:
-                        pass

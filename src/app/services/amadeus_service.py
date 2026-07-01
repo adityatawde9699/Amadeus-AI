@@ -21,7 +21,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
 from opentelemetry import trace
@@ -34,14 +33,16 @@ from src.app.services.semantic_router import UnifiedSemanticRouter
 from src.app.services.tool_dispatcher import ToolDispatcher
 from src.app.services.tool_registry import ToolRegistry
 from src.core.config import Settings, get_settings
-from src.core.domain.context import RequestContext
-from src.core.interfaces.repositories import IGoalRepository
 from src.infra.queue.manager import QueueManager
 from src.infra.tools.base import ToolExecutor
 from src.infra.turbovec_memory import TurbovecMemoryService
 
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
+    from src.core.domain.context import RequestContext
+    from src.core.interfaces.repositories import IGoalRepository
     from src.infra.cache.cache_service import CacheService
     from src.infra.llm.router import LLMRouter
 
@@ -265,7 +266,7 @@ class AmadeusService:
 
     async def _predict_intent(self, query: str) -> tuple[str, str | None]:
         """Return (intent_type, tool_name_or_None) using the semantic router.
-        
+
         Override checks fire FIRST so keyword shortcuts (factual queries, sandbox
         requests) always win regardless of what the semantic router predicted.
         This prevents the router returning 'calculate' for 'Who is X?' style queries.

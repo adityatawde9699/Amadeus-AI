@@ -125,7 +125,7 @@ class ToolRegistry:
             List of tools in the category
         """
         cat_str = category.value if isinstance(category, ToolCategory) else str(category)
-        return [t for t in self._tools.values() if t.category == cat_str or t.category.value == cat_str]
+        return [t for t in self._tools.values() if cat_str in (t.category, t.category.value)]
 
     def get_by_names(self, names: list[str]) -> list[Tool]:
         """
@@ -298,7 +298,7 @@ class ToolRegistry:
                             self.register(obj._tool_metadata)
                             count += 1
                         # Support for build_* or get_* functions that return list of Tools
-                        elif (name.startswith("build_") or name.startswith("get_")) and callable(obj):
+                        elif (name.startswith(("build_", "get_"))) and callable(obj):
                             try:
                                 # Only call if it doesn't require arguments or has defaults
                                 sig = inspect.signature(obj)
@@ -324,12 +324,12 @@ class ToolRegistry:
     def discover_plugins(self, plugins_dir: str | Path) -> int:
         """
         Discover and register tools from a plugins directory.
-        
+
         Each .py file or subdirectory with __init__.py in the directory is treated as a plugin.
-        
+
         Args:
             plugins_dir: Path to the plugins directory
-            
+
         Returns:
             Number of tools discovered
         """
@@ -526,7 +526,7 @@ class ToolRegistry:
                     return "\n".join([c.text for c in result.content if hasattr(c, "text")])
                 return str(result)
             except Exception as e:
-                logger.error("Error calling MCP tool %s.%s: %s", server_name, mcp_tool.name, e)
+                logger.exception("Error calling MCP tool %s.%s: %s", server_name, mcp_tool.name, e)
                 return f"Error: {e}"
 
         # Standardize parameter schema (MCP uses 'inputSchema' or 'input_schema')

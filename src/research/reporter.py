@@ -14,9 +14,13 @@ Outputs:
 from __future__ import annotations
 
 import json
+from typing import TYPE_CHECKING
 
-from src.research.models import ResearchManifest, ResearchReport
 from src.research.validator import SourceValidator
+
+
+if TYPE_CHECKING:
+    from src.research.models import ResearchManifest, ResearchReport
 
 
 class ReportBuilder:

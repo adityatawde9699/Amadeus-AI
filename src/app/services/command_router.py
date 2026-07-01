@@ -20,9 +20,13 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from src.core.domain.notifications import TaskNotification
-from src.research.orchestrator import ResearchOrchestrator
+
+
+if TYPE_CHECKING:
+    from src.research.orchestrator import ResearchOrchestrator
 
 
 logger = logging.getLogger(__name__)

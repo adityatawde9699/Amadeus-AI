@@ -1,5 +1,5 @@
 """
-Tests for the Phase 2–4 agentic upgrades:
+Tests for the Phase 2-4 agentic upgrades:
 
   * Phase 2 — durable goal/step DAG + resume (GoalStepRepository, GoalExecutor)
   * Phase 3 — event-driven autonomy (ThresholdWatcher, FileWatcher, dispatcher)
@@ -213,7 +213,7 @@ async def test_threshold_watcher_edge_triggered(monkeypatch):
 
     bus = EventBus()
     received: list[dict] = []
-    bus.on(EVENT_THRESHOLD, lambda p: received.append(p))
+    bus.on(EVENT_THRESHOLD, received.append)
 
     watcher = ThresholdWatcher(bus, get_settings())
     alerts = ["CPU at 99% (critical)"]
@@ -239,7 +239,7 @@ async def test_file_watcher_detects_new_file(tmp_path):
 
     bus = EventBus()
     received: list[dict] = []
-    bus.on(EVENT_FILE_CHANGED, lambda p: received.append(p))
+    bus.on(EVENT_FILE_CHANGED, received.append)
 
     watcher = FileWatcher(bus, [str(tmp_path)], interval_seconds=5)
     await watcher._on_start()  # baseline — silent

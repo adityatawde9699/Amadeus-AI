@@ -216,7 +216,7 @@ class QdrantMemoryService:
             load_path, local_dir = mm.resolve_embed_model()
         except Exception as exc:
             logger.warning("ModelManager failed: %s — falling back to HF id", exc)
-            load_path, local_dir = model_name, None
+            load_path, _local_dir = model_name, None
 
         # --- Try local sentence-transformers ---
         try:
@@ -707,14 +707,14 @@ class QdrantMemoryService:
 
             while True:
                 # Paginate in batches of 200 to avoid OOM on large collections
-                scroll_kwargs: dict = dict(
-                    collection_name=self._settings.MEMORY_COLLECTION_NAME,
-                    scroll_filter=Filter(
+                scroll_kwargs: dict = {
+                    "collection_name": self._settings.MEMORY_COLLECTION_NAME,
+                    "scroll_filter": Filter(
                         must=[FieldCondition(key="session_id", match=MatchValue(value=session_id))]
                     ),
-                    limit=200,
-                    with_payload=True,
-                )
+                    "limit": 200,
+                    "with_payload": True,
+                }
                 if next_offset is not None:
                     scroll_kwargs["offset"] = next_offset
 

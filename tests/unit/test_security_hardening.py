@@ -92,7 +92,6 @@ class TestTelegramAuthorizationGuard:
         adapter = TelegramTransport.__new__(TelegramTransport)
         adapter._active_tasks = set()
         adapter.runtime = None
-        tasks_created: list = []
 
         async def fake_send(chat_id: int, text: str) -> None:
             pass
@@ -197,7 +196,7 @@ class TestValidateArgsMissingParams:
     @pytest.mark.asyncio
     async def test_missing_required_param_returns_failure(self):
         """execute() must return success=False when a required param is absent."""
-        from src.infra.tools.base import Tool, ToolExecutor, ToolCategory
+        from src.infra.tools.base import Tool, ToolCategory, ToolExecutor
 
         def needs_query(query: str) -> str:
             return f"result for {query}"

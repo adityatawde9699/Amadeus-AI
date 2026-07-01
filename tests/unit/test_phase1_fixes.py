@@ -118,9 +118,8 @@ class TestConfirmationGate:
     @pytest.mark.asyncio
     async def test_no_callback_denies_by_default(self):
         """No callback configured + requires_confirmation=True → denied."""
-        from src.infra.tools.base import ToolExecutor
-
         from src.core.domain.models import PermissionProfile
+        from src.infra.tools.base import ToolExecutor
 
         executor = ToolExecutor(confirmation_callback=None)
         tool = _make_tool(requires_confirmation=True)
@@ -193,7 +192,7 @@ class TestAPIConfirmationCallback:
 
         async def _approve_after_tick():
             await asyncio.sleep(0.05)
-            callback.approve(list(callback._pending.keys())[0], True)
+            callback.approve(next(iter(callback._pending.keys())), True)
 
         asyncio.create_task(_approve_after_tick())
         result = await callback.request_approval("test_tool", {}, "req-1")
@@ -208,7 +207,7 @@ class TestAPIConfirmationCallback:
 
         async def _deny_after_tick():
             await asyncio.sleep(0.05)
-            callback.approve(list(callback._pending.keys())[0], False)
+            callback.approve(next(iter(callback._pending.keys())), False)
 
         asyncio.create_task(_deny_after_tick())
         result = await callback.request_approval("test_tool", {}, "req-2")

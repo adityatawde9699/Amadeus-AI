@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING
 
 
 if TYPE_CHECKING:
-    from ..core.config import Settings
+    from src.core.config import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -135,12 +135,12 @@ class ModelManager:
             logger.info("Embed model downloaded to: %s", local_dir)
             return local_dir
         except ImportError:
-            logger.error(
+            logger.exception(
                 "huggingface_hub not installed — cannot download embed model. "
                 "Run: pip install huggingface_hub"
             )
         except Exception as exc:
-            logger.error("Failed to download embed model '%s': %s", model_name, exc)
+            logger.exception("Failed to download embed model '%s': %s", model_name, exc)
         return None
 
     # Keep old method as internal compat alias
@@ -204,17 +204,16 @@ class ModelManager:
             "GGUF model '%s' not found — downloading from '%s' …",
             settings.SLM_MODEL_FILENAME, settings.SLM_MODEL_REPO_ID,
         )
-        downloaded = self._download_gguf(
+        return self._download_gguf(
             repo_id=settings.SLM_MODEL_REPO_ID,
             filename=settings.SLM_MODEL_FILENAME,
             dest_dir=self.model_dir,
         )
-        return downloaded
 
     def _download_gguf(self, repo_id: str, filename: str, dest_dir: Path) -> Path | None:
         """Download a single GGUF file from a HuggingFace repo."""
         dest_dir.mkdir(parents=True, exist_ok=True)
-        target = dest_dir / filename
+        dest_dir / filename
 
         try:
             from huggingface_hub import hf_hub_download
@@ -233,12 +232,12 @@ class ModelManager:
             return real_path
 
         except ImportError:
-            logger.error(
+            logger.exception(
                 "huggingface_hub not installed — cannot download GGUF model. "
                 "Run: pip install huggingface_hub"
             )
         except Exception as exc:
-            logger.error(
+            logger.exception(
                 "Failed to download GGUF '%s' from '%s': %s", filename, repo_id, exc
             )
         return None

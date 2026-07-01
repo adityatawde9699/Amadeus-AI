@@ -16,6 +16,7 @@ one list per category. No separate dataset file is needed.
 
 from __future__ import annotations
 
+import itertools
 import logging
 from pathlib import Path
 from typing import Any
@@ -294,7 +295,7 @@ class CategoryClassifier:
             from sklearn.feature_extraction.text import TfidfVectorizer
             from sklearn.svm import LinearSVC
         except ImportError:
-            logger.error(
+            logger.exception(
                 "CategoryClassifier requires scikit-learn for training. "
                 "Install with: pip install scikit-learn"
             )
@@ -412,7 +413,7 @@ class CategoryClassifier:
 
         tokens = self._token_re.findall(query.lower())
         # unigrams + bigrams, mirroring ngram_range=(1, 2)
-        grams = tokens + [" ".join(pair) for pair in zip(tokens, tokens[1:], strict=False)]
+        grams = tokens + [" ".join(pair) for pair in itertools.pairwise(tokens)]
 
         counts: dict[int, int] = {}
         for gram in grams:
@@ -456,7 +457,7 @@ class CategoryClassifier:
             best_idx = int(np.argmax(scores))
             return self._classes[best_idx], float(scores[best_idx])
         except Exception as exc:
-            logger.error("CategoryClassifier: prediction error: %s", exc)
+            logger.exception("CategoryClassifier: prediction error: %s", exc)
             return "unknown", 0.0
 
     def predict_top2(self, query: str) -> list[str]:
@@ -476,7 +477,7 @@ class CategoryClassifier:
             top2_idx = np.argsort(scores)[::-1][:2]
             return [self._classes[i] for i in top2_idx]
         except Exception as exc:
-            logger.error("CategoryClassifier: top2 prediction error: %s", exc)
+            logger.exception("CategoryClassifier: top2 prediction error: %s", exc)
             return []
 
     @property

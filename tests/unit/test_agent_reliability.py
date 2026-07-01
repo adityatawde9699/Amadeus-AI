@@ -13,6 +13,7 @@ Tests every agent-loop and reliability fix from the audit:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -52,10 +53,8 @@ class TestAutonomousLoopTaskTracking:
         assert hasattr(loop, "_task"), "_task attribute must exist after start()"
         assert loop._task is not None, "_task must not be None"
         loop._task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await loop._task
-        except asyncio.CancelledError:
-            pass
 
     @pytest.mark.asyncio
     async def test_done_callback_registered(self):
@@ -64,12 +63,11 @@ class TestAutonomousLoopTaskTracking:
 
         loop = AutonomousObservationLoop(interval_minutes=999, session_ids=["s1"])
         callbacks_registered: list = []
-        original_add_done_callback = asyncio.Task.add_done_callback
 
         with patch("asyncio.create_task") as mock_create_task:
             mock_task = MagicMock(spec=asyncio.Task)
             mock_create_task.return_value = mock_task
-            mock_task.add_done_callback.side_effect = lambda cb: callbacks_registered.append(cb)
+            mock_task.add_done_callback.side_effect = callbacks_registered.append
             await loop.start()
 
         assert any(

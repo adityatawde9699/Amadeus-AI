@@ -6,6 +6,7 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from src.core.domain.context import RequestContext
 from src.runtime.cognitive.models import (
@@ -18,7 +19,10 @@ from src.runtime.cognitive.models import (
     Reflection,
     StepStatus,
 )
-from src.runtime.events import EventBus
+
+
+if TYPE_CHECKING:
+    from src.runtime.events import EventBus
 
 
 logger = logging.getLogger(__name__)

@@ -18,11 +18,15 @@ control still feels like a conversation.
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
-from src.core.config import Settings
 from src.core.domain.artifacts import Artifact, ArtifactType
 from src.core.domain.notifications import NotificationKind, TaskNotification
-from src.infra.workspace.storage_service import StorageService
+
+
+if TYPE_CHECKING:
+    from src.core.config import Settings
+    from src.infra.workspace.storage_service import StorageService
 
 
 logger = logging.getLogger(__name__)

@@ -21,6 +21,7 @@ Design choices for the 4GB floor:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import time
 from abc import ABC, abstractmethod
@@ -63,10 +64,8 @@ class Watcher(ABC):
         self._stopped.set()
         if self._task is not None:
             self._task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-            except asyncio.CancelledError:
-                pass
             self._task = None
         logger.info("Watcher '%s' stopped", self.name)
 
@@ -78,10 +77,8 @@ class Watcher(ABC):
                 raise
             except Exception:
                 logger.exception("Watcher '%s' tick failed", self.name)
-            try:
+            with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(self._stopped.wait(), timeout=self._interval)
-            except TimeoutError:
-                pass
 
     async def _on_start(self) -> None:
         """Optional one-time setup (e.g. establish a baseline)."""

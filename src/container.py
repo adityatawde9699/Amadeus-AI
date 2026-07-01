@@ -8,20 +8,26 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import redis.asyncio
 from dependency_injector import containers, providers
 
 from src.app.services.amadeus_service import AmadeusService
 from src.app.services.messaging_service import MessagingService
 from src.app.services.tool_registry import ToolRegistry
 from src.core.config import get_settings
-from src.infra.cache.cache_service import CacheService
-from src.infra.llm.router import LLMRouter
 from src.infra.messaging.email_adapter import EmailAdapter
 from src.infra.queue.manager import QueueManager
-from src.infra.search.search_router import SearchRouter
-from src.infra.tools.confirmation import ConfirmationCallback
+
+
+if TYPE_CHECKING:
+    import redis.asyncio
+
+    from src.core.interfaces.repositories import IGoalRepository, ITaskRepository
+    from src.infra.cache.cache_service import CacheService
+    from src.infra.llm.router import LLMRouter
+    from src.infra.search.search_router import SearchRouter
+    from src.infra.tools.confirmation import ConfirmationCallback
 
 
 logger = logging.getLogger(__name__)
@@ -244,7 +250,6 @@ def _build_tool_registry() -> ToolRegistry:
             # Use the global _build_goal_repo_factory and cast them to appease typecheckers
             from typing import cast
 
-            from src.core.interfaces.repositories import IGoalRepository, ITaskRepository
             goal_repo_proxy = cast("IGoalRepository", _build_goal_repo_factory())
             task_repo_proxy = cast("ITaskRepository", task_repo)
 
@@ -332,6 +337,7 @@ def _build_llm_router() -> LLMRouter:
     if settings.GROQ_API_KEY:
         try:
             import groq as _groq_pkg  # noqa: F401 — availability check
+
             from src.infra.llm.groq_adapter import GroqAdapter
 
             groq_adapter = GroqAdapter(api_key=settings.GROQ_API_KEY)
@@ -642,7 +648,6 @@ def get_goal_executor() -> object:
     from typing import cast
 
     from src.app.services.goal_executor import GoalExecutor
-    from src.core.interfaces.repositories import IGoalRepository
 
     async def _run_subtask(subtask: str, thread_id: str, expert: str | None) -> str:
         from src.core.domain.context import RequestContext

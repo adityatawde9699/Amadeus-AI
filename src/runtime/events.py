@@ -36,7 +36,7 @@ class EventBus:
                 else:
                     h(p)
             except Exception as e:
-                logger.error(f"Error in event handler for {event}: {e}")
+                logger.exception(f"Error in event handler for {event}: {e}")
 
         # Fire and forget all handlers concurrently
         tasks = [_run_handler(h, payload) for h in handlers]

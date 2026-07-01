@@ -177,7 +177,7 @@ async def test_forgot_password_does_not_log_token(monkeypatch, caplog):
     user = type("U", (), {"id": 7})()
 
     with caplog.at_level(logging.DEBUG):
-        await manager.on_after_forgot_password(user, token="SUPERSECRET-TOKEN")  # noqa: S106
+        await manager.on_after_forgot_password(user, token="SUPERSECRET-TOKEN")
 
     assert "SUPERSECRET-TOKEN" not in caplog.text
 

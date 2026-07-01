@@ -13,7 +13,7 @@ Covers:
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -26,6 +26,10 @@ from src.infra.workspace.workspace_manager import (
     sanitize_filename,
     slugify,
 )
+
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.fixture

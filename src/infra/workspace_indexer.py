@@ -17,7 +17,7 @@ AUTH_UUID_7392, DockerCompose port 8080, or a specific stack trace token
 even when the embedding vector has no idea what those literals mean.
 
 Index layout (data/workspace_index/):
-    embeddings.npz   — float32 matrix (N_chunks × 768)
+    embeddings.npz   - float32 matrix (N_chunks x 768)
     manifest.json    — chunk metadata: file path, line, mtime, snippet, hash
     chunks.json      — full chunk texts (used to rebuild BM25 in-memory on load)
 
@@ -29,9 +29,9 @@ Trade-offs:
       search misses.
     + BM25 index is pure RAM; no disk writes needed (cheap to rebuild from
       chunks.json in ~1s for most workspaces).
-    - chunks.json adds storage: ~1 char per char indexed. A 10 MB codebase
-      → ~10 MB chunks.json. Negligible for personal workspaces.
-    - RAM cost: ~1 byte/char of tokenised corpus. Typically 20–80 MB.
+        - chunks.json adds storage: ~1 char per char indexed. A 10 MB codebase
+            -> ~10 MB chunks.json. Negligible for personal workspaces.
+        - RAM cost: ~1 byte/char of tokenised corpus. Typically 20-80 MB.
     - rank_bm25 must be installed (pip install rank-bm25). Graceful fallback
       to pure semantic search if missing.
 
@@ -187,8 +187,8 @@ class WorkspaceIndexer:
         self._npz_path = self._index_dir / "embeddings.npz"
         self._manifest_path = self._index_dir / "manifest.json"
         self._chunks_path = self._index_dir / "chunks.json"
-        # Cap: keeps embedding matrix ≤ ~46 MB (15k × 768 × 4 bytes)
-        # and BM25 corpus ≤ ~20 MB on 4 GB RAM systems.
+        # Cap: keeps embedding matrix <= ~46 MB (15k x 768 x 4 bytes)
+        # and BM25 corpus <= ~20 MB on 4 GB RAM systems.
         # Set to 0 to disable the cap.
         self._max_chunks = max_chunks
 
@@ -334,7 +334,7 @@ class WorkspaceIndexer:
                 for idx, emb in zip(to_embed_indices, new_embeddings, strict=False):
                     rows[idx] = emb
             except Exception as exc:
-                logger.error("WorkspaceIndexer: embedding batch failed: %s", exc)
+                logger.exception("WorkspaceIndexer: embedding batch failed: %s", exc)
                 return
         else:
             logger.info("WorkspaceIndexer: all chunks up-to-date — nothing to re-embed.")
@@ -416,7 +416,7 @@ class WorkspaceIndexer:
             return True
 
         except Exception as exc:
-            logger.error("WorkspaceIndexer: failed to load index: %s", exc)
+            logger.exception("WorkspaceIndexer: failed to load index: %s", exc)
             return False
 
     def search(self, query: str, top_k: int = 5) -> list[SearchResult]:
@@ -515,7 +515,7 @@ class WorkspaceIndexer:
             return results
 
         except Exception as exc:
-            logger.error("WorkspaceIndexer: search error: %s", exc)
+            logger.exception("WorkspaceIndexer: search error: %s", exc)
             return []
 
     # ------------------------------------------------------------------
@@ -572,12 +572,12 @@ class WorkspaceIndexer:
             self._embed_model = SentenceTransformer(_EMBED_MODEL_NAME)
             logger.info("WorkspaceIndexer: embedding model loaded (%s).", _EMBED_MODEL_NAME)
         except ImportError:
-            logger.error(
+            logger.exception(
                 "WorkspaceIndexer: sentence-transformers not installed. "
                 "Run: pip install sentence-transformers"
             )
         except Exception as exc:
-            logger.error("WorkspaceIndexer: failed to load embedding model: %s", exc)
+            logger.exception("WorkspaceIndexer: failed to load embedding model: %s", exc)
 
     def _walk(self) -> list[Path]:
         """Return file paths to index, pruning noisy directories."""

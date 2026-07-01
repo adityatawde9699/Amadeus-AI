@@ -20,6 +20,7 @@ from bs4 import BeautifulSoup
 
 from src.core.config import get_settings
 
+
 # NOTE: ``imap_tools`` and ``aiosmtplib`` are optional (the ``[email]`` extra).
 # They are imported lazily inside the read/send methods so this module — and the
 # default install — import cleanly when the email extra is not present.

@@ -32,12 +32,10 @@ class DependencyWatchdog:
             return False
 
     async def check_qdrant(self) -> bool:
-        if not self.settings.MEMORY_ENABLED:
-            return False
         # Qdrant client check (simplified HTTP check if possible or just use client)
         # Since we use local path in some cases, if it's local it's always "up", but for a network Qdrant, we'd ping.
         # Assuming local path based on persistence for now.
-        return True
+        return self.settings.MEMORY_ENABLED
 
     async def check_llm_providers(self) -> dict[str, bool]:
         # Quick health checks for LLMs.
@@ -73,7 +71,7 @@ class DependencyWatchdog:
                 self._running = False
                 break
             except Exception as e:
-                logger.error("Watchdog error: %s", e)
+                logger.exception("Watchdog error: %s", e)
 
             await asyncio.sleep(interval_seconds)
 

@@ -13,8 +13,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
-from src.core.domain.artifacts import ArtifactRef
+
+if TYPE_CHECKING:
+    from src.core.domain.artifacts import ArtifactRef
 
 
 class NotificationKind(StrEnum):

@@ -10,9 +10,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from src.core.domain.artifacts import ArtifactRef
+
+if TYPE_CHECKING:
+    from src.core.domain.artifacts import ArtifactRef
 
 
 # ---------------------------------------------------------------------------

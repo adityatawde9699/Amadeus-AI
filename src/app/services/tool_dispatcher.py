@@ -16,14 +16,13 @@ from typing import TYPE_CHECKING, ClassVar
 
 from opentelemetry import trace
 
-from src.core.domain.context import RequestContext
-from src.runtime.events import EventBus
-
 
 if TYPE_CHECKING:
     from src.app.services.tool_registry import ToolRegistry
+    from src.core.domain.context import RequestContext
     from src.infra.cache.cache_service import CacheService
     from src.infra.tools.base import ToolExecutor
+    from src.runtime.events import EventBus
 
 logger = logging.getLogger(__name__)
 

@@ -22,13 +22,17 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING
 
-from src.core.interfaces.repositories import IGoalRepository
 from src.infra.persistence.database import get_session
 from src.infra.persistence.repositories.goal_step_repository import (
     GoalStep,
     GoalStepRepository,
 )
+
+
+if TYPE_CHECKING:
+    from src.core.interfaces.repositories import IGoalRepository
 
 
 logger = logging.getLogger(__name__)

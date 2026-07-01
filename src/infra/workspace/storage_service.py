@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from src.core.domain.artifacts import (
     Artifact,
@@ -28,8 +28,13 @@ from src.core.domain.artifacts import (
     ArtifactRef,
     ArtifactType,
 )
-from src.infra.workspace.artifact_registry import ArtifactRegistry
-from src.infra.workspace.workspace_manager import WorkspaceManager
+
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from src.infra.workspace.artifact_registry import ArtifactRegistry
+    from src.infra.workspace.workspace_manager import WorkspaceManager
 
 
 logger = logging.getLogger(__name__)

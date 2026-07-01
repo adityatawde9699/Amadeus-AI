@@ -96,7 +96,7 @@ class TestLLMRouterFallback:
         # Saturate groq's counter
         router._usage["groq"] = router.DAILY_LIMITS["groq"]
 
-        text, provider = await router.generate("test")
+        _text, provider = await router.generate("test")
         assert provider == "gemini"
         groq.generate_response.assert_not_called()
 
@@ -136,7 +136,7 @@ class TestLLMRouterRedisQuota:
         mock_redis.increment = AsyncMock()
         router._redis = mock_redis
 
-        text, provider = await router.generate("test")
+        _text, provider = await router.generate("test")
         # Should skip groq (Redis says at limit) and fall to gemini
         assert provider == "gemini"
         groq.generate_response.assert_not_called()

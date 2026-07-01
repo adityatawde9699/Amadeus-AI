@@ -9,11 +9,16 @@ contained exactly like every other artifact in AMASPACE.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from src.core.domain.artifacts import Artifact, ArtifactRef, ArtifactType
-from src.infra.workspace.storage_service import StorageService
 from src.infra.workspace.workspace_manager import slugify
-from src.research.models import ResearchManifest, ResearchReport
 from src.research.reporter import ReportBuilder
+
+
+if TYPE_CHECKING:
+    from src.infra.workspace.storage_service import StorageService
+    from src.research.models import ResearchManifest, ResearchReport
 
 
 class ResearchStorage:

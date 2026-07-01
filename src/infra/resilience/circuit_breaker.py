@@ -22,7 +22,7 @@ class CircuitBreakerOpenException(Exception):
 
 class CircuitBreaker:
     """
-    Prevents cascading failures by stopping execution if an external dependency 
+    Prevents cascading failures by stopping execution if an external dependency
     is repeatedly failing.
     """
     def __init__(
@@ -70,9 +70,9 @@ class CircuitBreaker:
 
         try:
             result = await func(*args, **kwargs)
-        except Exception as e:
+        except Exception:
             await self._record_failure()
-            raise e
+            raise
 
         # Success - reset
         if self.state != CircuitState.CLOSED:
