@@ -19,8 +19,11 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+from typing import TYPE_CHECKING
 
-from src.research.models import Source
+
+if TYPE_CHECKING:
+    from src.research.models import Source
 
 
 logger = logging.getLogger(__name__)

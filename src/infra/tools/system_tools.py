@@ -104,10 +104,7 @@ def open_program(
 
     # Direct $PATH lookup — fastest and most precise route
     direct = shutil.which(lower)
-    if direct:
-        app_exec = direct
-    else:
-        app_exec = app_registry.get_executable(target_app, score_cutoff=75)
+    app_exec = direct or app_registry.get_executable(target_app, score_cutoff=75)
     if not app_exec:
         return (
             f"Cannot find '{target_app}' on this system. "
@@ -474,7 +471,7 @@ def create_folder(folder_name: str | None = None, name: str | None = None, **kwa
 
 def get_system_tools() -> list[Tool]:
     """Get all system tools for manual registration."""
-    tools = [
+    return [
         open_program._tool_metadata,  # type: ignore[attr-defined]
         scan_system_applications._tool_metadata,  # type: ignore[attr-defined]
         terminate_program._tool_metadata,  # type: ignore[attr-defined]
@@ -484,4 +481,3 @@ def get_system_tools() -> list[Tool]:
         delete_file._tool_metadata,  # type: ignore[attr-defined]
         create_folder._tool_metadata,  # type: ignore[attr-defined]
     ]
-    return tools

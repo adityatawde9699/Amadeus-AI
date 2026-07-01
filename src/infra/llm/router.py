@@ -28,11 +28,11 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from opentelemetry import trace
 
 from src.core.exceptions import LLMRateLimitError
-from src.core.interfaces.services import ILLMService
 from src.runtime.events import EventBus
 
 
 if TYPE_CHECKING:
+    from src.core.interfaces.services import ILLMService
     from src.infra.llm.gemini_adapter import GeminiAdapter
     from src.infra.llm.groq_adapter import GroqAdapter
     from src.infra.llm.llama_cpp_adapter import LlamaCppAdapter
@@ -352,7 +352,7 @@ class LLMRouter:
                     except Exception as e:
                         span.record_exception(e)
                         success = False
-                        raise e
+                        raise
                     finally:
                         latency_ms = (time.time() - t_start) * 1000
                         span.set_attribute("provider.latency_ms", latency_ms)

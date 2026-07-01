@@ -15,6 +15,7 @@ memory-constrained machines.
 import asyncio
 import logging
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from src.core.domain.models import ToolDefinition, ToolExecutionResult
@@ -242,9 +243,7 @@ class LlamaCppAdapter(ILLMService):
 
     async def is_available(self) -> bool:
         """Check if model path exists on disk."""
-        import os
-
-        if not os.path.exists(self.model_path):
+        if not Path(self.model_path).exists():
             logger.warning("Llama model path not found: %s", self.model_path)
             return False
         return True
@@ -392,7 +391,7 @@ class LlamaCppAdapter(ILLMService):
                 # Fatal decode failure — mark adapter as failed to prevent
                 # repeated crashes on subsequent requests until server restarts.
                 self._failed = True
-                logger.error(
+                logger.exception(
                     "LlamaCpp FATAL decode error — marking adapter as failed. "
                     "Subsequent requests will skip local model. Error: %s",
                     err_str,
@@ -464,7 +463,7 @@ class LlamaCppAdapter(ILLMService):
                     if not in_think_block:
                         loop.call_soon_threadsafe(queue.put_nowait, token)
             except Exception as e:
-                logger.error("Llama stream error: %s", e)
+                logger.exception("Llama stream error: %s", e)
                 loop.call_soon_threadsafe(queue.put_nowait, f"\n⚠️ Stream interrupted: {e}")
             finally:
                 loop.call_soon_threadsafe(queue.put_nowait, None)  # EOF marker

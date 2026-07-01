@@ -12,7 +12,7 @@ Usage:
     print(settings.APP_NAME)
 """
 
-import os
+import contextlib
 import secrets
 import sys
 from functools import lru_cache
@@ -31,7 +31,7 @@ def get_project_root() -> Path:
     """Resolve project root based on whether it is running as a package or executable."""
     if getattr(sys, "frozen", False):
         # Running as compiled PyInstaller executable
-        return Path(os.path.dirname(sys.executable))
+        return Path(sys.executable).parent
     # Running as standard Python script
     return Path(__file__).resolve().parent.parent.parent
 
@@ -76,12 +76,10 @@ def load_or_create_ipc_secret() -> str:
     token = secrets.token_hex(32)
     try:
         token_path.write_text(token, encoding="utf-8")
-        try:
-            os.chmod(token_path, 0o600)
-        except OSError:
-            pass
+        with contextlib.suppress(OSError):
+            token_path.chmod(0o600)
     except OSError as exc:
-        _ipc_logger.error("Could not persist IPC secret token to %s: %s", token_path, exc)
+        _ipc_logger.exception("Could not persist IPC secret token to %s: %s", token_path, exc)
     return token
 
 

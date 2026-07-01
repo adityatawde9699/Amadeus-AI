@@ -75,7 +75,7 @@ except ValueError:
 try:
     amadeus_cache_hit_rate: Gauge = Gauge(
         "amadeus_cache_hit_rate",
-        "Current LLM/tool result cache hit rate as a percentage (0–100)",
+        "Current LLM/tool result cache hit rate as a percentage (0-100)",
     )
 except ValueError:
     from prometheus_client import REGISTRY
@@ -133,4 +133,3 @@ except ValueError:
     amadeus_tool_executions_total = REGISTRY._names_to_collectors.get(  # type: ignore[assignment]
         "amadeus_tool_executions_total"
     )
-

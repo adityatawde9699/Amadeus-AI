@@ -96,11 +96,9 @@ def _detect_gpu() -> bool:
     import shutil
 
     # NVIDIA: nvidia-smi on PATH is a reliable, cheap signal.
-    if shutil.which("nvidia-smi"):
-        return True
+    return bool(shutil.which("nvidia-smi"))
     # Apple Silicon exposes a GPU but we treat it conservatively as CPU-class
     # for the local llama.cpp budget; callers can override via CAPABILITY_TIER.
-    return False
 
 
 def _tier_from_hardware(ram_gb: float, has_gpu: bool) -> CapabilityTier:

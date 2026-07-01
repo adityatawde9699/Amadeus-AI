@@ -18,12 +18,11 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.core.config import get_settings
 from src.core.domain.context import RequestContext
 from src.core.domain.models import PermissionProfile
-from src.runtime.core import AmadeusRuntime
 
 
 logger = logging.getLogger(__name__)
@@ -48,6 +47,10 @@ class TelegramMessage:
 import asyncio
 
 from src.infra.tools.confirmation import ConfirmationCallback
+
+
+if TYPE_CHECKING:
+    from src.runtime.core import AmadeusRuntime
 
 
 # ---------------------------------------------------------------------------
@@ -399,7 +402,7 @@ class TelegramTransport:
         await query.answer()
 
         data = query.data
-        if data and (data.startswith("confirm_yes:") or data.startswith("confirm_no:")):
+        if data and (data.startswith(("confirm_yes:", "confirm_no:"))):
             approved = data.startswith("confirm_yes:")
             request_id = data.split(":", 1)[1]
 

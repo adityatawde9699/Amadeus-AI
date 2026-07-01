@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -28,8 +29,8 @@ def test_app_registry_load_from_cache(mock_cache_dir):
     cache_file = mock_cache_dir / "app_registry.json"
     cache_data = {"discord": "/path/to/discord", "spotify": "/path/to/spotify"}
 
-    with open(cache_file, "w") as f:
-        json.dump(cache_data, f)
+    with Path(cache_file).open("w", encoding="utf-8") as file:
+        json.dump(cache_data, file)
 
     with patch.object(AppRegistry, "scan_and_cache") as mock_scan:
         registry = AppRegistry(cache_dir=mock_cache_dir)

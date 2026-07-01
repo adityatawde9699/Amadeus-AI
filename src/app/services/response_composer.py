@@ -117,7 +117,7 @@ RULES OF ENGAGEMENT
 
 RESPONSE FORMAT
 
-- 1–3 sentences for simple answers.
+- 1-3 sentences for simple answers.
 - Structured output (lists, steps) for complex tasks.
 - No emojis unless contextually appropriate.
 - No generic filler phrases ("Of course!", "Great question!").
@@ -209,10 +209,6 @@ class ResponseComposer:
         Wrap a raw tool result in a natural, concise sentence for the user.
         Falls back to the raw output if the LLM is unavailable.
         """
-        instruction_text = (
-            instruction
-            or "Summarise the result in 1-2 conversational sentences."
-        )
 
         # Structured completion prompt: the model sees a clear RESPONSE: target
         # so it fills in the answer rather than echoing the instruction block.

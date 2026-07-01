@@ -13,7 +13,7 @@ in their heuristic (no-LLM) fallback.
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -28,6 +28,10 @@ from src.research.reporter import ReportBuilder
 from src.research.storage import ResearchStorage
 from src.research.synthesizer import KnowledgeSynthesizer
 from src.research.validator import SourceValidator
+
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class FakeSearch:

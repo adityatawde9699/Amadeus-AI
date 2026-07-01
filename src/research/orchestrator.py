@@ -16,14 +16,18 @@ import logging
 import time
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
-from src.research.collector import InformationCollector
 from src.research.models import ResearchManifest, ResearchResult
-from src.research.planner import QueryPlanner
 from src.research.reporter import ReportBuilder
-from src.research.storage import ResearchStorage
-from src.research.synthesizer import KnowledgeSynthesizer
-from src.research.validator import SourceValidator
+
+
+if TYPE_CHECKING:
+    from src.research.collector import InformationCollector
+    from src.research.planner import QueryPlanner
+    from src.research.storage import ResearchStorage
+    from src.research.synthesizer import KnowledgeSynthesizer
+    from src.research.validator import SourceValidator
 
 
 logger = logging.getLogger(__name__)

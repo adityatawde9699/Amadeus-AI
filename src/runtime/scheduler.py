@@ -16,6 +16,7 @@ Wiring:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
@@ -107,10 +108,8 @@ class TaskScheduler:
         self._stopped.set()
         if self._sweeper is not None:
             self._sweeper.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._sweeper
-            except asyncio.CancelledError:
-                pass
             self._sweeper = None
         logger.info("Durable TaskScheduler stopped")
 
@@ -122,10 +121,8 @@ class TaskScheduler:
                 raise
             except Exception:
                 logger.exception("Scheduler sweep failed")
-            try:
+            with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(self._stopped.wait(), timeout=self._poll_interval)
-            except TimeoutError:
-                pass
 
     async def _sweep_once(self) -> None:
         if self._dispatch is None:

@@ -54,14 +54,14 @@ class QueueManager:
                 "Start Redis or set REDIS_URL to enable ARQ jobs."
             )
             if required:
-                logger.error(message, e)
+                logger.exception(message, e)
                 raise RuntimeError("Background job queue requires Redis, but Redis is unavailable") from e
             logger.warning(message, e)
 
     async def enqueue_tool(self, tool_name: str, args: dict[str, Any], context: RequestContext) -> str:
         """
         Enqueue a tool execution job.
-        
+
         Returns:
             The job ID.
         """

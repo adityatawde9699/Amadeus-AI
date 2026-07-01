@@ -4,6 +4,8 @@ FastAPI application server for Amadeus AI Assistant (Transport layer).
 This is the main entry point for the API layer transport.
 """
 
+import logging
+import logging.handlers
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -29,10 +31,6 @@ from src.api.middleware.tracing import TracingMiddleware
 from src.container import global_container
 from src.core.config import get_settings
 from src.core.exceptions import AmadeusError
-
-
-import logging
-import logging.handlers
 
 
 settings = get_settings()
@@ -214,7 +212,8 @@ app.add_middleware(TracingMiddleware)
 app.add_middleware(AuditLoggerMiddleware)
 
 # Phase 4.3: per-IP rate limiting on pre-auth endpoints (credential stuffing).
-from src.api.middleware.rate_limit import RateLimitMiddleware  # noqa: E402
+from src.api.middleware.rate_limit import RateLimitMiddleware
+
 
 app.add_middleware(RateLimitMiddleware)
 

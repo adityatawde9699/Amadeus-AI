@@ -47,7 +47,7 @@ class MessagingService:
             try:
                 return await self.telegram.send_message(int(recipient_id), text)
             except ValueError:
-                logger.error("Invalid chat_id for Telegram: %s", recipient_id)
+                logger.exception("Invalid chat_id for Telegram: %s", recipient_id)
                 return False
 
         if platform == "email":

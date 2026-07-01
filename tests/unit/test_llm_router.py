@@ -83,7 +83,7 @@ class TestLLMRouterFallback:
         # Manually simulate groq hitting its limit
         router._usage["groq"] = LLMRouter.DAILY_LIMITS["groq"]
 
-        result, provider = await router.generate("hello")
+        _result, provider = await router.generate("hello")
 
         assert provider == "gemini"
         groq.generate_response.assert_not_called()

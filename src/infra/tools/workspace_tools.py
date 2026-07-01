@@ -56,7 +56,7 @@ def _get_indexer():
                     "Run `python scripts/index_workspace.py` to build the index."
                 )
         except Exception as exc:
-            logger.error("workspace_search: failed to initialise indexer: %s", exc)
+            logger.exception("workspace_search: failed to initialise indexer: %s", exc)
     return _indexer
 
 
@@ -129,7 +129,7 @@ async def search_workspace(query: str, top_k: int = 5) -> str:
         return "\n".join(lines)
 
     except Exception as exc:
-        logger.error("search_workspace: unexpected error: %s", exc)
+        logger.exception("search_workspace: unexpected error: %s", exc)
         return f"Workspace search failed: {exc}"
 
 

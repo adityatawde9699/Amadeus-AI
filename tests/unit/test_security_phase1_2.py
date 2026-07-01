@@ -26,7 +26,7 @@ from src.core.domain.models import PermissionProfile, profile_for_role
 
 
 @pytest.mark.parametrize(
-    "raw,expected_valid",
+    ("raw", "expected_valid"),
     [
         (None, False),       # missing
         ("", False),         # empty
@@ -99,9 +99,8 @@ def test_sandbox_mode_default_disabled():
 
 
 def test_get_sandbox_raises_when_disabled(monkeypatch):
-    import src.infra.tools.developer_tools as dt
-
     import src.core.config as cfg
+    import src.infra.tools.developer_tools as dt
 
     monkeypatch.setattr(dt, "_sandbox", None)
     monkeypatch.setattr(
@@ -113,9 +112,8 @@ def test_get_sandbox_raises_when_disabled(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_execute_python_script_fails_closed_when_disabled(monkeypatch):
-    import src.infra.tools.developer_tools as dt
-
     import src.core.config as cfg
+    import src.infra.tools.developer_tools as dt
 
     monkeypatch.setattr(dt, "_sandbox", None)
     monkeypatch.setattr(

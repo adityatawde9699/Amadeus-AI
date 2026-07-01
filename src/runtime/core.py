@@ -139,7 +139,7 @@ class AmadeusRuntime:
         # Graceful shutdown of active tasks
         if self._active_tasks:
             logger.info("Waiting up to %ds for %d active tasks to finish...", self.graceful_shutdown_timeout, len(self._active_tasks))
-            done, pending = await asyncio.wait(
+            _done, pending = await asyncio.wait(
                 self._active_tasks,
                 timeout=self.graceful_shutdown_timeout
             )

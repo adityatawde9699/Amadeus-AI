@@ -7,8 +7,7 @@ from src.infra.cache.cache_service import CacheService
 
 @pytest.fixture
 def mock_redis():
-    redis = AsyncMock()
-    return redis
+    return AsyncMock()
 
 
 @pytest.fixture
