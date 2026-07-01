@@ -15,17 +15,19 @@ Authorization: Bearer <token>
 
 Tokens are HS256-signed with `SECRET_KEY`. In production (`ENV=production`), the `exp` claim is required.
 
-### Generate a Test Token
+### Auth Endpoints (fastapi-users)
 
-```python
-import jwt, datetime
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/v1/auth/register` | Register a new user (`{"email": ..., "password": ...}`) |
+| `POST` | `/api/v1/auth/jwt/login` | Exchange credentials for a JWT (OAuth2 password form) |
 
-payload = {
-    "sub": "admin",
-    "iat": datetime.datetime.utcnow(),
-    "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=24),
-}
-token = jwt.encode(payload, "your-secret-key", algorithm="HS256")
+```bash
+# Register, then log in to obtain a bearer token
+curl -X POST http://localhost:8000/api/v1/auth/jwt/login \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "username=you@example.com&password=secret"
+# → {"access_token": "<JWT>", "token_type": "bearer"}
 ```
 
 ### RBAC Roles
@@ -33,7 +35,7 @@ token = jwt.encode(payload, "your-secret-key", algorithm="HS256")
 | Role | Access |
 |---|---|
 | `admin` | All endpoints including system admin routes |
-| `user` | Chat, voice, tasks, messaging |
+| `user` | Chat, tasks, messaging |
 | `guest` | READ_ONLY profile — destructive tools are hard-blocked |
 
 ---
@@ -66,26 +68,6 @@ Send a message and receive a synchronous response.
 
 ---
 
-### `GET /api/v1/chat/stream`
-
-Server-Sent Events streaming — native Gemini `stream=True` or word-by-word fallback.
-
-**Query params:** `message` (required), `session_id` (optional), `source` (default `"api"`)
-
-```bash
-curl -N \
-  -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:8000/api/v1/chat/stream?message=Tell+me+a+joke"
-
-# Streams:
-# data: {"delta": "Why"}
-# data: {"delta": " do"}
-# data: {"delta": " programmers ..."}
-# data: [DONE]
-```
-
----
-
 ### `GET /api/v1/chat/history`
 
 Retrieve conversation history for a session.
@@ -109,48 +91,11 @@ Returns all registered tools grouped by category.
 
 ---
 
-## Voice WebSocket
-
-```
-WS /api/v1/ws/voice
-```
-
-Pass the JWT token as a query parameter or in the upgrade headers.
-
-### Protocol (per turn)
-
-| Step | Direction | Payload |
-|---|---|---|
-| 1 | Client → Server | Raw audio bytes (PCM / WAV chunk) |
-| 2 | Server → Client | `{"type": "transcription", "text": "..."}` |
-| 3 | Server → Client | `{"type": "response_text", "text": "..."}` |
-| 4 | Server → Client | Binary audio bytes (MP3, Edge TTS) |
-
-### Python Client Example
-
-```python
-import asyncio, websockets
-
-async def voice_session():
-    uri = "ws://localhost:8000/api/v1/ws/voice"
-    headers = {"Authorization": "Bearer YOUR_TOKEN"}
-    async with websockets.connect(uri, additional_headers=headers) as ws:
-        with open("audio.wav", "rb") as f:
-            await ws.send(f.read())
-        transcript = await ws.recv()   # JSON
-        response   = await ws.recv()   # JSON
-        audio      = await ws.recv()   # bytes
-
-asyncio.run(voice_session())
-```
-
----
-
 ## Messaging
 
 ### `POST /api/v1/messaging/send`
 
-Unified outbound dispatch (Telegram, WhatsApp, Email):
+Unified outbound dispatch. `channel` is one of `"telegram"` or `"email"`:
 
 ```json
 {
@@ -164,16 +109,10 @@ Unified outbound dispatch (Telegram, WhatsApp, Email):
 ### `GET /api/v1/messaging/status`
 
 ```json
-{"telegram": true, "whatsapp": false, "email": true}
+{"telegram": true, "email": true}
 ```
 
-### Webhook Endpoints
-
-| Method | Path | Purpose |
-|---|---|---|
-| `POST` | `/api/v1/webhooks/telegram` | Inbound Telegram updates (secret token validated) |
-| `GET` | `/api/v1/webhooks/whatsapp` | Meta hub challenge verification |
-| `POST` | `/api/v1/webhooks/whatsapp` | Inbound WhatsApp messages |
+> Inbound Telegram is handled by the long-polling daemon (`amadeus-daemon`), not a FastAPI webhook route.
 
 ---
 

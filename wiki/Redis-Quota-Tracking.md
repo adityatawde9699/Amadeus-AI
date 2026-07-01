@@ -8,11 +8,9 @@ Daily usage counters are stored in Redis using atomic **`INCR` + `EXPIREAT`** so
 
 | Provider | Redis Key Pattern | Daily Limit | TTL |
 |---|---|---|---|
-| LlamaCpp | — (local, unlimited) | ∞ | — |
-| Ollama | — (local, unlimited) | ∞ | — |
+| LlamaCpp | `llm_usage:llama_cpp:{date}` | unlimited (999,999) | 86,400 s |
 | Groq | `llm_usage:groq:{date}` | 14,400 | 86,400 s |
 | Gemini | `llm_usage:gemini:{date}` | 1,500 | 86,400 s |
-| OpenAI | `llm_usage:openai:{date}` | 100 | 86,400 s |
 
 `{date}` format: `YYYY-MM-DD` (UTC).
 
@@ -70,8 +68,7 @@ curl http://localhost:8000/api/v1/llm/usage
   "date": "2026-04-28",
   "providers": {
     "groq": {"used": 1234, "limit": 14400, "remaining": 13166},
-    "gemini": {"used": 45, "limit": 1500, "remaining": 1455},
-    "openai": {"used": 0, "limit": 100, "remaining": 100}
+    "gemini": {"used": 45, "limit": 1500, "remaining": 1455}
   }
 }
 ```
