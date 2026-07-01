@@ -1,4 +1,6 @@
-## Amadeus-AI Wiki
+<div align="center">
+  <img src="https://raw.githubusercontent.com/adityatawde9699/Amadeus-AI/master/docs/assets/logo.svg" alt="Amadeus AI" width="220">
+</div>
 
 **v6.0.0 — Security & Build Hardening**
 
