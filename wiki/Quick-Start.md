@@ -35,11 +35,16 @@ cp .env.example .env
 # 4. Run database migrations
 uv run alembic upgrade head
 
-# 5. Start the server
-uv run uvicorn src.api.server:app --reload --host 0.0.0.0 --port 8000
+# 5. Start the server (API host)
+uv run python -m src.transports.fastapi_transport
+# or run the ASGI app directly with reload for development:
+# uv run uvicorn src.transports.fastapi_transport:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Interactive API docs available at `http://localhost:8000/docs` (requires `DEBUG=true`).
+
+> **Telegram-first daemon:** for local/desktop use, run `uv run amadeus-daemon` instead
+> (requires `TELEGRAM_BOT_TOKEN` and `MASTER_TELEGRAM_CHAT_ID`). It runs headless with no FastAPI host.
 
 ---
 

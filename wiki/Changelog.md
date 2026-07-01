@@ -4,6 +4,27 @@ Full version history. For detailed commit-level changes, see [CHANGELOG.md](http
 
 ---
 
+## v6.0.0 — Security & Build Hardening *(2026-06-21)*
+
+Security & supply-chain hardening release. Guiding principle: **fail closed** —
+deny when a security-relevant precondition is missing or ambiguous. Several
+previously fail-*open* behaviors now fail *closed* and may reject traffic that was
+silently allowed before. See the full [CHANGELOG.md](https://github.com/adityatawde9699/Amadeus-AI/blob/main/CHANGELOG.md) for breaking changes.
+
+### Security
+- **Graduated permission profiles** — added `STANDARD` between `READ_ONLY` and `SYSTEM_FULL` with a role→profile mapping; `ToolExecutor.execute()` defaults to `READ_ONLY` and requires an explicit `RequestContext`.
+- **`min_permission` authorization boundary** — the policy engine denies tools whose required profile outranks the caller; the bypassable command-substring denylist was removed.
+- **Telegram fails closed** — a bot with no valid `MASTER_TELEGRAM_CHAT_ID` allowlist rejects every sender; `SYSTEM_FULL` requires the new `TELEGRAM_ELEVATED_CHAT_IDS` allowlist.
+- **Code execution disabled by default** — `SANDBOX_MODE` defaults to `disabled`; the escapable in-process executor was removed. The Docker sandbox is read-only, network-disabled, drops all capabilities, and enforces resource + kill-timeout caps.
+- **SSRF egress guard** — `fetch_webpage_content` rejects non-public addresses (loopback, RFC1918, cloud metadata), validates every redirect hop, and caps body size.
+- **Plugin management locked down** — `manage_plugins` is admin-only, confirmation-gated, containment-checked, and no longer imports/executes freshly written code in the same request.
+
+### Build
+- **Leaner runtime** — `sentence-transformers` / `scikit-learn` moved to the `[ml-fallback]` extra; the daemon embeds via `onnxruntime` and routes via a pre-trained numpy SVM to stay within the memory budget.
+- Docker Compose no longer publishes datastore ports; the API and Jaeger UI bind to loopback.
+
+---
+
 ## v5.0.0 — MCP & Daemon Hardening *(2026-06-10)*
 
 ### Architecture & Capabilities

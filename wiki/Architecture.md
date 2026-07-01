@@ -37,7 +37,7 @@ Amadeus follows **Clean Architecture** with strict layer separation. Dependencie
 │  Domain models   │   │  LLM adapters             │
 │  Interfaces/ABCs │   │  Turbovec memory service  │
 │  Exceptions      │   │  Redis / PostgreSQL        │
-│  Settings        │   │  Tools (53 registered)    │
+│  Settings        │   │  Tools (70+ registered)   │
 │                  │   │  ModelManager             │
 │  (no external    │   │  Search router            │
 │   imports)       │   │  Messaging adapters       │

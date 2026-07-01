@@ -33,12 +33,22 @@ The `ToolExecutor` now passes every request through a deterministic policy layer
 | `HIGH` | Network external or sensitive local | `send_email`, `web_search`, `delete_file` |
 | `CRITICAL` | System destructive or code execution | `terminate_process`, `execute_python_script` |
 
+### Graduated Permission Profiles (v6.0.0)
+
+Three strictly rank-ordered profiles, mapped from the caller's role:
+
+| Profile | Role mapping | Grants |
+|---|---|---|
+| `READ_ONLY` | `guest` / anonymous | `LOW` tools only; blocks anything with `modifies_filesystem=True` or `modifies_system_state=True` |
+| `STANDARD` | `user` / Telegram allowlisted | Adds `MEDIUM` (and vetted `HIGH`) tools |
+| `SYSTEM_FULL` | `admin` / `TELEGRAM_ELEVATED_CHAT_IDS` | Full access, including `CRITICAL` tools |
+
 ### Policy Enforcement
 
-- **READ_ONLY Profile**: Automatically blocks all `HIGH` and `CRITICAL` tools. Blocks any tool with `modifies_filesystem=True` or `modifies_system_state=True`.
-- **Destructive Guard**: Ensures tools tagged as `CRITICAL` always have the `requires_confirmation` flag set.
-- **Process Protection**: Explicitly blocks attempts to terminate protected system processes (e.g., `explorer.exe`, `kernel`).
-- **Argument Tokenization**: Inspects shell commands for forbidden tokens like `rm -rf /` or `mkfs`.
+- **`min_permission` boundary**: `ToolCapability` carries a `min_permission`; the engine **denies any tool whose required profile outranks the caller**. `ToolExecutor.execute()` defaults to `READ_ONLY` and requires an explicit `RequestContext`.
+- **Denylist removed**: the previous bypassable command-substring denylist (`rm -rf /`, `mkfs`, …) was **removed as an authorization mechanism** in v6.0.0 — authorization is now profile-based, not string-matched.
+- **Destructive Guard**: tools tagged `CRITICAL` always require the `requires_confirmation` flag (human-in-the-loop).
+- **Process Protection**: explicitly blocks attempts to terminate protected system processes (e.g., `explorer.exe`, `kernel`).
 
 ---
 
@@ -101,17 +111,25 @@ SEARCH_ALLOWED_DIRS=/home/user/Documents,/home/user/Downloads
 
 Path traversal attempts (e.g. `../../etc/passwd`) return `"Access denied: path …"` without touching the filesystem.
 
-### Code Execution Sandbox (v4.0.0+)
+### Code Execution Sandbox
 
-Amadeus supports both Docker and a lightweight local sandbox. Set `SANDBOX_MODE` in `.env`:
+> **Changed in v6.0.0 — fails closed.** The escapable in-process
+> (`LocalSandboxExecutor`) mode was **removed entirely** — it was trivially
+> escapable while advertised as isolated. There is no local execution fallback.
 
-| Mode | Technology | Best For |
+Code execution is **disabled by default**. `SANDBOX_MODE` is a
+`Literal["disabled", "docker"]`:
+
+| Mode | Technology | Behavior |
 |---|---|---|
-| `docker` | Ephemeral Containers | High-security, Linux-based production |
-| `local` | Multiprocessing | Windows, restricted environments, development |
-| `auto` | Auto-detect | Default: prefers Docker, falls back to local |
+| `disabled` | — | **Default.** `execute_python_script` returns "unavailable". |
+| `docker` | Ephemeral container | Runs untrusted code in a hardened, locked-down container. |
 
-The local sandbox uses **Restricted Globals** (disabling `__import__`, `open`, `eval`) and runs code in a separate process for isolation.
+When `docker` is selected but Docker is unavailable, execution is **refused**
+(fail closed) rather than silently downgraded. The container is hardened with a
+read-only root filesystem, all Linux capabilities dropped, `no-new-privileges`,
+networking disabled, a non-root user, PID/memory/swap/CPU caps, a small writable
+`tmpfs`, a pinned image, and an enforced kill timeout.
 
 ---
 
