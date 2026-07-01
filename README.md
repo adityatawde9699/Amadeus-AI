@@ -80,14 +80,18 @@ LLM routing:  LlamaCpp (local GGUF)  →  Groq (Llama 3.3 70B)  →  Gemini 2.5 
 
 Amadeus follows Clean Architecture — dependencies point inward, and the core layer has zero external dependencies.
 
-```mermaid
-flowchart TD
-    C["Clients — HTTP · Telegram · CLI"] --> T["Transport — src/transports/"]
-    T --> A["Application — AmadeusService · LangGraph · ToolDispatcher"]
-    A --> Core["Core — domain models · interfaces · settings"]
-    A --> I["Infrastructure — LLM adapters · DB · cache · memory · tools"]
-    Core --> I
-    I --> D["Data — PostgreSQL · Redis · Vector store"]
+```text
+Clients — HTTP · Telegram · CLI
+    ↓
+Transport — src/transports/
+    ↓
+Application — AmadeusService · LangGraph · ToolDispatcher
+   ↙            ↓
+Core — domain models · interfaces · settings
+   ↘
+Infrastructure — LLM adapters · DB · cache · memory · tools
+    ↓
+Data — PostgreSQL · Redis · Vector store
 ```
 
 Deep dives — [Architecture](https://github.com/adityatawde9699/Amadeus-AI/wiki/Architecture) · [Core Systems](https://github.com/adityatawde9699/Amadeus-AI/wiki/Core-Systems) · [LLM Routing & Quota](https://github.com/adityatawde9699/Amadeus-AI/wiki/Redis-Quota-Tracking).
