@@ -48,7 +48,7 @@ The Dockerfile uses a **3-stage multi-stage build:**
 ### Entrypoint
 
 ```bash
-alembic upgrade head && uvicorn src.api.server:app --host 0.0.0.0 --port $PORT
+alembic upgrade head && uvicorn src.transports.fastapi_transport:app --host 0.0.0.0 --port $PORT
 ```
 
 Migrations run automatically before each deploy.

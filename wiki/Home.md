@@ -1,6 +1,6 @@
 # Amadeus-AI Wiki
 
-> **v5.0.0 — MCP & Daemon Hardening**
+> **v6.0.0 — Security & Build Hardening**
 > A secure autonomous AI operating layer built on Clean Architecture — autonomous tool execution, long-horizon planning, and multi-transport messaging unified under a single service layer.
 
 ---
@@ -12,7 +12,7 @@ Amadeus is a **FastAPI-based autonomous AI backend** that provides:
 | Capability | Implementation |
 |---|---|
 | Multi-provider LLM routing | LlamaCpp (local GGUF) → Groq → Gemini with Redis-backed daily quota tracking |
-| 53 sandboxed tools | System · filesystem · productivity · information · communication |
+| 70+ sandboxed tools | System · filesystem · productivity · information · communication |
 | Long-term semantic memory | Turbovec vector store with massive 4-bit compression |
 | Goal management | `GoalRepository` tracks multi-session objectives |
 | Multi-transport messaging | FastAPI · Telegram · CLI all share a single `AmadeusService` |
@@ -20,13 +20,18 @@ Amadeus is a **FastAPI-based autonomous AI backend** that provides:
 
 ---
 
-## What's New in v5.0.0
+## What's New in v6.0.0
 
-- **Cognitive Core (Phase 1)** — Fully migrated to a deterministic `LangGraph` async state machine, resolving brittle ReAct loop parsing errors.
-- **Deep RAG Memory (Phase 2)** — Replaced Qdrant with `Turbovec` + `aiosqlite`. Achieved massive 4-bit quantization compression (up to 16x scale reduction) with zero penalties, while running entirely in-process.
-- **MCP Tool Integration (Phase 3)** — Amadeus now dynamically discovers and consumes external tool capabilities via the Model Context Protocol.
-- **24/7 Daemon Hardening (Phase 6)** — Systemd daemon fully fortified with memory/CPU quotas, burst restarts, and proper ASGI SIGTERM signal handling.
-- **Proactive Garbage Collection** — Background autonomous loops now correctly invoke `prune_stale_memories` to prevent Turbovec index bloating.
+A **security & build hardening** release. The guiding principle is **fail closed**:
+when a security-relevant precondition is missing or ambiguous, deny rather than allow.
+Several previously fail-*open* behaviors now fail *closed* — see the [Changelog](https://github.com/adityatawde9699/Amadeus-AI/blob/master/CHANGELOG.md) for breaking changes.
+
+- **Graduated permission profiles** — added `STANDARD` between `READ_ONLY` and `SYSTEM_FULL`, with a role→profile mapping. `ToolExecutor.execute()` now defaults to `READ_ONLY` and requires an explicit `RequestContext`.
+- **`min_permission` authorization boundary** — the policy engine denies any tool whose required profile outranks the caller; the bypassable command-substring denylist was removed.
+- **Telegram fails closed** — a bot with no valid `MASTER_TELEGRAM_CHAT_ID` allowlist rejects *every* sender; `SYSTEM_FULL` requires the new `TELEGRAM_ELEVATED_CHAT_IDS` allowlist.
+- **Code execution disabled by default** — `SANDBOX_MODE` defaults to `disabled`; the escapable in-process executor was removed. The Docker sandbox is read-only, network-disabled, drops all capabilities, and enforces resource + kill-timeout caps.
+- **SSRF egress guard** — `fetch_webpage_content` rejects non-public addresses (loopback, RFC1918, cloud metadata), validates every redirect hop, and caps the body size.
+- **Leaner runtime** — `sentence-transformers` / `scikit-learn` moved to the `[ml-fallback]` extra; the daemon embeds via `onnxruntime` and routes via a pre-trained numpy SVM to stay within the memory budget.
 
 ---
 
@@ -38,7 +43,7 @@ Amadeus is a **FastAPI-based autonomous AI backend** that provides:
 | [[Quick-Start]] | Prerequisites, local installation, Docker |
 | [[Configuration-Reference]] | All `.env` variables — LLM providers, model directory, proactive loop |
 | [[Core-Systems]] | Semantic Router, Agent Orchestrator, HITL, Flash Memory Cache |
-| [[Tool-Registry]] | All 53 tools organized by category |
+| [[Tool-Registry]] | All 70+ tools organized by category |
 | [[API-Reference]] | Chat, messaging, tasks, health endpoints |
 | [[Redis-Quota-Tracking]] | Daily LLM quota counters and Redis key schema |
 | [[Messaging-Integrations]] | Telegram and Email setup |
