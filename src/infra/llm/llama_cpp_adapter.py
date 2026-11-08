@@ -366,6 +366,8 @@ class LlamaCppAdapter(ILLMService):
                     max_tokens=max_tokens if max_tokens else self.context_length,
                     temperature=temperature,
                     stream=False,
+                    **({"response_format": kwargs["response_format"]}
+                       if kwargs.get("response_format") else {}),
                 )
                 raw = str(res["choices"][0]["message"]["content"]).strip()
                 return _strip_think_tags(raw)

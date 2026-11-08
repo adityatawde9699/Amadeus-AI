@@ -346,7 +346,10 @@ class LLMRouter:
                             prompt=prompt,
                             context=context,
                             temperature=temperature,
-                            max_tokens=max_tokens,
+                            max_tokens=max_tokens if max_tokens is not None
+                            else (128 if structured else None),
+                            **({"response_format": {"type": "json_object"}}
+                               if structured else {}),
                         )
                         success = True
                     except Exception as e:
