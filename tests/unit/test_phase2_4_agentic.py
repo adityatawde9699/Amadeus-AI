@@ -336,7 +336,12 @@ async def test_ingraph_hitl_pause_and_approve(monkeypatch):
         permissions=PermissionProfile.SYSTEM_FULL,
     )
 
-    result = await graph.ainvoke(task="clean up", context=ctx, routing_intent="conversational")
+    result = await graph.ainvoke(
+        task="clean up",
+        context=ctx,
+        routing_intent="conversational",
+        allow_orchestration=False,
+    )
     assert result.requires_hitl is True
     assert result.hitl_request_id == "hitl-thread-1"
     assert result.hitl_payload["tool"] == "dangerous_op"
@@ -366,7 +371,12 @@ async def test_ingraph_hitl_deny(monkeypatch):
         permissions=PermissionProfile.SYSTEM_FULL,
     )
 
-    result = await graph.ainvoke(task="clean up", context=ctx, routing_intent="conversational")
+    result = await graph.ainvoke(
+        task="clean up",
+        context=ctx,
+        routing_intent="conversational",
+        allow_orchestration=False,
+    )
     assert result.requires_hitl is True
 
     resumed = await graph.aresume("hitl-thread-2", approved=False)

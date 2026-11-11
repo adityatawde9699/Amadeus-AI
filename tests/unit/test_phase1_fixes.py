@@ -31,8 +31,14 @@ if "google.genai" not in sys.modules:
     _genai.Client = MagicMock()
     sys.modules["google.genai"] = _genai
     sys.modules["google.genai.types"] = MagicMock()
-    sys.modules["google"] = sys.modules.get("google") or types.ModuleType("google")
-    sys.modules["google"].genai = _genai
+    try:
+        import google
+        _google = google
+    except ImportError:
+        _google = types.ModuleType("google")
+        _google.__path__ = []
+        sys.modules["google"] = _google
+    _google.genai = _genai
 
 
 # ===========================================================================

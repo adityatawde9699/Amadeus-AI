@@ -57,6 +57,10 @@ class RuntimeHost:
 
     async def start(self) -> None:
         """Bring the runtime up: DB, runtime services, Telegram polling, loops."""
+        if self._started:
+            logger.warning("RuntimeHost.start() called on an already-started host — ignoring.")
+            return
+
         settings = self.settings
         logger.info(
             "Starting RuntimeHost for %s v%s",
@@ -135,12 +139,19 @@ class RuntimeHost:
         """Tear everything down symmetrically. Safe to call if start() partially ran."""
         logger.info("Stopping RuntimeHost...")
 
+        async def _attempt(label: str, coro) -> None:  # type: ignore[type-arg]
+            """Run a shutdown step; log and swallow any exception so other steps still run."""
+            try:
+                await coro
+            except Exception:
+                logger.exception("Error during shutdown step: %s", label)
+
         if self.scheduler is not None and self.scheduler.running:
             # wait=True lets in-flight jobs finish before the loop closes
             self.scheduler.shutdown(wait=True)
 
         if self.telegram is not None:
-            await self.telegram.stop_polling()
+            await _attempt("telegram.stop_polling", self.telegram.stop_polling())
 
         if self.observation_loop is not None:
             self.observation_loop.stop()
@@ -148,15 +159,15 @@ class RuntimeHost:
         from src.infra.tools.finance_tools import close_finance_tools_http_session
         from src.infra.tools.info_tools import close_info_tools_http_session
 
-        await close_info_tools_http_session()
-        await close_finance_tools_http_session()
+        await _attempt("close_info_http", close_info_tools_http_session())
+        await _attempt("close_finance_http", close_finance_tools_http_session())
 
         if self.runtime is not None:
             if self.runtime.tools is not None:
-                await self.runtime.tools.shutdown_mcp()
-            await self.runtime.stop()
+                await _attempt("mcp_shutdown", self.runtime.tools.shutdown_mcp())
+            await _attempt("runtime.stop", self.runtime.stop())
 
-        await close_db()
+        await _attempt("close_db", close_db())
         self._started = False
         logger.info("RuntimeHost stopped.")
 

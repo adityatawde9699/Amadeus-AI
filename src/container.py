@@ -377,6 +377,8 @@ def _build_llm_router() -> LLMRouter:
                 threads=settings.SLM_THREADS,
                 context_length=settings.SLM_CTX_SIZE,
                 quantize_kv_4bit=settings.SLM_QUANTIZE_KV_4BIT,
+                n_gpu_layers=settings.SLM_N_GPU_LAYERS,
+                main_gpu=settings.SLM_MAIN_GPU,
             )
         except Exception as e:
             logger.exception("Failed to configure LlamaCppAdapter: %s", e)

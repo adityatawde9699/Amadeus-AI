@@ -120,22 +120,28 @@ class LlamaCppAdapter(ILLMService):
         threads: int = 2,
         context_length: int = 2048,
         quantize_kv_4bit: bool = False,
+        n_gpu_layers: int = 0,
+        main_gpu: int = 0,
     ) -> None:
         self.model_path = model_path
         self.threads = threads
         self.context_length = context_length
         self.quantize_kv_4bit = quantize_kv_4bit
+        self.n_gpu_layers = n_gpu_layers
+        self.main_gpu = main_gpu
         self._llm: Any | None = None
         self._lock = asyncio.Lock()
         # Set to True after a fatal decode failure so we stop trying until restart
         self._failed: bool = False
         logger.info(
             "LlamaCppAdapter configured with model: %s "
-            "(threads=%d, ctx=%d, kv_4bit=%s)",
+            "(threads=%d, ctx=%d, kv_4bit=%s, gpu_layers=%d, main_gpu=%d)",
             self.model_path,
             self.threads,
             self.context_length,
             self.quantize_kv_4bit,
+            self.n_gpu_layers,
+            self.main_gpu,
         )
 
     async def _get_llm(self) -> Any:
@@ -171,6 +177,37 @@ class LlamaCppAdapter(ILLMService):
                 import inspect
                 try:
                     llama_sig = inspect.signature(Llama)
+
+                    if "n_gpu_layers" in llama_sig.parameters:
+                        init_kwargs["n_gpu_layers"] = self.n_gpu_layers
+                    if "main_gpu" in llama_sig.parameters:
+                        init_kwargs["main_gpu"] = self.main_gpu
+
+                    if self.n_gpu_layers != 0:
+                        supports_gpu = False
+                        try:
+                            from llama_cpp import llama_supports_gpu_offload
+
+                            supports_gpu = bool(llama_supports_gpu_offload())
+                        except (ImportError, OSError):
+                            logger.warning(
+                                "Could not query llama.cpp GPU support; "
+                                "requested gpu_layers=%d will be attempted.",
+                                self.n_gpu_layers,
+                            )
+                        if supports_gpu:
+                            logger.info(
+                                "llama.cpp GPU offload enabled (%d layers, main_gpu=%d).",
+                                self.n_gpu_layers,
+                                self.main_gpu,
+                            )
+                        else:
+                            logger.warning(
+                                "GPU offload requested (%d layers), but the installed "
+                                "llama-cpp-python build does not report GPU support. "
+                                "Install a CUDA-enabled build or set SLM_N_GPU_LAYERS=0.",
+                                self.n_gpu_layers,
+                            )
 
                     # flash_attn — leave disabled on CPU by default
                     if "flash_attn" in llama_sig.parameters:

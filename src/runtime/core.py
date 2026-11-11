@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 from typing import Any
 
@@ -131,20 +132,31 @@ class AmadeusRuntime:
 
         await self.scheduler.stop()
 
+        # Stop the watchdog and cancel its task cleanly.
         if self.watchdog:
             self.watchdog.stop()
-        if self._watchdog_task:
-            await self._watchdog_task
+        if self._watchdog_task and not self._watchdog_task.done():
+            self._watchdog_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._watchdog_task
+        self._watchdog_task = None
 
         # Graceful shutdown of active tasks
         if self._active_tasks:
-            logger.info("Waiting up to %ds for %d active tasks to finish...", self.graceful_shutdown_timeout, len(self._active_tasks))
+            logger.info(
+                "Waiting up to %ds for %d active tasks to finish...",
+                self.graceful_shutdown_timeout,
+                len(self._active_tasks),
+            )
             _done, pending = await asyncio.wait(
                 self._active_tasks,
-                timeout=self.graceful_shutdown_timeout
+                timeout=self.graceful_shutdown_timeout,
             )
             if pending:
-                logger.warning("Cancelling %d tasks that did not complete within the timeout.", len(pending))
+                logger.warning(
+                    "Cancelling %d tasks that did not complete within the timeout.",
+                    len(pending),
+                )
                 for t in pending:
                     t.cancel()
 

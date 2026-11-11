@@ -166,3 +166,8 @@ cython_debug/
 # Local models directory
 Model/
 
+
+# Local test checkpoints
+langgraph_checkpoints.sqlite*
+*.sqlite-shm
+*.sqlite-wal

@@ -76,6 +76,16 @@ class TestSettings:
             settings = Settings(_env_file=None)
             assert "postgresql+asyncpg" in settings.get_async_database_url()
 
+        with mock.patch.dict(
+            os.environ,
+            {"DATABASE_URL": "postgresql://localhost/db?sslmode=require&channel_binding=require"},
+        ):
+            settings = Settings(_env_file=None)
+            async_url = settings.get_async_database_url()
+            assert "ssl=require" in async_url
+            assert "sslmode" not in async_url
+            assert "channel_binding" not in async_url
+
     def test_database_is_sqlite(self):
         """Test SQLite detection."""
         with mock.patch.dict(os.environ, {"DATABASE_URL": "sqlite:///./test.db"}):

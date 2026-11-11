@@ -18,6 +18,7 @@ import sys
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -228,6 +229,11 @@ class Settings(BaseSettings):
     SLM_THREADS: int = 2
     SLM_CTX_SIZE: int = 4096
     SLM_QUANTIZE_KV_4BIT: bool = True  # 4-bit KV-cache quantization (cuts KV RAM ~75%)
+    # llama.cpp GPU offload: 0 keeps inference on CPU, -1 offloads all layers.
+    # Positive values offload that many layers. This requires a CUDA-enabled
+    # llama-cpp-python build; CPU builds remain supported.
+    SLM_N_GPU_LAYERS: int = 0
+    SLM_MAIN_GPU: int = 0
 
     # =========================================================================
     # MODEL DIRECTORY & AUTO-DOWNLOAD
@@ -524,7 +530,15 @@ class Settings(BaseSettings):
             return self.DATABASE_URL.replace("sqlite:///", "sqlite+aiosqlite:///")
         # For PostgreSQL, replace psycopg2 with asyncpg
         if "postgresql" in self.DATABASE_URL.lower():
-            return self.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
+            async_url = self.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
+            parsed = urlsplit(async_url)
+            query = []
+            for key, value in parse_qsl(parsed.query, keep_blank_values=True):
+                if key == "sslmode":
+                    query.append(("ssl", value))
+                elif key != "channel_binding":
+                    query.append((key, value))
+            return urlunsplit(parsed._replace(query=urlencode(query)))
         return self.DATABASE_URL
 
     def get_system_thresholds(self) -> dict[str, dict[str, int]]:

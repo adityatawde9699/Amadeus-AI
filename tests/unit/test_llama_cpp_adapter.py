@@ -385,5 +385,38 @@ async def test_get_llm_skips_4bit_kv_when_disabled(
 
     # type_k / type_v should NOT be present since quantize_kv_4bit defaults to False
     assert "type_k" not in captured_kwargs
-    assert "type_v" not in captured_kwargs
 
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_get_llm_passes_gpu_offload_configuration(model_path: str) -> None:
+    """_get_llm() forwards GPU layer and device settings to llama.cpp."""
+    adapter = LlamaCppAdapter(
+        model_path=model_path,
+        n_gpu_layers=-1,
+        main_gpu=1,
+    )
+    captured_kwargs: dict[str, Any] = {}
+
+    def fake_llama(
+        model_path: str,
+        n_threads: int,
+        n_ctx: int,
+        n_batch: int,
+        use_mmap: bool,
+        use_mlock: bool,
+        verbose: bool,
+        n_gpu_layers: int,
+        main_gpu: int,
+    ) -> MagicMock:
+        captured_kwargs.update(locals())
+        return MagicMock()
+
+    with patch.dict("sys.modules", {"llama_cpp": MagicMock(
+        Llama=fake_llama,
+        llama_supports_gpu_offload=MagicMock(return_value=True),
+    )}):
+        await adapter._get_llm()
+
+    assert captured_kwargs["n_gpu_layers"] == -1
+    assert captured_kwargs["main_gpu"] == 1

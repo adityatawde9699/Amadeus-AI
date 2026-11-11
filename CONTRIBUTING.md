@@ -67,6 +67,22 @@ To run completely offline with `llama-cpp-python`:
 ```bash
 # Install llama-cpp-python (CPU-only)
 pip install llama-cpp-python
+```
+
+For NVIDIA CUDA GPU offload, install the package from source with CUDA enabled
+before starting Amadeus:
+
+```bash
+CMAKE_ARGS="-DGGML_CUDA=on" pip install --upgrade --force-reinstall --no-cache-dir llama-cpp-python
+```
+
+Then set `SLM_N_GPU_LAYERS=-1` in your environment to offload all model layers
+(or use a positive value to offload only part of the model). `0` keeps CPU-only
+inference. Verify the installed build with:
+
+```bash
+python -c "from llama_cpp import llama_supports_gpu_offload; print(llama_supports_gpu_offload())"
+```
 
 # Download a GGUF model (e.g. Mistral 7B Q4)
 # Place it in the Model/ directory, then set in .env:
