@@ -89,6 +89,11 @@ class DockerSandboxExecutor:
             script_path = Path(temp_dir) / "script.py"
             with script_path.open("w", encoding="utf-8") as file:
                 file.write(code)
+            # TemporaryDirectory is 0700 and owned by the host user; the
+            # container runs as 1000:1000, which only matches by coincidence.
+            # Make the read-only mount readable by any uid.
+            Path(temp_dir).chmod(0o755)
+            script_path.chmod(0o644)
 
             container = None
             try:

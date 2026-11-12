@@ -7,17 +7,9 @@ including Redis quota tracking and graceful degradation.
 
 from __future__ import annotations
 
-import sys
-import types
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
-
-# Stub heavy imports
-for _mod in ("joblib", "google.generativeai", "groq"):
-    if _mod not in sys.modules:
-        sys.modules[_mod] = types.ModuleType(_mod)
 
 
 def _make_mock_adapter(name: str, response: str = "ok") -> MagicMock:
