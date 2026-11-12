@@ -55,11 +55,15 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+          python-version: "3.11"
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version-file: "pyproject.toml"
+          # Pinned: requires-python is open-ended (>=3.11), so the file would pick
+          # the newest CPython (3.15), which onnxruntime has no wheels for yet.
+          # 3.11 matches the Dockerfile base image and mypy python_version.
+          python-version: "3.11"
 
       - name: Install dependencies
         run: uv sync --all-extras --dev
@@ -113,11 +117,15 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+          python-version: "3.11"
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version-file: "pyproject.toml"
+          # Pinned: requires-python is open-ended (>=3.11), so the file would pick
+          # the newest CPython (3.15), which onnxruntime has no wheels for yet.
+          # 3.11 matches the Dockerfile base image and mypy python_version.
+          python-version: "3.11"
 
       - name: Install dependencies
         run: uv sync --all-extras --dev
