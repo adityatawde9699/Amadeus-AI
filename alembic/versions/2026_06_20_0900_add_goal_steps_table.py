@@ -12,6 +12,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 
 # revision identifiers, used by Alembic.
@@ -33,7 +34,9 @@ def upgrade() -> None:
     # some deployments; make creation idempotent on PostgreSQL.
     status_type = _STATUS
     if bind.dialect.name == "postgresql":
-        status_type = sa.Enum(
+        # create_type=False is only honoured by postgresql.ENUM; the generic
+        # sa.Enum ignores it and create_table re-issues CREATE TYPE.
+        status_type = postgresql.ENUM(
             "pending", "running", "done", "failed", "cancelled",
             name="scheduledtaskstatusdb",
             create_type=False,

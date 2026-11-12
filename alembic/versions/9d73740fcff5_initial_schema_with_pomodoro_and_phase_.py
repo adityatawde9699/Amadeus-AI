@@ -83,4 +83,6 @@ def downgrade() -> None:
     op.drop_index("idx_pomodoro_state_created", table_name="pomodoro_sessions")
     op.drop_index("idx_pomodoro_started_state", table_name="pomodoro_sessions")
     op.drop_table("pomodoro_sessions")
+    # drop_table leaves PostgreSQL enum types behind; re-upgrade would collide.
+    sa.Enum(name="pomodorostatedb").drop(op.get_bind(), checkfirst=True)
     # ### end Alembic commands ###

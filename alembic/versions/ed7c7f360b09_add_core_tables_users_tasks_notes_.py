@@ -313,3 +313,6 @@ def downgrade() -> None:
         "notes", "tasks", "users",
     ]:
         op.drop_table(table)
+    # drop_table leaves PostgreSQL enum types behind; re-upgrade would collide.
+    for enum_name in ("eventstatusdb", "reminderstatusdb", "taskstatusdb", "userroledb"):
+        sa.Enum(name=enum_name).drop(op.get_bind(), checkfirst=True)
