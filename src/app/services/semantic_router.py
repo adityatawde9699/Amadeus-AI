@@ -142,7 +142,7 @@ def _registry_fingerprint(
         all_keys.append(f"backend:{backend}")
     all_keys.append(f"format:{_INDEX_FORMAT_VERSION}")
     key = "|".join(all_keys)
-    return hashlib.md5(key.encode()).hexdigest()  # noqa: S324 — non-security hash
+    return hashlib.md5(key.encode(), usedforsecurity=False).hexdigest()  # cache fingerprint
 
 
 # ---------------------------------------------------------------------------

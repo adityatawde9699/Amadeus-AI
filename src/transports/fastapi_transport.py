@@ -14,7 +14,6 @@ import structlog
 from fastapi import Depends, FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from jose import jwt as _jose_jwt
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
@@ -80,10 +79,21 @@ def get_rate_limit_key(request: Request) -> str:
     if auth_header.startswith("Bearer "):
         token = auth_header[7:]
         try:
-            # Decode WITHOUT verification — we only need the `sub` claim
-            # as a stable key. The actual signature check happens in the
-            # authentication middleware.
-            payload = _jose_jwt.get_unverified_claims(token)
+            # Verify exactly as fastapi-users does for login tokens (secret,
+            # audience, HS256). An unverified read let a client forge any
+            # `sub` and get a fresh rate-limit bucket per request; an invalid
+            # or expired token now falls back to the IP key.
+            from fastapi_users.jwt import decode_jwt
+
+            from src.api.auth.manager import get_jwt_strategy
+
+            strategy = get_jwt_strategy()
+            payload = decode_jwt(
+                token,
+                strategy.decode_key,
+                strategy.token_audience,
+                algorithms=[strategy.algorithm],
+            )
             sub = payload.get("sub")
             if sub:
                 return f"user:{sub}"

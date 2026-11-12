@@ -299,7 +299,7 @@ class WorkspaceIndexer:
                 "start_line": start_line,
                 "mtime": mtime,
                 "snippet": chunk_text[:300],   # raw text — clean for display
-                "text_hash": hashlib.md5(chunk_text.encode()).hexdigest(),  # noqa: S324
+                "text_hash": hashlib.md5(chunk_text.encode(), usedforsecurity=False).hexdigest(),
             }
             key = self._chunk_key(meta)
 

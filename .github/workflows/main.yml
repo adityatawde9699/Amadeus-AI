@@ -83,10 +83,19 @@ jobs:
         continue-on-error: true
 
       - name: Security scan (bandit)
-        run: uv run bandit -r src/ -ll -x src/infra/tools/ --severity-level high
+        # Whole of src/ (tools/ included: it is the riskiest code). -ll and
+        # --severity-level are mutually exclusive; the old command errored out
+        # before scanning anything.
+        run: uv run bandit -r src/ --severity-level high
 
       - name: Dependency audit (pip-audit)
-        run: uv run pip-audit --requirement <(uv pip freeze) --ignore-vuln CVE-2024-23342
+        # Audits the whole lockfile (all extras), not just what this job installed.
+        # PYSEC-2026-2447: diskcache (via llama-cpp-python) has no fixed release;
+        # Amadeus never points diskcache at untrusted cache directories.
+        run: |
+          uv export --frozen --all-extras --no-hashes --no-emit-project > /tmp/audit-reqs.txt
+          uv run pip-audit --requirement /tmp/audit-reqs.txt --no-deps --disable-pip \
+            --ignore-vuln PYSEC-2026-2447
 
   # ---------------------------------------------------------------------------
   # Test Suite: Real PostgreSQL + Redis

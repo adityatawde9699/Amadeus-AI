@@ -164,8 +164,8 @@ class AmadeusService:
         # event loop. Store the path and CM reference here; the graph is
         # also built there once the checkpointer is ready.
         self._checkpoint_db_path = self.settings.BASE_DIR / "langgraph_checkpoints.sqlite"
-        self._checkpointer_cm = None  # async context manager handle
-        self._checkpointer = None
+        self._checkpointer_cm: Any = None  # async context manager handle
+        self._checkpointer: Any = None
 
         llm_generate = self._make_llm_generate()
         self.graph = AmadeusGraph(
