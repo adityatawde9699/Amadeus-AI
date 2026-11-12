@@ -1,7 +1,25 @@
+# MCP servers connected at startup when ENABLE_MCP=true.
+#
+# SECURITY: every MCP tool is treated as high-risk by default — it requires the
+# STANDARD profile and human confirmation before each call. List a tool under
+# `read_only_tools` only if you have verified it has no side effects; those run
+# without confirmation and are available to READ_ONLY sessions.
+#
+# NOTE: `env` is not yet passed to the server process (see tool_registry.py
+# `_run_mcp_server`); export the variables in the daemon's environment instead.
 mcp_servers:
   - name: filesystem
-    command: "npx -y @modelcontextprotocol/server-filesystem /home/adityatawde9699"
-    enabled: true
+    # Scoped to the agent workspace (relative to the project root / CWD), never
+    # a home directory — the agent's own filesystem tools use the same sandbox.
+    command: "npx -y @modelcontextprotocol/server-filesystem ./data/agent_workspace"
+    enabled: false
+    read_only_tools:
+      - read_file
+      - read_text_file
+      - list_directory
+      - search_files
+      - get_file_info
+      - list_allowed_directories
   - name: github
     command: "npx -y @modelcontextprotocol/server-github"
     env:

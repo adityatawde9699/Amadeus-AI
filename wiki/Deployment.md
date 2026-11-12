@@ -37,14 +37,15 @@ Set these in the Railway dashboard:
 
 ### Dockerfile Stages
 
-The Dockerfile uses a **2-stage multi-stage build:**
+The Dockerfile uses a **3-stage multi-stage build:**
 
 | Stage | Purpose |
 |---|---|
 | `builder` | Installs locked dependencies (`uv sync --frozen --no-dev`) into `/opt/venv` |
-| `runtime` | Minimal ONNX-only production image, non-root user `amadeus` |
+| `artifacts` | Pinned CPU-only torch/transformers/sklearn toolchain (build-time only) that exports the int8 ONNX MiniLM embedder and trains `Model/category_classifier.npz` |
+| `runtime` | Production image with the venv, source, `config/` and the two router artifacts; non-root user `amadeus`; ~1.1 GB |
 
-> The image ships core deps only (no `torch`/`transformers`/`scikit-learn`); embedding runs via `onnxruntime`. Add the `[ml-fallback]` extra only if you need the heavier stack.
+> The runtime image ships core deps only (no `torch`/`transformers`/`scikit-learn`); embedding runs via `onnxruntime`. The local GGUF model is **not** baked in — mount it at `/app/Model/` (or use cloud providers). The first build downloads the embedding checkpoint from Hugging Face.
 
 ### Entrypoint
 
@@ -70,22 +71,25 @@ docker-compose up --build
 
 ### Production
 
+`docker-compose.yml` defines `amadeus` (API), `worker` (arq queue), `postgres`, `redis`, `qdrant` and `jaeger`; there is no separate prod profile. Set `POSTGRES_PASSWORD` and `SECRET_KEY` in `.env`, then:
+
 ```bash
-# Set POSTGRES_PASSWORD and SECRET_KEY in .env first
-docker-compose --profile prod up --build -d
-
-# View logs
-docker-compose logs -f api-prod
-
-# Stop
-docker-compose --profile prod down
+docker-compose up --build -d
+docker-compose logs -f amadeus
 ```
 
-The production profile runs **Gunicorn with 4 Uvicorn workers** with resource limits:
-- CPU: 2 cores
-- Memory: 1 GB
+The API runs **one uvicorn worker** (the Dockerfile `CMD`). Redis and PostgreSQL ports are **not exposed to the host** — internal network only.
 
-Redis and PostgreSQL ports are **not exposed to the host** — internal network only.
+### Scaling beyond one worker
+
+By default HITL confirmations, the pre-auth login rate limit and LangGraph checkpoints are per-process / per-host, which is correct for one worker. To run several workers or replicas:
+
+| Setting | Effect |
+|---|---|
+| `SHARED_STATE_BACKEND=redis` | Pending confirmations and decisions live in Redis (any worker can approve a request another worker is waiting on); the auth rate limit is a shared Redis window. Startup **fails** if Redis is unreachable rather than silently splitting state. slowapi's per-user limits already use Redis when it is reachable. |
+| `CHECKPOINT_BACKEND=postgres` | Paused agent runs are checkpointed in Postgres (`CHECKPOINT_POSTGRES_URL`, default `DATABASE_URL`), so a run paused on one worker resumes on another. Requires the `[scale]` extra (`pip install "amadeus-ai[scale]"`, or `docker build --build-arg UV_SYNC_EXTRAS="--extra scale" .`); creates LangGraph's checkpoint tables on first start. |
+
+Still per-process regardless: the local llama.cpp model (each worker loads its own copy — budget RAM accordingly) and the Telegram long-poll transport (run it in exactly one process).
 
 ### Service Graph
 

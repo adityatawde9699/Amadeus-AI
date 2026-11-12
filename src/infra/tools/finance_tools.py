@@ -3,7 +3,7 @@ Finance tools for Amadeus AI Assistant.
 
 Provides stock quotes (Yahoo Finance public chart API) and cryptocurrency
 prices (CoinGecko public API). Both endpoints are keyless and free, keeping
-the memory and configuration footprint at zero — only aiohttp is used.
+the memory and configuration footprint at zero — only httpx is used.
 
 Owned by the `finance_expert` MoE profile (ToolCategory.FINANCE).
 """
@@ -11,14 +11,14 @@ Owned by the `finance_expert` MoE profile (ToolCategory.FINANCE).
 import logging
 from typing import Any
 
-import aiohttp
+import httpx
 
 from src.infra.tools.base import Tool, ToolCategory, tool
 
 
 logger = logging.getLogger(__name__)
 
-_http_session: aiohttp.ClientSession | None = None
+_http_session: httpx.AsyncClient | None = None
 
 _UA_HEADERS = {"User-Agent": "AmadeusAI/5.0 (https://github.com/adityatawde9699/Amadeus-AI)"}
 
@@ -41,20 +41,20 @@ _COINGECKO_IDS = {
 async def initialize_finance_tools_http_session() -> None:
     """Create the shared HTTP session used by finance tools."""
     global _http_session
-    if _http_session is None or _http_session.closed:
-        _http_session = aiohttp.ClientSession()
+    if _http_session is None or _http_session.is_closed:
+        _http_session = httpx.AsyncClient(follow_redirects=True)
 
 
 async def close_finance_tools_http_session() -> None:
     """Close the shared HTTP session used by finance tools."""
     global _http_session
-    if _http_session is not None and not _http_session.closed:
-        await _http_session.close()
+    if _http_session is not None and not _http_session.is_closed:
+        await _http_session.aclose()
     _http_session = None
 
 
-async def _get_http_session() -> aiohttp.ClientSession:
-    if _http_session is None or _http_session.closed:
+async def _get_http_session() -> httpx.AsyncClient:
+    if _http_session is None or _http_session.is_closed:
         await initialize_finance_tools_http_session()
     if _http_session is None:
         raise RuntimeError("finance tools HTTP session is unavailable")
@@ -94,15 +94,15 @@ async def get_stock_price(symbol: str | None = None, **kwargs: Any) -> str:
 
     try:
         session = await _get_http_session()
-        async with session.get(
-            url, params=params, headers=_UA_HEADERS, timeout=aiohttp.ClientTimeout(total=10)
-        ) as response:
-            if response.status == 404:
-                return f"No stock found for symbol '{ticker}'. Check the ticker (Indian stocks need '.NS' or '.BO')."
-            if response.status != 200:
-                return f"Stock service error (status {response.status})."
+        response = await session.get(
+            url, params=params, headers=_UA_HEADERS, timeout=10
+        )
+        if response.status_code == 404:
+            return f"No stock found for symbol '{ticker}'. Check the ticker (Indian stocks need '.NS' or '.BO')."
+        if response.status_code != 200:
+            return f"Stock service error (status {response.status_code})."
 
-            data = await response.json()
+        data = response.json()
 
         result = (data.get("chart", {}).get("result") or [None])[0]
         if not result:
@@ -126,9 +126,9 @@ async def get_stock_price(symbol: str | None = None, **kwargs: Any) -> str:
             line += f" {arrow} {change:+,.2f} ({pct:+.2f}%) vs previous close {prev_close:,.2f}"
         return line
 
-    except TimeoutError:
+    except (TimeoutError, httpx.TimeoutException):
         return "Stock request timed out. Please try again."
-    except aiohttp.ClientError as e:
+    except httpx.HTTPError as e:
         return f"Network error fetching stock data: {e}"
     except Exception as e:
         logger.exception("get_stock_price failed for %s", ticker)
@@ -180,15 +180,15 @@ async def get_crypto_price(
 
     try:
         session = await _get_http_session()
-        async with session.get(
-            url, params=params, headers=_UA_HEADERS, timeout=aiohttp.ClientTimeout(total=10)
-        ) as response:
-            if response.status == 429:
-                return "Crypto service is rate-limited right now. Try again in a minute."
-            if response.status != 200:
-                return f"Crypto service error (status {response.status})."
+        response = await session.get(
+            url, params=params, headers=_UA_HEADERS, timeout=10
+        )
+        if response.status_code == 429:
+            return "Crypto service is rate-limited right now. Try again in a minute."
+        if response.status_code != 200:
+            return f"Crypto service error (status {response.status_code})."
 
-            data = await response.json()
+        data = response.json()
 
         entry = data.get(coin_id)
         if not entry or vs not in entry:
@@ -206,9 +206,9 @@ async def get_crypto_price(
             line += f" {arrow} {change:+.2f}% (24h)"
         return line
 
-    except TimeoutError:
+    except (TimeoutError, httpx.TimeoutException):
         return "Crypto request timed out. Please try again."
-    except aiohttp.ClientError as e:
+    except httpx.HTTPError as e:
         return f"Network error fetching crypto data: {e}"
     except Exception as e:
         logger.exception("get_crypto_price failed for %s", raw)

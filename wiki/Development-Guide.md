@@ -132,9 +132,28 @@ uv run pytest tests/ -m "not slow"
 
 ### Load Testing
 
-```bash
-locust -f locustfile.py --host http://localhost:8000
-```
+There is no load-test suite in the repo yet (no `locustfile.py`).
+
+---
+
+## Evaluation
+
+Tests check behaviour; the harness in `evals/` measures *quality*. Baseline
+reports are committed in `evals/results/` — re-run after changing routing data,
+prompts, retrieval or the default model, and compare.
+
+| Eval | Measures | Command |
+|---|---|---|
+| Routing | Stage-1 category classifier on 62 held-out queries (accuracy, macro-F1, top-2, expert-profile accuracy, confusions) plus 5-fold CV on `TRAINING_DATA` | `uv run python -m evals.routing_eval` |
+| RAG | Workspace retrieval over `wiki/` — recall@1/3/5 and MRR for hybrid vs BM25-only vs dense-only | `uv run python -m evals.rag_eval --model-dir Model` |
+| Agent | First tool + argument correctness of the real graph and registry with the local GGUF model, expert vs generalist, grammar-constrained vs free JSON (tools never execute) | `uv run python -m evals.agent_eval` |
+
+Needs: scikit-learn (routing), the ONNX embedder from
+`scripts/export_embedding_onnx.py` (RAG), a GGUF model (agent; ~40 min on CPU for
+the full matrix, `--limit N` for a smoke run). Each accepts `--markdown` /
+`--json` output paths. Keep the datasets honest: never copy held-out routing
+queries into `TRAINING_DATA`, and label by the category the *registered tool*
+lives in.
 
 ---
 

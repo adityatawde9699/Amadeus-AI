@@ -4,6 +4,7 @@ Network diagnostic tools for Amadeus AI.
 
 import logging
 import platform
+import re
 import socket
 import subprocess
 from typing import Any
@@ -41,6 +42,10 @@ def get_network_info(**kwargs: Any) -> str:
         f"Local IP: {local_ip}"
     )
 
+# Hostname labels, IPv4 dotted quads and IPv6 literals (letters/digits/.:-).
+_HOST_RE = re.compile(r"[A-Za-z0-9.:\-]{1,253}")
+
+
 @tool(
     name="ping_host",
     description=(
@@ -62,6 +67,16 @@ def get_network_info(**kwargs: Any) -> str:
 )
 def ping_host(host: str, count: int = 4, **kwargs: Any) -> str:
     """Ping a host."""
+    host = (host or "").strip()
+    # Reject anything that isn't a plain hostname / IPv4 / IPv6 literal. A value
+    # starting with "-" would otherwise be parsed by ping as an option
+    # (argument injection, e.g. "-f" flood or "-s 65000").
+    if not _HOST_RE.fullmatch(host) or host.startswith("-"):
+        return f"Error: invalid host {host!r}."
+    try:
+        count = max(1, min(int(count), 10))
+    except (TypeError, ValueError):
+        count = 4
     param = "-n" if platform.system() == "Windows" else "-c"
     command = ["ping", param, str(count), host]
 

@@ -163,6 +163,11 @@ class TaskORM(Base):
         index=True,
     )
     completed_at: Mapped[datetime | None] = mapped_column(nullable=True, index=True)
+    # Owning user for REST-created tasks. NULL = unowned (agent/daemon-created or
+    # pre-tenancy rows); only unscoped (admin / agent) repositories see those.
+    owner_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
 
     __table_args__ = (
         Index("idx_task_status_created", "status", "created_at"),

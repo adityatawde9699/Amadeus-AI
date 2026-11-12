@@ -49,6 +49,22 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def checkpoint_postgres_url(url: str) -> str:
+    """Turn an SQLAlchemy URL into the libpq URL psycopg expects.
+
+    ``postgresql+asyncpg://`` / ``postgres://`` → ``postgresql://``; other
+    schemes are rejected so a SQLite DATABASE_URL can't be passed by mistake.
+    """
+    scheme, sep, rest = url.partition("://")
+    base = scheme.split("+", 1)[0]
+    if not sep or base not in ("postgresql", "postgres"):
+        raise RuntimeError(
+            "CHECKPOINT_BACKEND=postgres needs a PostgreSQL URL "
+            "(set CHECKPOINT_POSTGRES_URL)"
+        )
+    return f"postgresql://{rest}"
+
+
 class AmadeusService:
     """
     Thin orchestrator that coordinates the Amadeus AI sub-services.
@@ -174,16 +190,14 @@ class AmadeusService:
         await self.memory_service.initialize()
         await self.queue_manager.initialize()
 
-        # Open the async SQLite checkpointer now that the event loop is running.
-        from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-
-        self._checkpointer_cm = AsyncSqliteSaver.from_conn_string(
-            str(self._checkpoint_db_path)
-        )
+        # Open the checkpointer now that the event loop is running.
+        self._checkpointer_cm, label = self._make_checkpointer_cm()
         self._checkpointer = await self._checkpointer_cm.__aenter__()
+        if self.settings.CHECKPOINT_BACKEND == "postgres":
+            await self._checkpointer.setup()  # idempotent: creates checkpoint tables
         # Patch the already-constructed graph with the live checkpointer.
         self.graph.set_checkpointer(self._checkpointer)
-        logger.info("AsyncSqliteSaver checkpointer ready: %s", self._checkpoint_db_path)
+        logger.info("LangGraph checkpointer ready: %s", label)
 
         if not self._semantic_router.is_ready:
             loop = asyncio.get_running_loop()
@@ -192,6 +206,26 @@ class AmadeusService:
                 "SemanticRouter ready=%s after build attempt",
                 self._semantic_router.is_ready
             )
+
+    def _make_checkpointer_cm(self) -> tuple[Any, str]:
+        """Async context manager for the configured LangGraph checkpointer."""
+        if self.settings.CHECKPOINT_BACKEND == "postgres":
+            try:
+                from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+            except ImportError as exc:
+                raise RuntimeError(
+                    "CHECKPOINT_BACKEND=postgres needs the [scale] extra "
+                    "(langgraph-checkpoint-postgres + psycopg)"
+                ) from exc
+            url = checkpoint_postgres_url(
+                self.settings.CHECKPOINT_POSTGRES_URL or self.settings.DATABASE_URL
+            )
+            return AsyncPostgresSaver.from_conn_string(url), "postgres"
+
+        from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+
+        path = str(self._checkpoint_db_path)
+        return AsyncSqliteSaver.from_conn_string(path), f"sqlite ({path})"
 
     # ------------------------------------------------------------------
     # Public API
@@ -302,7 +336,7 @@ class AmadeusService:
         # Exception: Weather should go to get_weather, not wikipedia/web
         if "weather" in lower_query or "temperature" in lower_query:
             pass
-        elif "news" in lower_query or "headlines" in lower_query:
+        elif "news" in lower_query or "headline" in lower_query:
             logger.info("Triage override: News query detected, routing to get_news")
             return "tool", "get_news"
         elif any(lower_query.startswith(p) for p in _LIVE_PREFIXES):
@@ -530,16 +564,24 @@ class AmadeusService:
             return result.final_answer, result.tools_used
         return result.error or "I couldn't complete that task.", []
 
-    async def handle_background_event(self, event_prompt: str, context: RequestContext) -> None:
-        """Process a background/proactive event silently via the agent loop."""
+    async def handle_background_event(
+        self, event_prompt: str, context: RequestContext
+    ) -> str | None:
+        """Process a background/proactive event via the agent loop.
+
+        Returns the agent's final response (``None`` on failure) so callers that
+        run the agent with restricted privileges can deliver the result themselves.
+        """
         try:
             manager = await self._get_conversation_manager(context.session_id)
-            _response, tools_used = await self._process_with_agent(
+            response, tools_used = await self._process_with_agent(
                 event_prompt, conversation_manager=manager, context=context
             )
             logger.info("Background event processed. Tools used: %s", tools_used)
+            return response
         except Exception:
             logger.exception("Error handling background event")
+            return None
 
     # ------------------------------------------------------------------
     # Gemini direct call (LOCAL_ONLY_MODE blocks this path)
@@ -683,11 +725,13 @@ class AmadeusService:
         async def _generate(prompt: str, **kwargs: Any) -> str:
             structured = kwargs.get("structured", False)
             complexity = kwargs.get("complexity", "high")
+            json_schema = kwargs.get("json_schema")
 
             router = getattr(self, "llm_router", None)
             if router is not None:
                 response, _ = await router.generate(
-                    prompt, complexity=complexity, structured=structured
+                    prompt, complexity=complexity, structured=structured,
+                    json_schema=json_schema,
                 )
                 return response
 

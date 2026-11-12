@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 
 import sentry_sdk
 import structlog
-from fastapi import FastAPI, Request, status
+from fastapi import Depends, FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from jose import jwt as _jose_jwt
@@ -159,14 +159,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # injects its own TelegramConfirmationCallback per-message, so this is
     # only used by the REST /confirm flow.
     from src.container import inject_confirmation_callback
-    from src.infra.tools.confirmation import APIConfirmationCallback
+    from src.infra.tools.confirmation import create_api_confirmation_callback
 
-    confirmation_callback = APIConfirmationCallback(
-        timeout_seconds=60  # User has 60s to approve/deny before auto-deny
+    confirmation_callback = await create_api_confirmation_callback(
+        settings.SHARED_STATE_BACKEND,
+        settings.REDIS_URL,
+        timeout_seconds=settings.HITL_TIMEOUT_SECONDS,  # no decision in time = deny
     )
     app.state.confirmation_callback = confirmation_callback
     inject_confirmation_callback(confirmation_callback)
-    logger.info("HITL confirmation gate initialized (timeout=60s)")
+    logger.info(
+        "HITL confirmation gate initialized (backend=%s, timeout=%ss)",
+        settings.SHARED_STATE_BACKEND,
+        settings.HITL_TIMEOUT_SECONDS,
+    )
 
     logger.info("API ready at http://%s:%s", settings.API_HOST, settings.API_PORT)
 
@@ -248,12 +254,18 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # ty
 # Prometheus Metrics (imported from infra layer — single source of truth)
 from prometheus_fastapi_instrumentator import Instrumentator
 
+from src.api.middleware.metrics_auth import require_metrics_access
 from src.infra.metrics import (
     amadeus_llm_calls_total,  # noqa: F401 — imported for re-export / side-effect registration
 )
 
 
-Instrumentator().instrument(app).expose(app, endpoint="/api/v1/metrics", tags=["System"])
+Instrumentator().instrument(app).expose(
+    app,
+    endpoint="/api/v1/metrics",
+    tags=["System"],
+    dependencies=[Depends(require_metrics_access)],
+)
 
 
 # =============================================================================
@@ -330,9 +342,7 @@ if settings.is_development:
 # =============================================================================
 
 # Import and register route modules
-from fastapi import Depends
 
-from src.api.middleware.authentication import verify_jwt_token
 from src.api.middleware.rbac import RequireUser
 from src.api.routes import (
     chat,
@@ -345,14 +355,17 @@ from src.api.routes import (
 )
 
 
-# Disable auth for health + LLM usage, enable for everything else
-app.include_router(health.router, prefix="/api/v1", tags=["System"])
-app.include_router(llm.router, prefix="/api/v1", tags=["LLM"])  # No auth — informational
 # Phase 12: Liveness + Readiness probes (no auth — used by container orchestrators)
 app.include_router(readiness.router, prefix="/api/v1", tags=["Health"])
 
 # Protected routes (Require basic User role)
 protected_deps = [Depends(RequireUser)]
+
+# Detailed health, dependency status, host resources and LLM usage/cost reveal
+# internals (versions, providers, load) — authenticated users only. The bare
+# /health and the liveness/readiness probes stay public for orchestrators.
+app.include_router(health.router, prefix="/api/v1", tags=["System"], dependencies=protected_deps)
+app.include_router(llm.router, prefix="/api/v1", tags=["LLM"], dependencies=protected_deps)
 app.include_router(tasks.router, prefix="/api/v1", tags=["Tasks"], dependencies=protected_deps)
 app.include_router(chat.router, prefix="/api/v1", tags=["Chat"], dependencies=protected_deps)
 
@@ -369,18 +382,13 @@ app.include_router(
     tags=["Auth"],
 )
 
-# Outbound messaging dispatch (requires JWT auth)
-app.include_router(
-    messaging.router, prefix="/api/v1", tags=["Messaging"], dependencies=[Depends(verify_jwt_token)]
-)
+# Outbound messaging dispatch (authenticated users; /send is admin-only in-route).
+# Uses the same fastapi-users JWT backend as login — the legacy python-jose
+# verifier rejected those tokens (audience mismatch).
+app.include_router(messaging.router, prefix="/api/v1", tags=["Messaging"], dependencies=protected_deps)
 
-# HITL Confirmation endpoint — requires JWT auth (user must be authenticated to approve/deny)
-app.include_router(
-    confirm.router,
-    prefix="/api/v1",
-    tags=["Confirmation"],
-    dependencies=[Depends(verify_jwt_token)],
-)
+# HITL Confirmation endpoint — authenticated users; ownership enforced per route.
+app.include_router(confirm.router, prefix="/api/v1", tags=["Confirmation"], dependencies=protected_deps)
 
 
 # =============================================================================

@@ -17,6 +17,9 @@ from src.core.domain.models import PermissionProfile
 
 logger = logging.getLogger(__name__)
 
+# Reply the agent gives when there is nothing worth notifying the user about.
+NO_ACTION_SENTINEL = "NO_ACTION"
+
 
 async def run_proactive_checks() -> None:
     """
@@ -55,27 +58,43 @@ async def run_proactive_checks() -> None:
                 if pruned > 0:
                     logger.info("Pruned %d stale memories for %s", pruned, user_id)
 
+            # SECURITY (audit H-5): this runs unattended on a timer and reads
+            # task/reminder text that may contain injected instructions, so the
+            # agent gets READ_ONLY (can inspect, cannot act). It only reports;
+            # delivery happens here, in code, to the fixed master recipient —
+            # never via a model-chosen tool call or recipient.
             context = RequestContext(
                 request_id=str(uuid.uuid4()),
                 session_id=user_id,
                 user_id=user_id,
-                permissions=PermissionProfile.SYSTEM_FULL,
+                permissions=PermissionProfile.READ_ONLY,
                 trace_id=str(uuid.uuid4()),
                 cancellation_token=asyncio.Event(),
             )
 
-            # The prompt to trigger analysis and action
             prompt = (
                 f"SYSTEM BACKGROUND EVENT: It is currently {current_time}. "
                 "Review my pending tasks, recent reminders, and current system resource statuses. "
                 "Are there any past due tasks, soon-to-be-due reminders, or critical system alerts? "
-                f"If there are, MUST use the send_message tool or send_outbound_message to notify me on {platform_name} at ID {user_id}. "
-                "Include a summary of what needs attention. "
-                "If everything is fine and nothing needs attention, just finish the task silently without bothering me."
+                "Do NOT send any messages yourself. If something needs attention, reply with a "
+                "short summary of it. If nothing needs attention, reply with exactly "
+                f"{NO_ACTION_SENTINEL}."
             )
 
-            # Submitting it as a background event processes it via the agent Orchestrator internally
-            await service.handle_background_event(prompt, context=context)
+            response = await service.handle_background_event(prompt, context=context)
+            summary = (response or "").strip()
+            if not summary or NO_ACTION_SENTINEL in summary.upper():
+                logger.info("Proactive check for %s: nothing to report", platform_name)
+                continue
+
+            from src.container import get_messaging_service
+
+            delivered = await get_messaging_service().send_message(
+                recipient_id=str(user_id),
+                text=f"🔔 Proactive check\n\n{summary}",
+                platform=platform_name,
+            )
+            logger.info("Proactive notification to %s delivered=%s", platform_name, delivered)
 
         except Exception as e:
             logger.error("Error during proactive check for %s: %s", platform_name, e, exc_info=True)

@@ -43,6 +43,15 @@ async def sqlite_db(monkeypatch):
         await conn.run_sync(Base.metadata.create_all)
 
     factory = async_sessionmaker(bind=engine, expire_on_commit=False)
+
+    # goal_steps.goal_id is a real FK (enforced: SQLite PRAGMA foreign_keys=ON),
+    # so the parent goals the tests reference must exist.
+    from src.infra.persistence.orm_models import GoalORM
+
+    async with factory() as session:
+        session.add_all(GoalORM(id=gid, title=f"goal {gid}") for gid in (1, 7, 11, 22))
+        await session.commit()
+
     monkeypatch.setattr(db, "_engine", engine)
     monkeypatch.setattr(db, "_session_factory", factory)
     yield

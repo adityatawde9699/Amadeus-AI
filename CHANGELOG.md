@@ -7,6 +7,61 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [Unreleased] — 2026-11 audit remediation
+
+### Security
+- **Breaking:** `/confirm` and `/messaging` now use the fastapi-users auth stack. The custom JWT verifier rejected every login token. HITL confirmations are bound to their owner, `/messaging/send` is admin-only, and the ephemeral `SECRET_KEY` is generated once per process.
+- **MCP tools are policy-gated.** They default to STANDARD + confirmation, and only allowlisted tools are read-only. The filesystem server is rooted at the agent workspace and disabled by default.
+- **Breaking: tasks are per-user** (`tasks.owner_id`, migration `e1f2a3b4c5d6`). `GET /tasks/summary` is no longer shadowed by `/tasks/{id}`.
+- **Health, LLM-usage and metrics endpoints now need auth.** Metrics accept the `METRICS_TOKEN` bearer or a loopback caller only.
+- **Proactive checks run READ_ONLY** and deliver their summaries in code.
+- **Hardening fixes:**
+  - The calculator now resists DoS.
+  - `ping` and `grep` are guarded against argument injection.
+  - llama.cpp inference is serialised.
+  - Argument remapping is limited to read-only tools.
+- **SEC-01 is now implemented** (`src/core/prompt_safety.py`):
+  - `<user_task>` and `<untrusted_data>` fences, control-token neutralisation and size caps;
+  - a taint gate that requires approval for state-changing tools after external content.
+  - It had been documented before but was missing from the code.
+- **Secret scanning:** gitleaks in pre-commit and CI; CI now runs on `master`.
+
+### Changed
+- **Single HTTP client:** `httpx` replaces `aiohttp`. Removed the unused `requests`, `psycopg`, `pytesseract`, `duckduckgo-search` (`ddgs` stays) and `openai` dependencies.
+- **Docker router artifacts:** a new build stage produces the ONNX embedder and `Model/category_classifier.npz` with a CPU-only toolchain. The runtime stays torch-free.
+- **Docker image cleanup:** the image now ships `config/`, and the stale `WHISPER_*` env vars are gone.
+- **`runtime/cognitive` is now an execution journal.** It records one run per request, around the LangGraph graph. It no longer emulates a plan/verify state machine around one hard-coded step. The events are `plan.created`, `plan.step.*` and `plan.completed`/`plan.failed`; `memory.committed` was removed.
+- **Removed the dead joblib classifier pipeline** (`scripts/retrain_classifier.py`, `Model/*.joblib`) and its broken CI job. Use `scripts/train_category_classifier.py` instead.
+- **Docs corrected:** no Ollama or OpenAI adapters exist, the project is not "production-ready", and there are 70 built-in tools.
+
+### Added
+- **Constrained tool selection.** The plan and reflect nodes send a JSON schema (`src/app/services/action_schema.py`):
+  - `tool` is limited to the expert's tools plus `FINISH`, and `args` to each tool's real parameter names.
+  - llama.cpp compiles the schema into a GBNF grammar, so local output is always a valid action.
+  - With a schema present, the router no longer skips the local model for structured calls.
+- **Eval harness (`evals/`)** with baselines committed in `evals/results/`:
+  - routing classifier: held-out set, cross-validation and confusion matrix;
+  - workspace RAG: recall@k and MRR, comparing hybrid, BM25 and dense retrieval;
+  - agent tool-selection on the real graph and local model.
+  - A CI floor keeps held-out routing accuracy at 80% or higher.
+- **Multi-worker state:**
+  - `SHARED_STATE_BACKEND=redis` puts HITL confirmations (`RedisConfirmationCallback`) and the pre-auth rate limit in Redis.
+  - `CHECKPOINT_BACKEND=postgres` uses Postgres LangGraph checkpoints (new `[scale]` extra; Docker: `--build-arg UV_SYNC_EXTRAS="--extra scale"`).
+  - The defaults are unchanged: in-process state and SQLite.
+- **Settings:** `HITL_TIMEOUT_SECONDS` (was hard-coded to 60 s) and `CHECKPOINT_POSTGRES_URL`.
+
+### Fixed
+- **Workspace RAG was a silent no-op in a default install and the Docker image.** It required sentence-transformers and now uses the ONNX MiniLM embedder.
+- **Semantic routing in the image failed to load.** `tokenizers` arrived only via the `[ml-fallback]` extra and is now a core dependency.
+- **Docker image cleanup:** the leftover 90 MB `model_fp32.onnx.data` was removed (image 1.35 GB → 1.06 GB), and the artifact toolchain is pinned.
+
+### Internal
+- **`agent_loop.py` split into mixins** under `src/app/services/agent_graph/` (`state`, `actions`, `outcomes`, `orchestration`, `expert`). It went from about 1,300 lines to about 320.
+  - Method bodies are byte-for-byte unchanged (verified via AST comparison).
+  - `agent_loop` still exports `AmadeusGraph`, `AgentResult` and `QueueFullError`.
+
+---
+
 ## [6.0.0] — 2026-06-21
 
 Security & build hardening release. Implements the four-phase remediation of the

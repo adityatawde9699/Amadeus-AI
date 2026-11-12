@@ -109,9 +109,16 @@ Disclosing security issues publicly before a fix is available puts all users at 
 - The API and the Jaeger UI bind to loopback (`127.0.0.1`); place a TLS reverse
   proxy in front for external access. Jaeger OTLP ingest stays internal.
 
-### Prompt Injection (v3.2.1+)
-- **SEC-01**: User task text wrapped in `<user_task>` XML boundary tags. ReAct
-  control tokens found in user input are neutralized with `[BLOCKED:TOKEN]`.
+### Prompt Injection
+- **SEC-01** (`src/core/prompt_safety.py`): the user's request is fenced in
+  `<user_task>`; tool outputs, recalled memories and expert results are fenced in
+  `<untrusted_data>` blocks the model is told never to follow, size-capped, with
+  chat-template control tokens and forged fence tags replaced by `[BLOCKED:TOKEN]`.
+- **Taint gate**: after a tool returns external content (web, news, email,
+  finance, weather, any network tool), state-changing tools in the same run
+  require human approval; with no approval channel they are denied.
+- Delimiting is a mitigation, not a guarantee — the permission profiles and the
+  taint gate are the enforcement layer.
 
 ### Supply chain & dependency auditing
 - The Docker image is built from the pinned lockfile (`uv sync --frozen`) — the

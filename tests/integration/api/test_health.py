@@ -34,9 +34,9 @@ class TestHealthEndpoints:
         assert "version" in data
         assert "environment" in data
 
-    def test_detailed_health_endpoint(self, client):
+    def test_detailed_health_endpoint(self, authed_client):
         """Test the detailed health check endpoint."""
-        response = client.get("/api/v1/health/detailed")
+        response = authed_client.get("/api/v1/health/detailed")
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -44,9 +44,9 @@ class TestHealthEndpoints:
         assert data["status"] == "healthy"
         assert "database" in data
 
-    def test_system_status_endpoint(self, client):
+    def test_system_status_endpoint(self, authed_client):
         """Test the system status endpoint."""
-        response = client.get("/api/v1/system/status")
+        response = authed_client.get("/api/v1/system/status")
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -65,11 +65,20 @@ class TestHealthEndpoints:
 
 
 class TestTaskEndpoints:
-    """Integration tests for task API endpoints."""
+    """Integration tests for task API endpoints (authenticated)."""
 
-    def test_create_task(self, client):
+    def test_tasks_require_auth(self, client):
+        assert client.get("/api/v1/tasks").status_code == 401
+
+    def test_task_summary_route_not_shadowed(self, authed_client):
+        """/tasks/summary must not be captured by /tasks/{task_id} (was 422)."""
+        response = authed_client.get("/api/v1/tasks/summary")
+        assert response.status_code == status.HTTP_200_OK
+        assert set(response.json()) == {"total", "pending", "completed"}
+
+    def test_create_task(self, authed_client):
         """Test creating a new task."""
-        response = client.post("/api/v1/tasks", json={"content": "Test task from integration test"})
+        response = authed_client.post("/api/v1/tasks", json={"content": "Test task from integration test"})
 
         assert response.status_code == status.HTTP_201_CREATED
         data = response.json()
@@ -79,12 +88,12 @@ class TestTaskEndpoints:
         assert "id" in data
         assert "created_at" in data
 
-    def test_list_tasks(self, client):
+    def test_list_tasks(self, authed_client):
         """Test listing tasks."""
         # Create a task first
-        client.post("/api/v1/tasks", json={"content": "Task for listing"})
+        authed_client.post("/api/v1/tasks", json={"content": "Task for listing"})
 
-        response = client.get("/api/v1/tasks")
+        response = authed_client.get("/api/v1/tasks")
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -95,22 +104,22 @@ class TestTaskEndpoints:
         assert "completed" in data
         assert isinstance(data["tasks"], list)
 
-    def test_create_task_validation(self, client):
+    def test_create_task_validation(self, authed_client):
         """Test task creation validation."""
         # Empty content should fail
-        response = client.post("/api/v1/tasks", json={"content": ""})
+        response = authed_client.post("/api/v1/tasks", json={"content": ""})
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
-    def test_get_nonexistent_task(self, client):
+    def test_get_nonexistent_task(self, authed_client):
         """Test getting a task that doesn't exist."""
-        response = client.get("/api/v1/tasks/99999")
+        response = authed_client.get("/api/v1/tasks/99999")
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
-    def test_filter_tasks_by_status(self, client):
+    def test_filter_tasks_by_status(self, authed_client):
         """Test filtering tasks by status."""
         # Get only pending tasks
-        response = client.get("/api/v1/tasks?status_filter=pending")
+        response = authed_client.get("/api/v1/tasks?status_filter=pending")
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()

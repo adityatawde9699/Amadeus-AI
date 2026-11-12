@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from src.core.domain.models import ToolDefinition
-from src.infra.tools.base import Tool, ToolCategory
+from src.infra.tools.base import Tool, ToolCapability, ToolCategory
 
 
 logger = logging.getLogger(__name__)
@@ -80,6 +80,7 @@ class ToolRegistry:
         category: ToolCategory,
         parameters: dict | None = None,
         requires_confirmation: bool = False,
+        capability: ToolCapability | None = None,
     ) -> None:
         """
         Register a function as a tool.
@@ -91,6 +92,8 @@ class ToolRegistry:
             category: Tool category
             parameters: Parameter schema
             requires_confirmation: Whether confirmation is needed
+            capability: Explicit security metadata. When omitted, ``Tool`` derives
+                a conservative one (same rules as the ``@tool`` decorator).
         """
         tool = Tool(
             name=name,
@@ -99,6 +102,7 @@ class ToolRegistry:
             category=category,
             parameters=parameters or {},
             requires_confirmation=requires_confirmation,
+            capability=capability,
         )
         self.register(tool)
 
@@ -163,13 +167,34 @@ class ToolRegistry:
         Used by MoE Expert Nodes to build a small, focused tool prompt.
         """
         tools = self.get_tools_by_categories(categories)
-        lines = []
-        for tool in sorted(tools, key=lambda t: t.name):
-            desc = tool.description.split("\n")[0].strip()
-            if not desc.endswith("."):
-                desc += "."
-            lines.append(f"- {tool.name}: {desc}")
-        return "\n".join(lines)
+        return "\n".join(
+            self._menu_line(tool) for tool in sorted(tools, key=lambda t: t.name)
+        )
+
+    @staticmethod
+    def _menu_line(tool: Tool) -> str:
+        """Render one tool as ``- name(arg, opt?): description.``
+
+        Parameter names MUST be shown: without them small local models guess
+        the args key (e.g. ``{"param": "2+2"}``) and the call fails validation.
+        Names come from the function signature, which is what
+        ``ToolExecutor._validate_args`` checks against. Optional params get ``?``.
+        """
+        desc = tool.description.split("\n")[0].strip()
+        if not desc.endswith("."):
+            desc += "."
+        params: list[str] = []
+        try:
+            for name, p in inspect.signature(tool.function).parameters.items():
+                if name in ("self", "cls") or p.kind in (
+                    inspect.Parameter.VAR_KEYWORD,
+                    inspect.Parameter.VAR_POSITIONAL,
+                ):
+                    continue
+                params.append(name if p.default is inspect.Parameter.empty else f"{name}?")
+        except (TypeError, ValueError):
+            pass
+        return f"- {tool.name}({', '.join(params)}): {desc}"
 
     def list_names(self) -> list[str]:
         """Get all tool names."""
@@ -410,11 +435,7 @@ class ToolRegistry:
         # Sort tools by name for consistent prompts
         sorted_tools = sorted(self._tools.values(), key=lambda t: t.name)
         for tool in sorted_tools:
-            # Cleaning description to fit on one line
-            desc = tool.description.split("\n")[0].strip()
-            if not desc.endswith("."):
-                desc += "."
-            lines.append(f"- {tool.name}: {desc}")
+            lines.append(self._menu_line(tool))
 
         return "\n".join(lines)
 
@@ -422,7 +443,9 @@ class ToolRegistry:
     # MCP (MODEL CONTEXT PROTOCOL) INTEGRATION
     # =========================================================================
 
-    async def connect_mcp_server(self, command: str, name: str) -> int:
+    async def connect_mcp_server(
+        self, command: str, name: str, read_only_tools: list[str] | None = None
+    ) -> int:
         """
         Connect an MCP server via stdio and register its tools.
 
@@ -447,7 +470,9 @@ class ToolRegistry:
         result: dict[str, Any] = {"count": 0, "error": None}
 
         task = asyncio.create_task(
-            self._run_mcp_server(command, name, ready, shutdown, result),
+            self._run_mcp_server(
+                command, name, ready, shutdown, result, set(read_only_tools or [])
+            ),
             name=f"mcp-{name}",
         )
         self._mcp_tasks.append((task, shutdown))
@@ -467,6 +492,7 @@ class ToolRegistry:
         ready: asyncio.Event,
         shutdown: asyncio.Event,
         result: dict[str, Any],
+        read_only_tools: set[str] | None = None,
     ) -> None:
         """Own an MCP server's full connection lifecycle inside one task.
 
@@ -498,7 +524,12 @@ class ToolRegistry:
                 tools_result = await session.list_tools()
                 count = 0
                 for mcp_tool in tools_result.tools:
-                    self._register_mcp_tool(session, mcp_tool, server_name=name)
+                    self._register_mcp_tool(
+                        session,
+                        mcp_tool,
+                        server_name=name,
+                        read_only=mcp_tool.name in (read_only_tools or set()),
+                    )
                     count += 1
                 result["count"] = count
                 logger.info("Registered %d tools from MCP server '%s'", count, name)
@@ -514,8 +545,17 @@ class ToolRegistry:
             # Ensure a stuck/failed startup never leaves connect_mcp_server hung.
             ready.set()
 
-    def _register_mcp_tool(self, session: Any, mcp_tool: Any, server_name: str) -> None:
-        """Register a single MCP tool as an Amadeus tool."""
+    def _register_mcp_tool(
+        self, session: Any, mcp_tool: Any, server_name: str, read_only: bool = False
+    ) -> None:
+        """Register a single MCP tool as an Amadeus tool.
+
+        MCP tools are third-party code with unknown side effects, so by default
+        they are treated as mutating and high-risk: STANDARD profile minimum and
+        human confirmation before every call. Only tools the operator lists under
+        ``read_only_tools`` for that server in ``config/mcp_servers.yaml`` run
+        without confirmation (and are then available to READ_ONLY sessions).
+        """
 
         async def _caller(**kwargs: Any) -> Any:
             try:
@@ -534,12 +574,32 @@ class ToolRegistry:
 
         tool_name = f"{server_name}_{mcp_tool.name}"
 
+        if read_only:
+            capability = ToolCapability(
+                name=tool_name,
+                risk_level="low",
+                requires_network=True,
+                min_permission="read_only",
+            )
+        else:
+            capability = ToolCapability(
+                name=tool_name,
+                risk_level="high",
+                requires_confirmation=True,
+                requires_network=True,
+                modifies_filesystem=True,
+                modifies_system_state=True,
+                min_permission="standard",
+            )
+
         self.register_function(
             func=_caller,
             name=tool_name,
             description=mcp_tool.description or f"MCP tool: {mcp_tool.name}",
             category=ToolCategory.WEB_RESEARCH,
             parameters=parameters,
+            requires_confirmation=capability.requires_confirmation,
+            capability=capability,
         )
 
     async def shutdown_mcp(self) -> None:

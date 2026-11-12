@@ -60,7 +60,7 @@ Client (HTTP / Telegram / CLI)
   ▼  2. AmadeusService.process_task() called with context
   │     ├─ Check Redis LLM response cache (1 h TTL)
   │     ├─ Retrieve top-3 semantic memories from Turbovec
-  │     └─ Dispatch to LangGraph Cognitive Core
+  │     └─ Dispatch to the LangGraph agent graph (journaled by CognitiveCore)
   │
   ▼  3. SemanticToolRouter triages intent
   │     Selects: general / system / research agent

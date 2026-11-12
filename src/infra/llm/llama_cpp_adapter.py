@@ -14,6 +14,7 @@ memory-constrained machines.
 
 import asyncio
 import logging
+import threading
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -130,7 +131,12 @@ class LlamaCppAdapter(ILLMService):
         self.n_gpu_layers = n_gpu_layers
         self.main_gpu = main_gpu
         self._llm: Any | None = None
-        self._lock = asyncio.Lock()
+        self._lock = asyncio.Lock()  # guards lazy model initialisation only
+        # A llama.cpp context is NOT thread-safe: concurrent create_chat_completion
+        # calls on one Llama instance corrupt its KV cache / crash in llama_decode.
+        # Every inference runs in a worker thread, so serialise at thread level
+        # (an asyncio lock would not stop an abandoned streaming thread).
+        self._infer_lock = threading.Lock()
         # Set to True after a fatal decode failure so we stop trying until restart
         self._failed: bool = False
         logger.info(
@@ -209,9 +215,13 @@ class LlamaCppAdapter(ILLMService):
                                 self.n_gpu_layers,
                             )
 
-                    # flash_attn — leave disabled on CPU by default
+                    # flash_attn — llama.cpp REQUIRES it for a quantized V cache
+                    # ("quantized V cache requires flash_attn to be enabled"),
+                    # and it is faster on GPU. Enable it when either applies.
                     if "flash_attn" in llama_sig.parameters:
-                        init_kwargs["flash_attn"] = False
+                        init_kwargs["flash_attn"] = bool(
+                            self.quantize_kv_4bit or self.n_gpu_layers != 0
+                        )
 
                     # ── 4-bit KV-cache quantization ────────────────────────
                     # When enabled, quantizes the key/value cache from FP16
@@ -245,6 +255,7 @@ class LlamaCppAdapter(ILLMService):
                     logger.debug("Could not inspect Llama signature; using basic kwargs")
 
                 # Load model in a separate thread to avoid blocking event loop
+                retry_fp16 = False
                 try:
                     self._llm = await asyncio.to_thread(Llama, **init_kwargs)
                 except ValueError as e:
@@ -253,12 +264,20 @@ class LlamaCppAdapter(ILLMService):
                             "Failed to initialize Llama with 4-bit KV cache (likely model/arch incompatible). "
                             "Falling back to standard FP16 KV cache. Error: %s", e
                         )
-                        # Remove quantization params and try again
-                        init_kwargs.pop("type_k", None)
-                        init_kwargs.pop("type_v", None)
-                        self._llm = await asyncio.to_thread(Llama, **init_kwargs)
+                        retry_fp16 = True
                     else:
                         raise
+
+                if retry_fp16:
+                    # Retry OUTSIDE the except block: the exception's traceback
+                    # holds the half-built Llama (weights already in VRAM). If it
+                    # stays referenced, the retry can't fit on the GPU and fails
+                    # with "Failed to load model from file". Collect it first.
+                    import gc
+                    gc.collect()
+                    init_kwargs.pop("type_k", None)
+                    init_kwargs.pop("type_v", None)
+                    self._llm = await asyncio.to_thread(Llama, **init_kwargs)
 
                 logger.info("LlamaCpp initialized successfully.")
 
@@ -398,14 +417,15 @@ class LlamaCppAdapter(ILLMService):
         try:
 
             def _generate() -> str:
-                res = llm.create_chat_completion(
-                    messages=messages,
-                    max_tokens=max_tokens if max_tokens else self.context_length,
-                    temperature=temperature,
-                    stream=False,
-                    **({"response_format": kwargs["response_format"]}
-                       if kwargs.get("response_format") else {}),
-                )
+                with self._infer_lock:
+                    res = llm.create_chat_completion(
+                        messages=messages,
+                        max_tokens=max_tokens if max_tokens else self.context_length,
+                        temperature=temperature,
+                        stream=False,
+                        **({"response_format": kwargs["response_format"]}
+                           if kwargs.get("response_format") else {}),
+                    )
                 raw = str(res["choices"][0]["message"]["content"]).strip()
                 return _strip_think_tags(raw)
 
@@ -466,8 +486,16 @@ class LlamaCppAdapter(ILLMService):
         messages = self._build_messages(prompt, context)
         queue: asyncio.Queue[str | None] = asyncio.Queue()
         loop = asyncio.get_running_loop()
+        stop = threading.Event()  # set when the consumer goes away
 
         def _blocking_stream() -> None:
+            with self._infer_lock:
+                _stream_locked()
+
+        def _stream_locked() -> None:
+            if stop.is_set():
+                loop.call_soon_threadsafe(queue.put_nowait, None)
+                return
             try:
                 stream = llm.create_chat_completion(
                     messages=messages,
@@ -480,6 +508,8 @@ class LlamaCppAdapter(ILLMService):
                 accumulated: list[str] = []
                 in_think_block = False
                 for chunk in stream:
+                    if stop.is_set():
+                        break  # consumer cancelled — free the model promptly
                     choice = chunk.get("choices", [{}])[0]
                     delta = choice.get("delta", {})
                     token = delta.get("content", "")
@@ -517,6 +547,7 @@ class LlamaCppAdapter(ILLMService):
                     break
                 yield token
         finally:
+            stop.set()
             task.cancel()
 
     async def generate_with_tools(

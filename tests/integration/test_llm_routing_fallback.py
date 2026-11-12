@@ -1,7 +1,7 @@
 """
 Integration tests for LLM Router fallback chain.
 
-Tests verify the Groq → Gemini → OpenAI provider cascade,
+Tests verify the llama.cpp / Groq → Gemini provider cascade,
 including Redis quota tracking and graceful degradation.
 """
 
@@ -15,7 +15,7 @@ import pytest
 
 
 # Stub heavy imports
-for _mod in ("joblib", "google.generativeai", "openai", "groq"):
+for _mod in ("joblib", "google.generativeai", "groq"):
     if _mod not in sys.modules:
         sys.modules[_mod] = types.ModuleType(_mod)
 
@@ -56,30 +56,32 @@ class TestLLMRouterFallback:
         assert text == "gemini response"
 
     @pytest.mark.asyncio
-    async def test_falls_back_gemini_to_openai(self):
+    async def test_high_complexity_falls_back_cloud_to_local(self):
+        """High complexity tries cloud first; local llama.cpp is the last resort."""
         from src.infra.llm.router import LLMRouter
 
         groq = _make_rate_limited_adapter("groq")
         gemini = _make_rate_limited_adapter("gemini")
-        openai = _make_mock_adapter("openai", "openai response")
+        llama = _make_mock_adapter("llama_cpp", "local response")
 
-        router = LLMRouter(groq=groq, gemini=gemini, openai=openai)
-        # complexity="high" enables openai as a candidate
+        router = LLMRouter(llama_cpp=llama, groq=groq, gemini=gemini)
         text, provider = await router.generate("complex task", complexity="high")
 
-        assert provider == "openai"
-        assert text == "openai response"
+        assert provider == "llama_cpp"
+        assert text == "local response"
+        groq.generate_response.assert_awaited()
+        gemini.generate_response.assert_awaited()
 
     @pytest.mark.asyncio
     async def test_all_exhausted_raises_rate_limit_error(self):
         from src.core.exceptions import LLMRateLimitError
         from src.infra.llm.router import LLMRouter
 
-        groq = _make_rate_limited_adapter("groq")
-        gemini = _make_rate_limited_adapter("gemini")
-        openai = _make_rate_limited_adapter("openai")
-
-        router = LLMRouter(groq=groq, gemini=gemini, openai=openai)
+        router = LLMRouter(
+            llama_cpp=_make_rate_limited_adapter("llama_cpp"),
+            groq=_make_rate_limited_adapter("groq"),
+            gemini=_make_rate_limited_adapter("gemini"),
+        )
 
         with pytest.raises(LLMRateLimitError):
             await router.generate("test", complexity="high")

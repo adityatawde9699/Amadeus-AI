@@ -1,0 +1,565 @@
+{
+  "heldout": {
+    "n": 62,
+    "accuracy": 0.8870967741935484,
+    "macro_f1": 0.8772486772486772,
+    "profile_accuracy": 0.8870967741935484,
+    "per_class": {
+      "app_control": {
+        "precision": 0.6,
+        "recall": 0.75,
+        "f1": 0.6666666666666665,
+        "support": 4
+      },
+      "calculation": {
+        "precision": 1.0,
+        "recall": 0.75,
+        "f1": 0.8571428571428571,
+        "support": 4
+      },
+      "communication": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 4
+      },
+      "content_generation": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 4
+      },
+      "datetime": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 4
+      },
+      "developer": {
+        "precision": 0.8,
+        "recall": 1.0,
+        "f1": 0.888888888888889,
+        "support": 4
+      },
+      "file_system": {
+        "precision": 0.8,
+        "recall": 1.0,
+        "f1": 0.888888888888889,
+        "support": 4
+      },
+      "finance": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 4
+      },
+      "monitoring": {
+        "precision": 0.8,
+        "recall": 1.0,
+        "f1": 0.888888888888889,
+        "support": 4
+      },
+      "news": {
+        "precision": 1.0,
+        "recall": 0.5,
+        "f1": 0.6666666666666666,
+        "support": 4
+      },
+      "os_control": {
+        "precision": 1.0,
+        "recall": 0.75,
+        "f1": 0.8571428571428571,
+        "support": 4
+      },
+      "productivity": {
+        "precision": 1.0,
+        "recall": 0.5,
+        "f1": 0.6666666666666666,
+        "support": 4
+      },
+      "task_manager": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 6
+      },
+      "weather": {
+        "precision": 0.8,
+        "recall": 1.0,
+        "f1": 0.888888888888889,
+        "support": 4
+      },
+      "web_research": {
+        "precision": 0.8,
+        "recall": 1.0,
+        "f1": 0.888888888888889,
+        "support": 4
+      }
+    },
+    "confusions": [
+      [
+        "app_control -> developer",
+        1
+      ],
+      [
+        "os_control -> monitoring",
+        1
+      ],
+      [
+        "news -> weather",
+        1
+      ],
+      [
+        "news -> web_research",
+        1
+      ],
+      [
+        "calculation -> app_control",
+        1
+      ],
+      [
+        "productivity -> app_control",
+        1
+      ],
+      [
+        "productivity -> file_system",
+        1
+      ]
+    ],
+    "top2_accuracy": 0.9193548387096774,
+    "errors": [
+      {
+        "query": "could you bring up visual studio code",
+        "gold": "app_control",
+        "pred": "developer"
+      },
+      {
+        "query": "put the laptop to sleep",
+        "gold": "os_control",
+        "pred": "monitoring"
+      },
+      {
+        "query": "what's new in technology this week",
+        "gold": "news",
+        "pred": "weather"
+      },
+      {
+        "query": "latest updates on the elections",
+        "gold": "news",
+        "pred": "web_research"
+      },
+      {
+        "query": "divide 9000 between 4 people",
+        "gold": "calculation",
+        "pred": "app_control"
+      },
+      {
+        "query": "open the budget xlsx and read the totals",
+        "gold": "productivity",
+        "pred": "app_control"
+      },
+      {
+        "query": "draft the meeting minutes as a docx file",
+        "gold": "productivity",
+        "pred": "file_system"
+      }
+    ]
+  },
+  "cross_validation": {
+    "n": 387,
+    "accuracy": 0.6744186046511628,
+    "macro_f1": 0.6428796609024313,
+    "profile_accuracy": 0.7131782945736435,
+    "per_class": {
+      "app_control": {
+        "precision": 0.5614035087719298,
+        "recall": 0.7441860465116279,
+        "f1": 0.6399999999999999,
+        "support": 43
+      },
+      "calculation": {
+        "precision": 0.7368421052631579,
+        "recall": 0.6666666666666666,
+        "f1": 0.7,
+        "support": 21
+      },
+      "communication": {
+        "precision": 0.65,
+        "recall": 0.7647058823529411,
+        "f1": 0.7027027027027027,
+        "support": 17
+      },
+      "content_generation": {
+        "precision": 0.375,
+        "recall": 0.25,
+        "f1": 0.3,
+        "support": 12
+      },
+      "datetime": {
+        "precision": 0.625,
+        "recall": 0.47619047619047616,
+        "f1": 0.5405405405405405,
+        "support": 21
+      },
+      "developer": {
+        "precision": 0.6666666666666666,
+        "recall": 0.6666666666666666,
+        "f1": 0.6666666666666666,
+        "support": 24
+      },
+      "file_system": {
+        "precision": 0.71875,
+        "recall": 0.7419354838709677,
+        "f1": 0.7301587301587302,
+        "support": 31
+      },
+      "finance": {
+        "precision": 0.8,
+        "recall": 0.6,
+        "f1": 0.6857142857142857,
+        "support": 20
+      },
+      "monitoring": {
+        "precision": 0.8387096774193549,
+        "recall": 0.8387096774193549,
+        "f1": 0.8387096774193549,
+        "support": 31
+      },
+      "news": {
+        "precision": 0.85,
+        "recall": 0.85,
+        "f1": 0.85,
+        "support": 20
+      },
+      "os_control": {
+        "precision": 0.7586206896551724,
+        "recall": 0.6470588235294118,
+        "f1": 0.6984126984126984,
+        "support": 34
+      },
+      "productivity": {
+        "precision": 0.2727272727272727,
+        "recall": 0.17647058823529413,
+        "f1": 0.21428571428571427,
+        "support": 17
+      },
+      "task_manager": {
+        "precision": 0.7837837837837838,
+        "recall": 0.7837837837837838,
+        "f1": 0.7837837837837838,
+        "support": 37
+      },
+      "weather": {
+        "precision": 0.6875,
+        "recall": 0.6111111111111112,
+        "f1": 0.6470588235294118,
+        "support": 18
+      },
+      "web_research": {
+        "precision": 0.5769230769230769,
+        "recall": 0.7317073170731707,
+        "f1": 0.6451612903225806,
+        "support": 41
+      }
+    },
+    "confusions": [
+      [
+        "os_control -> app_control",
+        9
+      ],
+      [
+        "content_generation -> communication",
+        5
+      ],
+      [
+        "app_control -> os_control",
+        4
+      ],
+      [
+        "web_research -> app_control",
+        4
+      ],
+      [
+        "app_control -> developer",
+        4
+      ],
+      [
+        "monitoring -> web_research",
+        3
+      ],
+      [
+        "developer -> web_research",
+        3
+      ],
+      [
+        "datetime -> weather",
+        3
+      ],
+      [
+        "task_manager -> app_control",
+        3
+      ],
+      [
+        "productivity -> file_system",
+        3
+      ],
+      [
+        "file_system -> web_research",
+        3
+      ],
+      [
+        "finance -> calculation",
+        3
+      ],
+      [
+        "datetime -> web_research",
+        3
+      ],
+      [
+        "file_system -> productivity",
+        2
+      ],
+      [
+        "web_research -> datetime",
+        2
+      ],
+      [
+        "productivity -> content_generation",
+        2
+      ],
+      [
+        "productivity -> web_research",
+        2
+      ],
+      [
+        "content_generation -> file_system",
+        2
+      ],
+      [
+        "web_research -> news",
+        2
+      ],
+      [
+        "datetime -> app_control",
+        2
+      ],
+      [
+        "developer -> productivity",
+        2
+      ],
+      [
+        "weather -> datetime",
+        2
+      ],
+      [
+        "calculation -> web_research",
+        2
+      ],
+      [
+        "calculation -> finance",
+        2
+      ],
+      [
+        "productivity -> app_control",
+        2
+      ],
+      [
+        "communication -> content_generation",
+        2
+      ],
+      [
+        "productivity -> developer",
+        2
+      ],
+      [
+        "weather -> web_research",
+        2
+      ],
+      [
+        "file_system -> task_manager",
+        1
+      ],
+      [
+        "os_control -> weather",
+        1
+      ],
+      [
+        "web_research -> task_manager",
+        1
+      ],
+      [
+        "developer -> app_control",
+        1
+      ],
+      [
+        "developer -> monitoring",
+        1
+      ],
+      [
+        "calculation -> file_system",
+        1
+      ],
+      [
+        "datetime -> communication",
+        1
+      ],
+      [
+        "task_manager -> communication",
+        1
+      ],
+      [
+        "communication -> monitoring",
+        1
+      ],
+      [
+        "app_control -> file_system",
+        1
+      ],
+      [
+        "app_control -> task_manager",
+        1
+      ],
+      [
+        "file_system -> content_generation",
+        1
+      ],
+      [
+        "os_control -> web_research",
+        1
+      ],
+      [
+        "monitoring -> os_control",
+        1
+      ],
+      [
+        "web_research -> calculation",
+        1
+      ],
+      [
+        "web_research -> productivity",
+        1
+      ],
+      [
+        "news -> monitoring",
+        1
+      ],
+      [
+        "finance -> task_manager",
+        1
+      ],
+      [
+        "weather -> task_manager",
+        1
+      ],
+      [
+        "datetime -> productivity",
+        1
+      ],
+      [
+        "task_manager -> weather",
+        1
+      ],
+      [
+        "task_manager -> datetime",
+        1
+      ],
+      [
+        "communication -> task_manager",
+        1
+      ],
+      [
+        "monitoring -> developer",
+        1
+      ],
+      [
+        "news -> web_research",
+        1
+      ],
+      [
+        "weather -> news",
+        1
+      ],
+      [
+        "calculation -> app_control",
+        1
+      ],
+      [
+        "datetime -> calculation",
+        1
+      ],
+      [
+        "content_generation -> productivity",
+        1
+      ],
+      [
+        "content_generation -> developer",
+        1
+      ],
+      [
+        "app_control -> productivity",
+        1
+      ],
+      [
+        "file_system -> app_control",
+        1
+      ],
+      [
+        "finance -> app_control",
+        1
+      ],
+      [
+        "developer -> file_system",
+        1
+      ],
+      [
+        "weather -> app_control",
+        1
+      ],
+      [
+        "productivity -> os_control",
+        1
+      ],
+      [
+        "productivity -> monitoring",
+        1
+      ],
+      [
+        "os_control -> finance",
+        1
+      ],
+      [
+        "news -> datetime",
+        1
+      ],
+      [
+        "finance -> os_control",
+        1
+      ],
+      [
+        "finance -> web_research",
+        1
+      ],
+      [
+        "finance -> monitoring",
+        1
+      ],
+      [
+        "calculation -> task_manager",
+        1
+      ],
+      [
+        "task_manager -> file_system",
+        1
+      ],
+      [
+        "task_manager -> web_research",
+        1
+      ],
+      [
+        "productivity -> task_manager",
+        1
+      ]
+    ],
+    "folds": 5
+  }
+}

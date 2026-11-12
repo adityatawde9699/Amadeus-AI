@@ -1,0 +1,60 @@
+{
+  "n": 25,
+  "chunks": 63,
+  "modes": {
+    "hybrid": {
+      "recall@1": 0.72,
+      "recall@3": 0.88,
+      "recall@5": 0.92,
+      "mrr": 0.8083333333333332
+    },
+    "bm25": {
+      "recall@1": 0.64,
+      "recall@3": 0.88,
+      "recall@5": 0.88,
+      "mrr": 0.75604662004662
+    },
+    "dense": {
+      "recall@1": 0.6,
+      "recall@3": 0.92,
+      "recall@5": 0.96,
+      "mrr": 0.75
+    }
+  },
+  "hybrid_misses_at_3": [
+    {
+      "query": "how do I keep everything on my machine and never call cloud models",
+      "relevant": [
+        "Configuration-Reference.md",
+        "Quick-Start.md"
+      ],
+      "top3": [
+        "Architecture.md",
+        "Core-Systems.md",
+        "Changelog.md"
+      ]
+    },
+    {
+      "query": "steps to plug in a new language model backend",
+      "relevant": [
+        "Development-Guide.md"
+      ],
+      "top3": [
+        "Core-Systems.md",
+        "Architecture.md",
+        "Tool-Registry.md"
+      ]
+    },
+    {
+      "query": "what are the layers of the codebase and how do they depend on each other",
+      "relevant": [
+        "Architecture.md"
+      ],
+      "top3": [
+        "Configuration-Reference.md",
+        "Home.md",
+        "Core-Systems.md"
+      ]
+    }
+  ]
+}

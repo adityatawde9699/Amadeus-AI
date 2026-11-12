@@ -3,14 +3,13 @@ LLM Request Router for Amadeus AI.
 
 Routing priority (local-first, complexity-aware):
 - LlamaCpp: local GGUF model (offline, primary for simple/normal tasks)
-- Ollama:   local server inference (offline, secondary local)
 - Groq:     free cloud tier (14,400 req/day) — used for normal/high complexity
 - Gemini:   free cloud tier (1,500 req/day)  — fallback cloud
-- OpenAI:   paid ($0.005/req)               — emergency only
+(There is no Ollama or OpenAI adapter.)
 
 Complexity levels (auto-scored by ComplexityScorer):
-  simple  (0-1) → llama_cpp/ollama only
-  normal  (2-4) → llama_cpp/ollama first, cloud fallback
+  simple  (0-1) → llama_cpp only
+  normal  (2-4) → llama_cpp first, cloud fallback
   high    (5+)  → skip local models, start at groq/gemini
 
 When LOCAL_ONLY_MODE=true, only local models are used. No cloud calls.
@@ -135,13 +134,11 @@ class LLMRouter:
 
     Priority order (local-first):
       1. LlamaCpp  — local GGUF model via llama-cpp-python (offline, primary)
-      2. Ollama    — local server inference (offline, secondary)
-      3. Groq      — free cloud tier (14,400 req/day)
-      4. Gemini    — free cloud tier (1,500 req/day)
-      5. OpenAI    — paid, only for high-complexity requests
+      2. Groq      — free cloud tier (14,400 req/day)
+      3. Gemini    — free cloud tier (1,500 req/day)
 
     Daily counters reset automatically at UTC midnight.
-    When LOCAL_ONLY_MODE=True, steps 3-5 are skipped entirely.
+    When LOCAL_ONLY_MODE=True, steps 2-3 are skipped entirely.
     """
 
     DAILY_LIMITS: ClassVar[dict[str, int]] = {
@@ -237,6 +234,7 @@ class LLMRouter:
         temperature: float = 0.7,
         max_tokens: int | None = None,
         structured: bool = False,
+        json_schema: dict | None = None,
     ) -> tuple[str, str]:
         """
         Generate a response using the best available provider.
@@ -248,7 +246,11 @@ class LLMRouter:
             temperature: Sampling temperature.
             max_tokens:  Max output tokens.
             structured:  True if the output MUST be valid JSON.
+            json_schema: Optional JSON schema (implies structured). llama.cpp
+                         compiles it to a grammar, so local output is
+                         guaranteed to match; cloud providers ignore it.
         """
+        structured = structured or json_schema is not None
         self._reset_if_new_day()
 
         # If structured is True, ensure complexity is at least 'normal'
@@ -322,8 +324,10 @@ class LLMRouter:
                 # ── Skip local model for structured JSON calls ─────────────────
                 # Small local models (Qwen3-2B, Llama-1B) do not reliably output
                 # pure JSON — they prepend chain-of-thought prose and refuse the
-                # schema.  Route structured calls directly to cloud providers.
-                if structured and not self._local_only_mode:
+                # schema.  Route structured calls directly to cloud providers —
+                # unless a JSON schema is supplied: then llama.cpp decodes under
+                # a grammar and cannot emit anything but schema-valid JSON.
+                if structured and json_schema is None and not self._local_only_mode:
                     logger.debug(
                         "LLMRouter: skipping llama_cpp for structured=True — "
                         "routing to cloud provider for reliable JSON output."
@@ -347,9 +351,11 @@ class LLMRouter:
                             context=context,
                             temperature=temperature,
                             max_tokens=max_tokens if max_tokens is not None
-                            else (128 if structured else None),
-                            **({"response_format": {"type": "json_object"}}
-                               if structured else {}),
+                            else (256 if json_schema else 128 if structured else None),
+                            **({"response_format": {
+                                "type": "json_object",
+                                **({"schema": json_schema} if json_schema else {}),
+                            }} if structured else {}),
                         )
                         success = True
                     except Exception as e:

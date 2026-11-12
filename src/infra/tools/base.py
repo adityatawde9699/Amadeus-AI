@@ -139,8 +139,20 @@ class Tool:
         return f"Execute {self.name}({params})"
 
     def __post_init__(self) -> None:
-        """Auto-detect if function is async and standardize parameter schemas."""
+        """Auto-detect async, derive missing security metadata, normalise params."""
         self.is_async = inspect.iscoroutinefunction(self.function)
+
+        # SECURITY: every Tool carries a capability. A ``None`` capability made
+        # ToolPolicyEngine skip the min-permission check entirely, so tools built
+        # directly with ``Tool(...)`` (factories, MCP, register_function) ran in
+        # READ_ONLY sessions. Derive the same conservative default as ``@tool``.
+        if self.capability is None:
+            self.capability = ToolCapability(
+                name=self.name,
+                requires_confirmation=self.requires_confirmation,
+                min_permission=derive_min_permission(self.category, self.requires_confirmation),
+                explicit=False,
+            )
 
         # Ensure parameters are always wrapped in a standard JSON Schema root
         # If the tool author just provided a properties dict, wrap it.
@@ -286,15 +298,6 @@ def tool(
         # Choose wrapper based on async
         final_func: Any = async_wrapper if inspect.iscoroutinefunction(func) else wrapper
 
-        # Auto-derive a safe capability (with min_permission) when none is given.
-        # explicit=False marks it as derived so STRICT_TOOL_METADATA can flag it.
-        derived_capability = capability or ToolCapability(
-            name=name,
-            requires_confirmation=requires_confirmation,
-            min_permission=derive_min_permission(category, requires_confirmation),
-            explicit=False,
-        )
-
         # Attach metadata as a runtime attribute (cast tells mypy to treat it as F)
         final_func._tool_metadata = Tool(
             name=name,
@@ -303,7 +306,9 @@ def tool(
             category=category,
             parameters=parameters or {},
             requires_confirmation=requires_confirmation,
-            capability=derived_capability,
+            # None → Tool.__post_init__ derives a conservative capability
+            # (explicit=False, flagged by STRICT_TOOL_METADATA).
+            capability=capability,
         )
 
         return cast("F", final_func)
@@ -378,6 +383,7 @@ class ToolExecutor:
         context: "Any | None" = None,
         session_id: str | None = None,
         confirmation_callback: "ConfirmationCallback | None" = None,
+        force_confirmation: bool = False,
     ) -> ToolExecutionResult:
         """
         Execute a tool with proper error handling and async support.
@@ -392,6 +398,9 @@ class ToolExecutor:
                 callback (falls back to ``context.session_id``).
             confirmation_callback: Optional per-call override of the confirmation
                 channel.
+            force_confirmation: Require human confirmation even if the tool
+                doesn't declare it (used by the agent's untrusted-content taint
+                gate). Fails closed when no confirmation channel exists.
 
         SECURITY: there is no implicit full-access default. When neither a
         context nor a permission_profile is supplied, the least-privileged
@@ -463,7 +472,7 @@ class ToolExecutor:
         # Check requires_confirmation BEFORE any retry loop so we only ask
         # the user once, not once per retry attempt.
         # ------------------------------------------------------------------
-        if tool.requires_confirmation:
+        if tool.requires_confirmation or force_confirmation:
             from src.infra.tools.confirmation import make_request_id
 
             request_id = make_request_id()
@@ -484,13 +493,19 @@ class ToolExecutor:
                     execution_time_ms=0.0,
                 )
 
+            from src.infra.tools.confirmation import confirmation_owner
+
             preview = tool.get_preview(args)
-            approved = await active_callback.request_approval(
-                tool_name=tool.name,
-                args=args,
-                request_id=request_id,
-                preview=preview,
-            )
+            owner_token = confirmation_owner.set(effective_session)
+            try:
+                approved = await active_callback.request_approval(
+                    tool_name=tool.name,
+                    args=args,
+                    request_id=request_id,
+                    preview=preview,
+                )
+            finally:
+                confirmation_owner.reset(owner_token)
             if not approved:
                 logger.info(
                     "Tool '%s' execution denied by user (request_id=%s)", tool.name, request_id
@@ -668,6 +683,28 @@ class ToolExecutor:
                 and name not in cleaned
             ):
                 missing.append(name)
+
+        # Recover from a single misnamed key: local models often send e.g.
+        # {"param": "2+2"} or {"expr": "2+2"} for calculate(expression).
+        # If exactly one required param is missing and exactly one unknown key
+        # was supplied, the mapping is unambiguous.
+        # SAFETY: only for read-only, non-confirmation tools. Guessing which
+        # argument a destructive tool meant (a path to delete, a recipient to
+        # mail) must fail loudly instead of silently picking one.
+        unknown = [k for k in args if k not in valid_params and not k.startswith("_")]
+        cap = tool.capability
+        remap_safe = (
+            not tool.requires_confirmation
+            and cap is not None
+            and cap.min_permission == "read_only"
+            and not (cap.modifies_filesystem or cap.modifies_system_state)
+        )
+        if remap_safe and len(missing) == 1 and len(unknown) == 1:
+            logger.info(
+                "Remapping arg '%s' -> '%s' for tool %s", unknown[0], missing[0], tool.name
+            )
+            cleaned[missing[0]] = args[unknown[0]]
+            missing = []
 
         if missing:
             logger.warning(

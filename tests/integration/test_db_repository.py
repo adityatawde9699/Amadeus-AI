@@ -35,11 +35,11 @@ async def test_task_repository_get_all(test_db):
         await repo.create(Task(content="Task 1"))
         await repo.create(Task(content="Task 2"))
 
-        # Get all tasks
+        # get_all() returns newest first (created_at DESC, id DESC tiebreak).
         tasks = await repo.get_all()
         assert len(tasks) >= 2
-        assert tasks[0].content == "Task 1"
-        assert tasks[1].content == "Task 2"
+        assert tasks[0].content == "Task 2"
+        assert tasks[1].content == "Task 1"
 
 
 @pytest.mark.asyncio

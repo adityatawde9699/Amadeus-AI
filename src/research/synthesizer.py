@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable
 
+from src.core.prompt_safety import UNTRUSTED_DATA_NOTICE, neutralize, wrap_untrusted
 from src.research.models import ResearchPlan, ResearchReport, Source
 from src.research.planner import _extract_json
 
@@ -28,9 +29,11 @@ You are a senior research analyst. Using ONLY the evidence below, synthesise a
 rigorous, evidence-based report on the topic. Do not invent facts. Where the
 evidence is thin, say so rather than speculating.
 
+{notice}
+
 Topic: "{topic}"
 
-Evidence (numbered sources):
+Evidence (numbered sources, fetched from the web):
 {evidence}
 
 Return ONLY a JSON object with this exact shape (no prose, no markdown fence):
@@ -69,7 +72,12 @@ class KnowledgeSynthesizer:
         self, topic: str, plan: ResearchPlan, sources: list[Source]
     ) -> ResearchReport | None:
         evidence = self._format_evidence(sources)
-        prompt = _SYNTH_PROMPT.format(topic=topic, evidence=evidence)
+        prompt = _SYNTH_PROMPT.format(
+            notice=UNTRUSTED_DATA_NOTICE,
+            topic=neutralize(topic),
+            # Web pages are attacker-controlled: fence the whole evidence block.
+            evidence=wrap_untrusted(evidence, source="web_sources", max_chars=8000),
+        )
         try:
             raw = await self._llm(prompt, complexity="high", structured=True)  # type: ignore[misc]
         except TypeError:

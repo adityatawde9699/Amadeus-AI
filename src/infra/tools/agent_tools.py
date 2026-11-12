@@ -10,6 +10,7 @@ from typing import Any
 
 from src.core.config import get_settings
 from src.core.interfaces.repositories import IGoalRepository, ITaskRepository
+from src.core.prompt_safety import neutralize
 from src.infra.tools.base import Tool, ToolCapability, ToolCategory, tool
 
 
@@ -324,7 +325,9 @@ def build_agent_tools(
         try:
             target_dir = str(settings.BASE_DIR / "src")
             # Safely pass arguments as a list without shell formatting
-            args = ["grep", "-r", "-l", f"--include={file_pattern}", query, target_dir]
+            # "--" ends option parsing so a query like "-f /etc/passwd" or
+            # "--include=..." is treated as a literal pattern, not a grep option.
+            args = ["grep", "-r", "-l", f"--include={file_pattern}", "--", query, target_dir]
 
             process = await asyncio.create_subprocess_exec(
                 *args,
@@ -374,8 +377,8 @@ def build_agent_tools(
                 return "LLM not available for decomposition."
 
             prompt = f"""You are Amadeus. Break down the following goal into 3-5 actionable sub-tasks.
-Goal: {goal.title}
-Description: {goal.description}
+Goal: {neutralize(goal.title)}
+Description: {neutralize(goal.description)}
 
 Respond ONLY with a list of tasks, one per line, without numbers or bullets. Just the plain text task description.
 """

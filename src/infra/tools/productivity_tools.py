@@ -22,7 +22,16 @@ from src.core.interfaces.repositories import (
     IReminderRepository,
     ITaskRepository,
 )
-from src.infra.tools.base import Tool, ToolCategory
+from src.infra.tools.base import Tool, ToolCapability, ToolCategory
+
+
+def _read_only(name: str) -> ToolCapability:
+    """Explicit metadata for tools that only read the user's own data.
+
+    TASK_MANAGER tools otherwise derive STANDARD; these must stay usable by
+    READ_ONLY sessions (e.g. the unattended proactive check).
+    """
+    return ToolCapability(name=name, risk_level="low", min_permission="read_only")
 
 
 logger = logging.getLogger(__name__)
@@ -140,6 +149,7 @@ def build_task_tools(task_repo: ITaskRepository) -> list[Tool]:
                     "description": "Filter: pending, completed, or all",
                 }
             },
+            capability=_read_only("list_tasks"),
         ),
         Tool(
             name="complete_task",
@@ -161,6 +171,7 @@ def build_task_tools(task_repo: ITaskRepository) -> list[Tool]:
             ),
             category=ToolCategory.TASK_MANAGER,
             function=get_task_summary,
+            capability=_read_only("get_task_summary"),
         ),
     ]
 
@@ -255,6 +266,7 @@ def build_pomodoro_tools(pomodoro_repo: IPomodoroRepository) -> list[Tool]:
             description="Check Pomodoro session status. Trigger: 'pomodoro status', 'how much time left'",
             category=ToolCategory.TASK_MANAGER,
             function=pomodoro_status,
+            capability=_read_only("pomodoro_status"),
         ),
     ]
 
@@ -327,6 +339,7 @@ def build_note_tools(note_repo: INoteRepository) -> list[Tool]:
             description="List all notes. Trigger: 'show notes', 'my notes'",
             category=ToolCategory.TASK_MANAGER,
             function=list_notes,
+            capability=_read_only("list_notes"),
         ),
         Tool(
             name="get_note",
@@ -334,6 +347,7 @@ def build_note_tools(note_repo: INoteRepository) -> list[Tool]:
             category=ToolCategory.TASK_MANAGER,
             function=get_note,
             parameters={"identifier": {"type": "string", "description": "Note ID or title"}},
+            capability=_read_only("get_note"),
         ),
     ]
 
@@ -402,6 +416,7 @@ def build_reminder_tools(reminder_repo: IReminderRepository) -> list[Tool]:
             description="List all reminders. Trigger: 'show reminders', 'my reminders'",
             category=ToolCategory.TASK_MANAGER,
             function=list_reminders,
+            capability=_read_only("list_reminders"),
         ),
     ]
 

@@ -353,7 +353,7 @@ async def test_get_llm_injects_4bit_kv_quantization_when_enabled(
 
     assert captured_kwargs["type_k"] == GGML_TYPE_Q4_0
     assert captured_kwargs["type_v"] == GGML_TYPE_Q4_0
-    assert captured_kwargs["flash_attn"] is False  # still disabled by default
+    assert captured_kwargs["flash_attn"] is True  # llama.cpp requires FA for a quantized V cache
 
 
 @pytest.mark.unit

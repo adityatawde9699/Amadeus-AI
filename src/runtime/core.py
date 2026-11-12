@@ -23,7 +23,7 @@ class AmadeusRuntime:
         self.event_bus = EventBus()
         self.scheduler = TaskScheduler()
 
-        # Initialize the new Cognitive Core
+        # Execution journal around the agent graph (see runtime/cognitive/core.py)
         self.cognitive_core = CognitiveCore(self.event_bus, persistence_enabled=True)
 
         self.memory = None
@@ -165,9 +165,8 @@ class AmadeusRuntime:
     async def process_task(self, context: RequestContext, input_text: str) -> str:
         """
         Main entry point for processing a natural language task.
-        Routes through the CognitiveCore lifecycle, which currently wraps the
-        proven AmadeusService execution path while adding explicit plans,
-        observations, reflections, events, and persistence.
+        Runs the LangGraph agent via AmadeusService.handle_command; the
+        CognitiveCore journals each request (one persisted run + events).
         """
         if not self.amadeus_service:
             raise RuntimeError("AmadeusRuntime not started")

@@ -31,17 +31,6 @@ class StepStatus(StrEnum):
     FAILED = "failed"
     SKIPPED = "skipped"
 
-class ExecutionState(StrEnum):
-    RECEIVED = "RECEIVED"
-    CONTEXTUALIZING = "CONTEXTUALIZING"
-    PLANNING = "PLANNING"
-    EXECUTING = "EXECUTING"
-    VERIFYING = "VERIFYING"
-    REFLECTING = "REFLECTING"
-    MEMORY_COMMIT = "MEMORY_COMMIT"
-    DONE = "DONE"
-    BLOCKED = "BLOCKED"
-
 class Observation(BaseModel):
     """Result from a tool, model, or external event."""
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -101,14 +90,3 @@ class Plan(BaseModel):
                 if all(dep in completed_ids for dep in step.dependencies):
                     ready.append(step)
         return ready
-
-class CognitiveContext(BaseModel):
-    """Execution context for the CognitiveCore."""
-    request_id: str
-    session_id: str
-    user_id: str
-    state: ExecutionState = ExecutionState.RECEIVED
-    plan: Plan | None = None
-    final_output: str | None = None
-    history: list[str] = Field(default_factory=list)
-    metadata: dict[str, Any] = Field(default_factory=dict)

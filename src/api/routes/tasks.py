@@ -4,15 +4,24 @@ Task API routes.
 CRUD endpoints for managing tasks/todos.
 """
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.middleware.rbac import RequireUser
 from src.core.domain.models import Task, TaskCreate, TaskListResponse, TaskResponse, TaskStatus
 from src.infra.persistence.database import get_session
+from src.infra.persistence.orm_models import UserORM, UserRoleDB
 from src.infra.persistence.repositories.task_repository import SQLAlchemyTaskRepository
 
 
 router = APIRouter()
+
+
+def _repo(session: AsyncSession, user: UserORM) -> SQLAlchemyTaskRepository:
+    """Tasks are per-user; admins get an unscoped view of every task."""
+    owner = None if user.role == UserRoleDB.ADMIN else user.id
+    return SQLAlchemyTaskRepository(session, owner_id=owner)
 
 # =============================================================================
 # ENDPOINTS
@@ -20,7 +29,7 @@ router = APIRouter()
 
 
 @router.post("/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
-async def create_task(task: TaskCreate) -> TaskResponse:
+async def create_task(task: TaskCreate, user: UserORM = Depends(RequireUser)) -> TaskResponse:
     """
     Create a new task.
 
@@ -31,7 +40,7 @@ async def create_task(task: TaskCreate) -> TaskResponse:
         The created task.
     """
     async with get_session() as session:
-        repo = SQLAlchemyTaskRepository(session)
+        repo = _repo(session, user)
         domain_task = Task(content=task.content)
         created = await repo.create(domain_task)
         return TaskResponse.from_domain(created)
@@ -44,6 +53,7 @@ async def list_tasks(
     ),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of tasks"),
     offset: int = Query(0, ge=0, description="Number of tasks to skip"),
+    user: UserORM = Depends(RequireUser),
 ) -> TaskListResponse:
     """
     List all tasks with optional filtering.
@@ -57,7 +67,7 @@ async def list_tasks(
         List of tasks with summary statistics.
     """
     async with get_session() as session:
-        repo = SQLAlchemyTaskRepository(session)
+        repo = _repo(session, user)
 
         if status_filter:
             try:
@@ -81,8 +91,24 @@ async def list_tasks(
         )
 
 
+@router.get("/tasks/summary", response_model=dict)
+async def get_tasks_summary(user: UserORM = Depends(RequireUser)) -> dict[str, int]:
+    """
+    Get task statistics summary for the caller's tasks.
+
+    Declared before ``/tasks/{task_id}`` so the literal path wins the match
+    (otherwise "summary" is parsed as a task id and returns 422).
+
+    Returns:
+        Summary with total, pending, and completed counts.
+    """
+    async with get_session() as session:
+        repo = _repo(session, user)
+        return await repo.get_summary()
+
+
 @router.get("/tasks/{task_id}", response_model=TaskResponse)
-async def get_task(task_id: int) -> TaskResponse:
+async def get_task(task_id: int, user: UserORM = Depends(RequireUser)) -> TaskResponse:
     """
     Get a specific task by ID.
 
@@ -96,7 +122,7 @@ async def get_task(task_id: int) -> TaskResponse:
         HTTPException: If task not found.
     """
     async with get_session() as session:
-        repo = SQLAlchemyTaskRepository(session)
+        repo = _repo(session, user)
         task = await repo.get_by_id(task_id)
 
         if not task:
@@ -109,7 +135,7 @@ async def get_task(task_id: int) -> TaskResponse:
 
 
 @router.patch("/tasks/{task_id}/complete", response_model=TaskResponse)
-async def complete_task(task_id: int) -> TaskResponse:
+async def complete_task(task_id: int, user: UserORM = Depends(RequireUser)) -> TaskResponse:
     """
     Mark a task as completed.
 
@@ -123,7 +149,7 @@ async def complete_task(task_id: int) -> TaskResponse:
         HTTPException: If task not found.
     """
     async with get_session() as session:
-        repo = SQLAlchemyTaskRepository(session)
+        repo = _repo(session, user)
         task = await repo.mark_complete(task_id)
 
         if not task:
@@ -136,7 +162,7 @@ async def complete_task(task_id: int) -> TaskResponse:
 
 
 @router.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_task(task_id: int) -> Response:
+async def delete_task(task_id: int, user: UserORM = Depends(RequireUser)) -> Response:
     """
     Delete a task.
 
@@ -147,7 +173,7 @@ async def delete_task(task_id: int) -> Response:
         HTTPException: If task not found.
     """
     async with get_session() as session:
-        repo = SQLAlchemyTaskRepository(session)
+        repo = _repo(session, user)
         deleted = await repo.delete(task_id)
 
         if not deleted:
@@ -157,16 +183,3 @@ async def delete_task(task_id: int) -> Response:
             )
 
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-@router.get("/tasks/summary", response_model=dict)
-async def get_tasks_summary() -> dict[str, int]:
-    """
-    Get task statistics summary.
-
-    Returns:
-        Summary with total, pending, and completed counts.
-    """
-    async with get_session() as session:
-        repo = SQLAlchemyTaskRepository(session)
-        return await repo.get_summary()

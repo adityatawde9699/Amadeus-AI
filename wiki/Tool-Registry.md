@@ -1,6 +1,6 @@
 # Tool Registry
 
-Amadeus ships with **70+ tools** across seven categories. New tools can be added in `src/infra/tools/` following the `@tool` decorator pattern — see [[Development-Guide#adding-a-tool]].
+Amadeus registers **70 built-in tools** with the default configuration (more with MCP servers or plugins enabled). New tools can be added in `src/infra/tools/` following the `@tool` decorator pattern — see [[Development-Guide#adding-a-tool]].
 
 ---
 

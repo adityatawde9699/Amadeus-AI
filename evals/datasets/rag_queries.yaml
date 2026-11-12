@@ -1,0 +1,55 @@
+# Workspace-RAG eval: questions over the repo's own wiki/ (the corpus), each
+# with the page(s) that answer it. Phrased as a user would ask, not copied from
+# headings, so lexical overlap alone doesn't win. Any listed page counts as a hit.
+corpus: wiki
+queries:
+  - q: how do I keep everything on my machine and never call cloud models
+    relevant: [Configuration-Reference.md, Quick-Start.md]
+  - q: which roles exist and what can each one do over the API
+    relevant: [API-Reference.md, Security-Model.md]
+  - q: endpoint to wipe my conversation history
+    relevant: [API-Reference.md]
+  - q: how are daily free-tier request limits counted per provider
+    relevant: [Redis-Quota-Tracking.md]
+  - q: what happens to quota counting when redis is down
+    relevant: [Redis-Quota-Tracking.md]
+  - q: steps to plug in a new language model backend
+    relevant: [Development-Guide.md]
+  - q: how do I register my own tool function
+    relevant: [Development-Guide.md, Tool-Registry.md]
+  - q: run the integration tests against a real postgres
+    relevant: [Development-Guide.md]
+  - q: deploy to railway from github actions
+    relevant: [Deployment.md]
+  - q: install amadeus as a background service on windows
+    relevant: [Deployment.md]
+  - q: restrict which telegram chats may talk to the bot
+    relevant: [Security-Model.md, Messaging-Integrations.md]
+  - q: how does the bot message me on its own initiative
+    relevant: [Messaging-Integrations.md]
+  - q: kubernetes readiness check url
+    relevant: [Observability.md]
+  - q: what information is deliberately kept out of the logs
+    relevant: [Observability.md]
+  - q: prometheus scrape configuration
+    relevant: [Observability.md]
+  - q: how does it stop a web page from hijacking the agent with instructions
+    relevant: [Security-Model.md]
+  - q: graduated permission levels for tools
+    relevant: [Security-Model.md]
+  - q: is code execution isolated and how
+    relevant: [Security-Model.md]
+  - q: what system resource monitoring tools are there
+    relevant: [Tool-Registry.md]
+  - q: build the index for searching my local files
+    relevant: [Quick-Start.md, Core-Systems.md]
+  - q: how does bm25 get combined with embeddings
+    relevant: [Core-Systems.md]
+  - q: how does a message get routed to the right expert
+    relevant: [Core-Systems.md, Architecture.md]
+  - q: what are the layers of the codebase and how do they depend on each other
+    relevant: [Architecture.md]
+  - q: which features are still missing or planned
+    relevant: [Known-Limitations-and-Roadmap.md]
+  - q: what changed in the mcp release
+    relevant: [Changelog.md]

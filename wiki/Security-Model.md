@@ -68,14 +68,30 @@ Messages from any other `chat_id` receive `"Unauthorized."` and are dropped befo
 
 ## Prompt Injection Defence
 
-### SEC-01 (v6.0.0+)
+### SEC-01 — untrusted-content boundary
 
-All user task text is sanitised before entering the LangGraph prompt:
+**File:** `src/core/prompt_safety.py` (used by `agent_loop.py`, `response_composer.py`, `research/synthesizer.py`, `agent_tools.py`)
 
-1. Wrapped in `<user_task>...</user_task>` XML boundary tags
-2. LangGraph control tokens found in the user input (`Action:`, `Thought:`, `Action Input:`, `Observation:`, `FINISH`) are replaced with `[BLOCKED:TOKEN]` markers
+The main injection risk is *indirect*: text the agent reads — web pages, search
+results, news, emails, MCP results, files, recalled memories — can contain
+instructions. Every prompt builder now:
 
-This prevents users from injecting LLM directives via Telegram or the HTTP API to make the agent execute arbitrary tools.
+1. Wraps the user's request in `<user_task>...</user_task>`.
+2. Wraps every tool observation, recalled memory, past outcome and expert result
+   in `<untrusted_data source="...">...</untrusted_data>` and adds a system
+   notice that text inside those tags is data and must never be followed.
+3. Replaces chat-template and reasoning control tokens (`<|im_start|>`,
+   `<|eot_id|>`, `[INST]`, `<<SYS>>`, `<think>`, `</s>` …) and any forged or
+   closing fence tag with `[BLOCKED:TOKEN]`, so content cannot break out of its fence.
+4. Caps each untrusted block (4,000 chars by default; 8,000 for research evidence).
+
+**Taint gate (enforcement).** Delimiters are a mitigation — models can still be
+persuaded. So once a tool that returns external content has run (network tools
+and the web research, news, communication, finance and weather categories), any
+later *state-changing* tool in the same run needs human approval even if it is
+not normally confirmation-gated. With in-graph HITL the graph pauses; otherwise
+the executor's confirmation channel is used, and with no channel the call is
+denied (fails closed). Tests: `tests/unit/test_prompt_safety.py`.
 
 ---
 

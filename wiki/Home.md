@@ -16,7 +16,7 @@ Amadeus is a **FastAPI-based autonomous AI backend** that provides:
 | Capability | Implementation |
 |---|---|
 | Multi-provider LLM routing | LlamaCpp (local GGUF) → Groq → Gemini with Redis-backed daily quota tracking |
-| 70+ sandboxed tools | System · filesystem · productivity · information · communication |
+| 70 built-in, policy-gated tools | System · filesystem · productivity · information · communication |
 | Long-term semantic memory | Turbovec vector store with massive 4-bit compression |
 | Goal management | `GoalRepository` tracks multi-session objectives |
 | Multi-transport messaging | FastAPI · Telegram · CLI all share a single `AmadeusService` |

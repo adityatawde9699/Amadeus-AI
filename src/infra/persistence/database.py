@@ -226,9 +226,12 @@ def set_sqlite_pragma(dbapi_conn: Any, connection_record: Any) -> None:
     - Larger cache for fewer disk reads
     - Memory temp store for faster temp table operations
     """
-    settings = get_settings()
-
-    if not settings.database_is_sqlite:
+    # Decide from the CONNECTION, not the global settings: this listener fires
+    # for every Engine in the process. Keying on settings.DATABASE_URL sent
+    # PRAGMAs to Postgres engines when the app was configured for SQLite, and
+    # silently skipped them (FKs OFF) on SQLite engines when configured for
+    # Postgres. Covers sqlite3 and SQLAlchemy's aiosqlite adapter.
+    if "sqlite" not in type(dbapi_conn).__module__:
         return
 
     cursor = dbapi_conn.cursor()

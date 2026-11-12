@@ -1,0 +1,85 @@
+# Held-out routing queries: hand-written, deliberately phrased unlike
+# TRAINING_DATA (src/app/services/category_classifier.py). Never add these to
+# TRAINING_DATA — that would turn this into a training-set score. The runner
+# refuses exact overlaps.
+#
+# Labels follow the category the *registered tool* lives in (e.g. pomodoro and
+# notes tools are TASK_MANAGER), not intuition. Only include requests some
+# registered tool can serve.
+app_control:
+  - fire up the spotify app for me
+  - could you bring up visual studio code
+  - kill the firefox window
+  - I need notepad open please
+file_system:
+  - where did I save the invoice pdf
+  - list everything inside my downloads folder
+  - rename draft.txt to final.txt
+  - copy the photos directory to my backup drive
+os_control:
+  - turn the sound down a bit
+  - make the screen brighter
+  - put the laptop to sleep
+  - grab a screenshot of my desktop
+monitoring:
+  - is my ram almost full
+  - how hot is the cpu running
+  - which processes are hogging memory
+  - how much disk space do I have left
+web_research:
+  - look up reviews of the pixel 9
+  - find me a guide on sourdough baking
+  - research the history of the printing press
+  - what does wikipedia say about black holes
+news:
+  - anything big happening in the world today
+  - give me the morning headlines
+  - what's new in technology this week
+  - latest updates on the elections
+finance:
+  - how much is one bitcoin worth right now
+  - did nvidia shares go up today
+  - convert the price of ethereum to rupees
+  - what's the market cap of microsoft stock
+developer:
+  - run this snippet and show me the output
+  - help me debug my python function
+  - search the codebase for the login handler
+  - execute a quick script that prints hello
+weather:
+  - do I need an umbrella in london tomorrow
+  - how cold will it get tonight
+  - is it sunny in goa right now
+  - what's the humidity like outside
+calculation:
+  - what's 18 percent tip on 2400
+  - square root of 529
+  - how much is 7 times 86
+  - divide 9000 between 4 people
+datetime:
+  - which day of the week is christmas this year
+  - what's today's date
+  - how many days until new year
+  - tell me the time in tokyo
+task_manager:
+  - put pay rent on my todo list
+  - show what tasks I still have pending
+  - mark the groceries task as finished
+  - remind me to call mom at 6pm
+  - start a pomodoro timer
+  - save a note about tomorrow's meeting
+communication:
+  - shoot an email to my manager saying I'm late
+  - do I have any new mail
+  - message the team on telegram that the build passed
+  - reply to sarah's last email
+productivity:
+  - make me a spreadsheet tracking my expenses
+  - put together a word doc summarizing the quarterly results
+  - open the budget xlsx and read the totals
+  - draft the meeting minutes as a docx file
+content_generation:
+  - write a short poem about the monsoon
+  - draft a cover letter for a data analyst role
+  - compose a blog post about remote work
+  - write a story for kids about a dragon

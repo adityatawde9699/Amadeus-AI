@@ -1,4 +1,10 @@
 repos:
+  # Gitleaks — offline secret scanning on staged changes (no account needed).
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+
   # GitGuardian secret scanning — blocks commits that contain secrets
   # Requires: pip install ggshield  +  ggshield auth login
   - repo: https://github.com/GitGuardian/ggshield

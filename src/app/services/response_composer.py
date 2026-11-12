@@ -16,6 +16,13 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from src.core.prompt_safety import (
+    UNTRUSTED_DATA_NOTICE,
+    neutralize,
+    wrap_untrusted,
+    wrap_user_task,
+)
+
 
 if TYPE_CHECKING:
     from src.core.config import Settings
@@ -191,7 +198,10 @@ class ResponseComposer:
                     if memories:
                         parts.append(
                             "\n[RETRIEVED MEMORIES]\n"
-                            + self._memory_service.format_for_prompt(memories, max_chars=600)
+                            + wrap_untrusted(
+                                self._memory_service.format_for_prompt(memories, max_chars=600),
+                                source="memory",
+                            )
                         )
                 except Exception:
                     logger.warning("Memory retrieval failed — skipping", exc_info=True)
@@ -215,8 +225,9 @@ class ResponseComposer:
         prompt = (
             "/no_think "
             "You are Amadeus, a personal AI assistant.\n"
-            f"User asked: {user_input}\n"
-            f"Tool '{tool_name}' returned:\n{tool_output}\n\n"
+            f"{UNTRUSTED_DATA_NOTICE}\n"
+            f"User asked:\n{wrap_user_task(user_input)}\n"
+            f"Tool '{tool_name}' returned:\n{wrap_untrusted(tool_output, source=tool_name)}\n\n"
             "Rules: respond in 1-2 sentences ONLY. "
             "If the result shows an error or failure, report it honestly and briefly. "
             "Do NOT echo these instructions. Do NOT say 'The user asked' or 'I need to'. "
@@ -268,8 +279,8 @@ class ResponseComposer:
 
         prompt = (
             f"{system_prompt}\n"
-            f"Recent conversation:\n{recent_history}\n\n"
-            f"User: {user_input}\n\n"
+            f"Recent conversation:\n{neutralize(recent_history)}\n\n"
+            f"User: {neutralize(user_input)}\n\n"
             "Respond naturally and conversationally. Be concise. "
             "IMPORTANT: Do NOT output any meta-text like 'Recent conversation:' or refer to the fact that you were given memory/context. "
             "If the user asks a factual query (e.g., 'Who is...', 'What is...', 'Who won...'), you MUST inform them that you cannot search the web in this conversational mode."
@@ -298,8 +309,8 @@ class ResponseComposer:
                     # Compact prompt for local model — saves ~250 tokens
                     prompt = (
                         f"{_compact_system}\n"
-                        f"Recent conversation:\n{recent_history}\n\n"
-                        f"User: {user_input}\n"
+                        f"Recent conversation:\n{neutralize(recent_history)}\n\n"
+                        f"User: {neutralize(user_input)}\n"
                         "Respond in 1-2 sentences. Be direct."
                     )
 
@@ -381,8 +392,8 @@ class ResponseComposer:
 
         prompt = (
             f"{system_prompt}\n"
-            f"Recent conversation:\n{recent_history}\n\n"
-            f"User: {user_input}\n\n"
+            f"Recent conversation:\n{neutralize(recent_history)}\n\n"
+            f"User: {neutralize(user_input)}\n\n"
             "You are a skilled writer and expert assistant. Write a complete, detailed, and high-quality response. "
             "Do NOT be brief. Provide depth, structure (if appropriate), and clarity. "
             "Preserve your identity as Amadeus throughout the response."

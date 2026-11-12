@@ -4,22 +4,32 @@ The core systems that power Amadeus's intelligence and safety.
 
 ---
 
-## Cognitive Core
+## Agent Graph (cognitive core)
+
+**File:** `src/app/services/agent_loop.py` (`AmadeusGraph`, LangGraph `StateGraph`)
+
+All planning and execution happens in one explicit graph:
+
+1. **orchestrate** — decides whether the request needs one expert or several sub-tasks.
+2. **supervisor** — dispatches each sub-task to an expert agent profile.
+3. **expert plan → tool → reflect** — the expert picks a tool, the `ToolExecutor`
+   runs it through the policy engine (permission profile, HITL confirmation,
+   taint gate), and reflection decides to continue, retry or `FINISH`.
+4. **collect → synthesize** — expert results are merged into the final answer.
+
+Risky tools pause the graph with `interrupt()`; `aresume()` continues it after
+approval. State is checkpointed (SQLite saver when configured, in-memory
+otherwise), so a paused run survives until it is approved or denied.
+
+### Execution journal
 
 **File:** `src/runtime/cognitive/core.py`
 
-The central state machine that governs the lifecycle of every task. It replaces implicit chat loops with explicit, auditable, and resumable state transitions.
-
-### Execution Lifecycle
-
-1. **RECEIVED**: Task is accepted and a unique `request_id` is assigned.
-2. **PLANNING**: The `PlanEngine` decomposes the task into a graph of `PlanSteps`.
-3. **EXECUTING**: Ready steps are dispatched to the `ToolExecutor` or LLM.
-4. **VERIFYING**: Results are checked against safety and completion criteria.
-5. **REFLECTING**: The agent evaluates progress and decides to proceed, replan, or finish.
-6. **DONE**: Final output is synthesized and returned.
-
-Every state transition and observation is persisted as **Episodic Memory**, enabling restart recovery and long-term behavioral audit.
+`AmadeusRuntime.process_task` wraps each request in a journal entry: one run
+(`cognitive_plans`) with one step and one observation recording the outcome or
+error, plus `plan.*` events on the runtime event bus. It does not plan or verify
+by itself — that is the graph above. (Until 2026-11 this module emulated a
+plan/verify/reflect state machine around a single hard-coded step.)
 
 ---
 
@@ -27,14 +37,12 @@ Every state transition and observation is persisted as **Episodic Memory**, enab
 
 **File:** `src/app/services/semantic_router.py`
 
-Replaces the legacy sklearn SVM classifier with a purely mathematical router — **no retraining ever needed**.
+Routes each message to an expert agent profile (not to an individual tool) in two stages:
 
-### How It Works
+1. **Stage 1 — category classifier** (`src/app/services/category_classifier.py`): TF-IDF + LinearSVC trained on `TRAINING_DATA`, stored as plain numpy arrays in `Model/category_classifier.npz` (no pickle; scikit-learn is needed only to train). Build it with `scripts/train_category_classifier.py`; the Docker image builds it automatically.
+2. **Stage 2 — embeddings**: each profile's description and anchor phrases are embedded with a quantized ONNX `all-MiniLM-L6-v2` (`Model/embed/all-MiniLM-L6-v2-onnx/`, built by `scripts/export_embedding_onnx.py`, run via `onnxruntime`), cached in `Model/unified_semantic_cache.npz`, and matched by cosine similarity (default threshold 0.30, 0.42 once Stage 1 has narrowed the pool).
 
-1. At startup, every tool's `name + description + category` string is embedded using `sentence-transformers/all-mpnet-base-v2` into a **768-dimensional L2-normalised float32 vector**.
-2. The embedding matrix is cached to `Model/semantic_tool_embeddings.npz`. A fingerprint (MD5 of sorted tool names) detects registry changes and triggers automatic cache invalidation.
-3. At query time: the user message is embedded and a **single NumPy matrix multiply** computes cosine similarity against all tool vectors — under **10 ms** on an Intel i3.
-4. If `best_score >= 0.50`: the matched tool name is returned. Otherwise, `None` is returned and the LLM triage fallback takes over.
+If the ONNX export is missing the router falls back to sentence-transformers, which is only installed with the `[ml-fallback]` extra.
 
 ### Threshold Calibration
 
@@ -46,7 +54,7 @@ python scripts/calibrate_semantic_threshold.py
 
 ### Hot-Plugging Tools
 
-Register a new `Tool` in the registry and restart. The router rebuilds its index automatically. No labels, no training data, no retraining.
+Register a new `Tool` in the registry and restart. Tools are reached through their category's expert profile, so a new tool in an existing category needs no retraining; a new category needs `TRAINING_DATA` entries and a classifier rebuild.
 
 ```python
 # Check router readiness
@@ -71,7 +79,7 @@ Builds a persistent **hybrid retrieval index** over a local file tree.
 
 ```
 Query
-  ├─▶  Dense search  (all-mpnet-base-v2 · cosine sim) ──▶  Top-N semantic matches
+  ├─▶  Dense search  (MiniLM-L6 ONNX · cosine sim)    ──▶  Top-N semantic matches
   └─▶  BM25 search   (BM25Okapi · code-aware tokeniser)──▶  Top-N lexical matches
 
 RRF score = 1/(k + rank_semantic) + 1/(k + rank_bm25)   [k = 60]
@@ -80,6 +88,8 @@ Final results: sorted by RRF score, max 2 hits per file
 ```
 
 The BM25 tokeniser preserves underscores, so `AUTH_UUID_7392` stays a single token — fixing the core failure mode of pure semantic search on code.
+
+Dense embeddings use the int8 ONNX `all-MiniLM-L6-v2` export (the same model the router uses), falling back to sentence-transformers only if the export is missing. Before 2026-11 the indexer required sentence-transformers, which the default install and Docker image don't ship, so `build()` returned without indexing anything. On the wiki corpus, hybrid fusion scores recall@1 72% / MRR 0.81 vs 64% / 0.76 BM25-only and 60% / 0.75 dense-only (`evals/rag_eval.py`, `evals/results/rag.md`).
 
 ### Context-Augmented Chunking
 

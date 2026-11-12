@@ -563,9 +563,27 @@ class WorkspaceIndexer:
             self._bm25 = None
 
     def _ensure_model(self) -> None:
-        """Load the sentence-transformer embedding model (once)."""
+        """Load the embedding model (once): ONNX MiniLM, else sentence-transformers.
+
+        The runtime image and default install ship only onnxruntime, so the
+        quantized ONNX export of the same MiniLM model (same 384-d space,
+        API-compatible ``encode``) is tried first; without it, build() and
+        load() used to return silently and workspace RAG did nothing.
+        """
         if self._embed_model is not None:
             return
+        try:
+            from src.core.config import get_settings
+            from src.infra.embeddings.onnx_embedder import OnnxEmbedder
+
+            model_dir = get_settings().MODEL_DIR or Path("Model")
+            onnx_dir = Path(model_dir) / "embed" / "all-MiniLM-L6-v2-onnx"
+            if (onnx_dir / "model.onnx").exists():
+                self._embed_model = OnnxEmbedder(onnx_dir)
+                logger.info("WorkspaceIndexer: ONNX embedding model loaded (%s).", onnx_dir)
+                return
+        except Exception as exc:
+            logger.warning("WorkspaceIndexer: ONNX embedder unavailable: %s", exc)
         try:
             from sentence_transformers import SentenceTransformer
 

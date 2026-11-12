@@ -360,6 +360,20 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/amadeus"
     REDIS_URL: str = "redis://localhost:6379/0"
 
+    # Multi-worker state. "memory" (default) keeps HITL confirmations and the
+    # pre-auth rate limiter in-process — correct for the single uvicorn worker
+    # the Dockerfile runs. "redis" moves both to REDIS_URL so several workers
+    # (or replicas) share them; startup fails if Redis is unreachable.
+    SHARED_STATE_BACKEND: Literal["memory", "redis"] = "memory"
+    HITL_TIMEOUT_SECONDS: int = Field(default=60, ge=5, le=3600)
+
+    # LangGraph checkpoints (paused / resumable agent runs). "sqlite" stores
+    # them in BASE_DIR/langgraph_checkpoints.sqlite (one host only); "postgres"
+    # uses CHECKPOINT_POSTGRES_URL (default: DATABASE_URL) so any worker can
+    # resume a run. Postgres needs the [scale] extra and creates its own tables.
+    CHECKPOINT_BACKEND: Literal["sqlite", "postgres"] = "sqlite"
+    CHECKPOINT_POSTGRES_URL: str | None = None
+
     # Connection Pool Settings
     DB_POOL_SIZE: int = Field(default=5, ge=1, le=50)
     DB_MAX_OVERFLOW: int = Field(default=10, ge=0, le=100)
@@ -412,6 +426,9 @@ class Settings(BaseSettings):
     # Only honor X-Forwarded-For for the client IP when explicitly behind a
     # trusted reverse proxy; otherwise the socket peer is used (unspoofable).
     TRUST_PROXY_HEADERS: bool = False
+    # Bearer token required to scrape /api/v1/metrics. When unset, the endpoint
+    # only answers requests from the loopback interface (same-host Prometheus).
+    METRICS_TOKEN: str | None = None
 
     # =========================================================================
     # SYSTEM MONITORING THRESHOLDS
@@ -629,6 +646,9 @@ def get_settings() -> Settings:
     return Settings()
 
 
+_EPHEMERAL_SECRET_KEY: str | None = None
+
+
 def _get_or_create_secret_key(settings: "Settings") -> str:
     """SEC-06: Return SECRET_KEY, auto-generating an ephemeral one if not configured.
 
@@ -636,15 +656,20 @@ def _get_or_create_secret_key(settings: "Settings") -> str:
     acceptable for development but must be replaced with a persistent key
     in production (set SECRET_KEY in .env or the environment).
     """
+    global _EPHEMERAL_SECRET_KEY
     if settings.SECRET_KEY:
         return settings.SECRET_KEY
-    import logging as _logging
-    _logging.getLogger(__name__).warning(
-        "SECRET_KEY is not set — generating an ephemeral key. "
-        "All JWT sessions will be invalidated on restart. "
-        "Set SECRET_KEY in your .env file for production."
-    )
-    return secrets.token_hex(32)
+    # Generate ONCE per process. Callers (e.g. the JWT strategy) invoke this per
+    # request; a fresh key each call made every issued token unverifiable.
+    if _EPHEMERAL_SECRET_KEY is None:
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            "SECRET_KEY is not set — generating an ephemeral key. "
+            "All JWT sessions will be invalidated on restart. "
+            "Set SECRET_KEY in your .env file for production."
+        )
+        _EPHEMERAL_SECRET_KEY = secrets.token_hex(32)
+    return _EPHEMERAL_SECRET_KEY
 
 
 def validate_settings(settings: Settings | None = None) -> dict:

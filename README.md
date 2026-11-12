@@ -19,7 +19,7 @@
 
 ---
 
-Amadeus is a **secure autonomous AI operating layer** — a persistent cognitive runtime, not just a chatbot. It runs as a **headless daemon** that plans, acts, verifies, and remembers, built on Clean Architecture with an explicit LangGraph execution graph you can pause, audit, and resume.
+Amadeus is a **secure autonomous AI operating layer** — a persistent cognitive runtime, not just a chatbot. It runs as a **headless daemon** that plans, calls tools, reflects on the results, and remembers, built on Clean Architecture with an explicit LangGraph execution graph you can pause, audit, and resume.
 
 It's designed to be **local-first**: inference can run entirely on your own hardware (local GGUF models), and `LOCAL_ONLY_MODE=true` disables every cloud provider so nothing leaves the machine.
 
@@ -65,10 +65,10 @@ Full walkthrough → [Quick Start wiki](https://github.com/adityatawde9699/Amade
 ## Features
 
 - **Autonomous agent lifecycle** — plan-driven reasoning, self-reflection on tool failures, and durable state that survives restarts.
-- **70+ sandboxed tools** — system control, networking, filesystem, productivity, and research, each mapped to a risk level.
+- **70 built-in tools** (plus optional MCP and plugin tools) — system control, networking, filesystem, productivity, and research, each policy-gated by a risk level and minimum permission profile. Code execution runs in a hardened Docker sandbox when enabled (off by default).
 - **Fail-closed security** — graduated permission profiles, prompt-injection resistance, SSRF egress protection, and pre-auth rate limiting.
 - **Local-first inference** — priority-ordered LLM routing with Redis-backed daily quota tracking; `LOCAL_ONLY_MODE` for 100% privacy.
-- **Persistent memory** — every plan, step, and reflection is stored in PostgreSQL for a full behavioral audit; semantic recall via a local vector store.
+- **Persistent memory** — each request is journaled (run, outcome, errors) in PostgreSQL, LangGraph checkpoints make paused runs resumable, and semantic recall uses a local vector store.
 - **Omni-Workspace RAG** — hybrid BM25 + dense retrieval so the agent can search your codebase and local files.
 - **Multi-transport** — one `AmadeusService` behind FastAPI (REST), Telegram, and a CLI.
 

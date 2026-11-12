@@ -1,0 +1,84 @@
+# Agent tool-selection eval. For each task the graph runs with the given expert
+# (as if the router picked it) and with the generalist (all tools). A case
+# passes when the FIRST tool call is one of `expect` and every `args` entry
+# matches (key present — "a|b" accepts either key — and the value contains the
+# substring, case-insensitive).
+# Tools never execute: the eval's executor records the call and returns a stub.
+- task: what is 17 times 23
+  expert: math_expert
+  expect: [calculate]
+  args: {expression: "17"}
+- task: convert 100 fahrenheit to celsius
+  expert: math_expert
+  expect: [convert_temperature]
+  args: {value: "100"}
+- task: how many kilometers is 26 miles
+  expert: math_expert
+  expect: [convert_length, calculate]
+- task: weather in Mumbai right now
+  expert: research_expert
+  expect: [get_weather]
+  args: {location: mumbai}
+- task: who was Ada Lovelace
+  expert: research_expert
+  expect: [wikipedia_search, web_search]
+  args: {query: lovelace}
+- task: search the web for the best budget mechanical keyboards
+  expert: research_expert
+  expect: [web_search]
+  args: {query: keyboard}
+- task: what's the bitcoin price
+  expert: finance_expert
+  expect: [get_crypto_price]
+  args: {coin: bitcoin}
+- task: how is AAPL stock doing today
+  expert: finance_expert
+  expect: [get_stock_price]
+  args: {symbol: aapl}
+- task: give me the latest technology headlines
+  expert: news_expert
+  expect: [get_news]
+- task: add a task to renew my passport
+  expert: task_expert
+  expect: [add_task]
+  args: {"task_content|content": passport}
+- task: show my pending tasks
+  expert: task_expert
+  expect: [list_tasks, get_task_summary]
+- task: start a pomodoro session
+  expert: task_expert
+  expect: [start_pomodoro]
+- task: how much memory is my system using
+  expert: monitor_expert
+  expect: [get_memory_usage, get_full_system_report, system_status]
+- task: what's the cpu usage
+  expert: monitor_expert
+  expect: [get_cpu_usage, get_full_system_report, system_status]
+- task: ping google.com
+  expert: monitor_expert
+  expect: [ping_host]
+  args: {host: google.com}
+- task: list the files in the docs directory
+  expert: filesystem_expert
+  expect: [fs_list_directory]
+  args: {path: docs}
+- task: read the file notes/todo.md
+  expert: filesystem_expert
+  expect: [fs_read_file]
+  args: {path: todo.md}
+- task: take a screenshot
+  expert: os_expert
+  expect: [take_screenshot]
+- task: open firefox
+  expert: os_expert
+  expect: [open_program, launch_app]
+  args: {}
+- task: find where the login handler is defined in the codebase
+  expert: developer_expert
+  expect: [search_codebase, search_workspace]
+- task: what time is it
+  expert: generalist
+  expect: [get_datetime_info]
+- task: remember that my favourite colour is teal
+  expert: memory_expert
+  expect: [store_core_memory]

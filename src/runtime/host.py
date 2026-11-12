@@ -229,7 +229,11 @@ class RuntimeHost:
             mcp_config = yaml.safe_load(mcp_config_path.read_text())
             for server in mcp_config.get("mcp_servers", []):
                 if server.get("enabled"):
-                    await self.runtime.tools.connect_mcp_server(server["command"], server["name"])
+                    await self.runtime.tools.connect_mcp_server(
+                        server["command"],
+                        server["name"],
+                        read_only_tools=server.get("read_only_tools") or [],
+                    )
         except Exception:
             logger.exception("Failed to initialize MCP servers")
 

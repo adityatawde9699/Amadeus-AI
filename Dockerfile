@@ -1,8 +1,10 @@
 # =============================================================================
 # Amadeus AI — Multi-stage Dockerfile (reproducible, ONNX-only runtime)
 # =============================================================================
-# Stage 1: Builder — installs locked dependencies into /opt/venv via uv.
-# Stage 2: Production runtime — slim image with the venv + source.
+# Stage 1: Builder   — installs locked dependencies into /opt/venv via uv.
+# Stage 2: Artifacts — builds the router artifacts (ONNX embedder + numpy SVM)
+#                      with a throwaway CPU-only torch/sklearn toolchain.
+# Stage 3: Production runtime — slim image with the venv, source and artifacts.
 #
 # REPRODUCIBILITY / SUPPLY CHAIN:
 #   Dependencies are installed with `uv sync --frozen`, which installs EXACTLY
@@ -43,10 +45,42 @@ ENV UV_COMPILE_BYTECODE=1 \
 # --no-install-project installs deps only (the app runs from /app/src, matching
 # the runtime layout and BASE_DIR detection).
 COPY pyproject.toml uv.lock README.md ./
-RUN uv sync --frozen --no-dev --no-install-project
+# Optional extras from the lockfile, e.g. --build-arg UV_SYNC_EXTRAS="--extra scale"
+# for the Postgres checkpointer (CHECKPOINT_BACKEND=postgres). Empty = core only.
+ARG UV_SYNC_EXTRAS=""
+RUN uv sync --frozen --no-dev --no-install-project ${UV_SYNC_EXTRAS}
 
 # -----------------------------------------------------------------------------
-# STAGE 2: Production Runtime
+# STAGE 2: Router artifacts (build-time only — nothing here reaches runtime
+# except the two output directories copied below)
+# -----------------------------------------------------------------------------
+# Model/ is .dockerignored and gitignored, so a fresh image previously started
+# without the ONNX embedder or the category classifier and semantic routing
+# failed to load (the sentence-transformers fallback is not installed either).
+# This stage produces both from source:
+#   Model/embed/all-MiniLM-L6-v2-onnx/  (scripts/export_embedding_onnx.py;
+#                                        downloads the HF checkpoint)
+#   Model/category_classifier.npz       (scripts/train_category_classifier.py)
+# The export toolchain is installed into this stage's copy of the venv only.
+# torch comes from the CPU wheel index to avoid ~3GB of CUDA wheels. The
+# toolchain is pinned (versions verified to export + quantize successfully) so
+# the artifacts are reproducible; bump deliberately.
+FROM builder AS artifacts
+
+RUN uv pip install --python /opt/venv/bin/python \
+        --index-url https://download.pytorch.org/whl/cpu "torch==2.15.0+cpu" \
+    && uv pip install --python /opt/venv/bin/python \
+        "transformers==5.22.2" "onnx==1.23.2" "onnxscript==0.7.2" "ml-dtypes==0.5.4" \
+        "scikit-learn==1.9.1" "numpy>=1.26.0,<2.0.0"
+
+COPY src/ ./src/
+COPY scripts/export_embedding_onnx.py scripts/train_category_classifier.py ./scripts/
+RUN /opt/venv/bin/python scripts/export_embedding_onnx.py \
+    && /opt/venv/bin/python scripts/train_category_classifier.py Model \
+    && rm -f Model/embed/all-MiniLM-L6-v2-onnx/model_fp32.onnx*
+
+# -----------------------------------------------------------------------------
+# STAGE 3: Production Runtime
 # -----------------------------------------------------------------------------
 FROM python:3.11-slim AS runtime
 
@@ -68,12 +102,18 @@ COPY pyproject.toml alembic.ini ./
 # Real secrets are injected via Railway/Docker environment variables at runtime.
 COPY .env.example ./
 COPY alembic/ ./alembic/
+# MCP server definitions (src/runtime/host.py reads config/mcp_servers.yaml).
+COPY config/ ./config/
 
-# Create non-root user for security.
+# Router artifacts from stage 2.
+COPY --from=artifacts /app/Model/category_classifier.npz ./Model/
+COPY --from=artifacts /app/Model/embed/all-MiniLM-L6-v2-onnx/ ./Model/embed/all-MiniLM-L6-v2-onnx/
+
+# Create non-root user for security. Model/ stays writable: the semantic
+# router builds Model/unified_semantic_cache.npz on first start.
 RUN useradd --create-home --shell /bin/bash amadeus && \
-    chown -R amadeus:amadeus /app && \
     mkdir -p /app/data && \
-    chown amadeus:amadeus /app/data
+    chown -R amadeus:amadeus /app
 
 USER amadeus
 
@@ -84,9 +124,6 @@ ENV PYTHONUNBUFFERED=1 \
     DEBUG=false \
     API_HOST=0.0.0.0 \
     API_PORT=8000 \
-    WHISPER_MODEL=small \
-    WHISPER_DEVICE=cpu \
-    WHISPER_COMPUTE_TYPE=int8 \
     DATABASE_URL=postgresql://postgres:postgres@postgres:5432/amadeus
 
 # Health check using the /health endpoint.

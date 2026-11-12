@@ -11,21 +11,36 @@ Implementations
 - ``APIConfirmationCallback``     — HTTP server mode; blocks until the
   ``POST /api/v1/confirm/{request_id}`` endpoint is called or the timeout
   elapses.  A caller that does not respond within the timeout window is
-  treated as a denial.
+  treated as a denial. In-process state: single worker only.
+- ``RedisConfirmationCallback``   — same contract with pending requests and
+  decisions in Redis, so any API worker can list/resolve a confirmation that
+  another worker is waiting on (``SHARED_STATE_BACKEND=redis``).
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import time
 import uuid
 from abc import ABC, abstractmethod
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
 
 
 logger = logging.getLogger(__name__)
+
+# Session that owns the confirmation currently being requested. Set by
+# ``ToolExecutor`` around ``request_approval()`` so callbacks can bind a pending
+# request to its owner without changing the ``request_approval`` signature.
+confirmation_owner: ContextVar[str | None] = ContextVar("confirmation_owner", default=None)
 
 
 # =============================================================================
@@ -51,9 +66,8 @@ class PendingConfirmation:
     source: str | None = None
     permission_profile: str | None = None
     created_at: datetime = field(default_factory=datetime.now)
-    future: asyncio.Future[bool] = field(
-        default_factory=lambda: asyncio.get_event_loop().create_future()
-    )
+    # Set by the in-process callback; None for records read back from Redis.
+    future: asyncio.Future[bool] | None = None
 
 
 # =============================================================================
@@ -172,13 +186,14 @@ class APIConfirmationCallback(ConfirmationCallback):
         request_id: str,
         preview: str = "",
     ) -> bool:
-        loop = asyncio.get_running_loop()
+        future: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
         confirmation = PendingConfirmation(
             request_id=request_id,
             tool_name=tool_name,
             args=args,
             preview=preview,
-            future=loop.create_future(),
+            session_id=confirmation_owner.get(),
+            future=future,
         )
         self._pending[request_id] = confirmation
 
@@ -190,7 +205,7 @@ class APIConfirmationCallback(ConfirmationCallback):
         try:
             # Block until approved/denied OR timeout
             return await asyncio.wait_for(
-                asyncio.shield(confirmation.future),
+                asyncio.shield(future),
                 timeout=self.timeout_seconds,
             )
         except TimeoutError:
@@ -219,7 +234,7 @@ class APIConfirmationCallback(ConfirmationCallback):
             )
             return False
 
-        if not pending.future.done():
+        if pending.future is not None and not pending.future.done():
             pending.future.set_result(approved)
             logger.info(
                 "confirmation_resolved",
@@ -231,8 +246,13 @@ class APIConfirmationCallback(ConfirmationCallback):
         """Return the pending confirmation record, or None if not found."""
         return self._pending.get(request_id)
 
-    def list_pending(self) -> list[dict[str, Any]]:
-        """Return a list of all pending confirmations (for admin/debug views)."""
+    @staticmethod
+    def is_owner(pending: PendingConfirmation, session_id: str | None) -> bool:
+        """True if ``session_id`` owns ``pending``. Unowned requests match nobody."""
+        return pending.session_id is not None and pending.session_id == session_id
+
+    def list_pending(self, session_id: str | None = None) -> list[dict[str, Any]]:
+        """Return pending confirmations, optionally only those owned by ``session_id``."""
         return [
             {
                 "request_id": p.request_id,
@@ -242,7 +262,163 @@ class APIConfirmationCallback(ConfirmationCallback):
                 "created_at": p.created_at.isoformat(),
             }
             for p in self._pending.values()
+            if session_id is None or self.is_owner(p, session_id)
         ]
+
+
+    # Async accessors — what the API routes call, so the in-process and Redis
+    # backends are interchangeable.
+    async def aapprove(self, request_id: str, approved: bool) -> bool:
+        return self.approve(request_id, approved)
+
+    async def aget_pending(self, request_id: str) -> PendingConfirmation | None:
+        return self.get_pending(request_id)
+
+    async def alist_pending(self, session_id: str | None = None) -> list[dict[str, Any]]:
+        return self.list_pending(session_id)
+
+
+# =============================================================================
+# REDIS (MULTI-WORKER) IMPLEMENTATION
+# =============================================================================
+
+
+class RedisConfirmationCallback(APIConfirmationCallback):
+    """HITL gate whose pending state lives in Redis.
+
+    The worker running the tool stores the request under
+    ``amadeus:hitl:pending:{id}`` (TTL = timeout) and blocks on ``BLPOP
+    amadeus:hitl:decision:{id}``. Whichever worker receives
+    ``POST /confirm/{id}`` pushes the decision; the waiter wakes up. Timeouts
+    and an unknown/expired id still mean *deny* (fail closed). The ownership
+    check (``is_owner``) is unchanged.
+    """
+
+    PREFIX = "amadeus:hitl"
+
+    def __init__(self, redis: Redis, timeout_seconds: int = 60) -> None:
+        super().__init__(timeout_seconds=timeout_seconds)
+        self._redis = redis
+
+    def _pending_key(self, request_id: str) -> str:
+        return f"{self.PREFIX}:pending:{request_id}"
+
+    def _decision_key(self, request_id: str) -> str:
+        return f"{self.PREFIX}:decision:{request_id}"
+
+    @property
+    def _index_key(self) -> str:
+        return f"{self.PREFIX}:index"
+
+    @property
+    def _ttl(self) -> int:
+        return max(1, int(self.timeout_seconds) + 5)
+
+    async def request_approval(
+        self,
+        tool_name: str,
+        args: dict[str, Any],
+        request_id: str,
+        preview: str = "",
+    ) -> bool:
+        record = {
+            "request_id": request_id,
+            "tool_name": tool_name,
+            "args": args,
+            "preview": preview,
+            "session_id": confirmation_owner.get(),
+            "created_at": datetime.now().isoformat(),
+        }
+        pending_key, decision_key = self._pending_key(request_id), self._decision_key(request_id)
+        try:
+            async with self._redis.pipeline(transaction=True) as pipe:
+                pipe.set(pending_key, json.dumps(record, default=str), ex=self._ttl)
+                pipe.zadd(self._index_key, {request_id: time.time()})
+                await pipe.execute()
+            logger.info("confirmation_pending", extra={"tool": tool_name, "request_id": request_id})
+            popped: Any = await self._redis.blpop(  # type: ignore[misc]
+                [decision_key], timeout=self.timeout_seconds
+            )
+        except Exception:
+            logger.exception("confirmation_redis_error", extra={"request_id": request_id})
+            return False  # fail closed
+        finally:
+            try:
+                async with self._redis.pipeline(transaction=True) as pipe:
+                    pipe.delete(pending_key, decision_key)
+                    pipe.zrem(self._index_key, request_id)
+                    await pipe.execute()
+            except Exception:
+                logger.warning("confirmation_redis_cleanup_failed", extra={"request_id": request_id})
+        if popped is None:
+            logger.warning("confirmation_timeout", extra={"tool": tool_name, "request_id": request_id})
+            return False
+        return _as_str(popped[1]) == "1"
+
+    async def aapprove(self, request_id: str, approved: bool) -> bool:
+        if not await self._redis.exists(self._pending_key(request_id)):
+            logger.warning("confirmation_unknown_request_id", extra={"request_id": request_id})
+            return False
+        decision_key = self._decision_key(request_id)
+        async with self._redis.pipeline(transaction=True) as pipe:
+            pipe.rpush(decision_key, "1" if approved else "0")
+            pipe.expire(decision_key, self._ttl)
+            await pipe.execute()
+        logger.info("confirmation_resolved", extra={"request_id": request_id, "approved": approved})
+        return True
+
+    async def aget_pending(self, request_id: str) -> PendingConfirmation | None:
+        raw = await self._redis.get(self._pending_key(request_id))
+        return self._decode(raw)
+
+    async def alist_pending(self, session_id: str | None = None) -> list[dict[str, Any]]:
+        ids = [_as_str(i) for i in await self._redis.zrange(self._index_key, 0, -1)]
+        if not ids:
+            return []
+        raws = await self._redis.mget([self._pending_key(i) for i in ids])
+        expired = [i for i, raw in zip(ids, raws, strict=True) if raw is None]
+        if expired:  # waiter died before cleanup; keep the index tidy
+            await self._redis.zrem(self._index_key, *expired)
+        out = []
+        for raw in raws:
+            pending = self._decode(raw)
+            if pending and (session_id is None or self.is_owner(pending, session_id)):
+                out.append({
+                    "request_id": pending.request_id,
+                    "tool_name": pending.tool_name,
+                    "args": pending.args,
+                    "preview": pending.preview,
+                    "created_at": pending.created_at.isoformat(),
+                })
+        return out
+
+    # Sync accessors can't reach Redis; fail loudly instead of returning stale data.
+    def approve(self, request_id: str, approved: bool) -> bool:
+        raise NotImplementedError("use 'await aapprove(...)' with the Redis backend")
+
+    def get_pending(self, request_id: str) -> PendingConfirmation | None:
+        raise NotImplementedError("use 'await aget_pending(...)' with the Redis backend")
+
+    def list_pending(self, session_id: str | None = None) -> list[dict[str, Any]]:
+        raise NotImplementedError("use 'await alist_pending(...)' with the Redis backend")
+
+    @staticmethod
+    def _decode(raw: Any) -> PendingConfirmation | None:
+        if raw is None:
+            return None
+        data = json.loads(_as_str(raw))
+        return PendingConfirmation(
+            request_id=data["request_id"],
+            tool_name=data["tool_name"],
+            args=data.get("args") or {},
+            preview=data.get("preview", ""),
+            session_id=data.get("session_id"),
+            created_at=datetime.fromisoformat(data["created_at"]),
+        )
+
+
+def _as_str(value: Any) -> str:
+    return value.decode() if isinstance(value, bytes) else str(value)
 
 
 # =============================================================================
@@ -253,3 +429,26 @@ class APIConfirmationCallback(ConfirmationCallback):
 def make_request_id() -> str:
     """Generate a new unique confirmation request ID."""
     return str(uuid.uuid4())
+
+
+async def create_api_confirmation_callback(
+    backend: str, redis_url: str | None, timeout_seconds: int = 60
+) -> APIConfirmationCallback:
+    """Build the REST HITL callback for ``SHARED_STATE_BACKEND``.
+
+    ``"redis"`` pings Redis first and raises if it is unreachable: silently
+    falling back to in-process state would make approvals sent to another
+    worker vanish (every risky tool would time out and be denied).
+    """
+    if backend != "redis":
+        return APIConfirmationCallback(timeout_seconds=timeout_seconds)
+    if not redis_url:
+        raise RuntimeError("SHARED_STATE_BACKEND=redis requires REDIS_URL")
+    from redis.asyncio import from_url
+
+    client = from_url(redis_url, decode_responses=True)
+    try:
+        await client.ping()
+    except Exception as exc:
+        raise RuntimeError(f"SHARED_STATE_BACKEND=redis but Redis is unreachable: {exc}") from exc
+    return RedisConfirmationCallback(client, timeout_seconds=timeout_seconds)

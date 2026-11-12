@@ -15,9 +15,10 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from src.api.middleware.authentication import verify_jwt_token
+from src.api.middleware.rbac import RequireAdmin
 from src.app.services.messaging_service import MessagingService
 from src.container import get_messaging_service
+from src.infra.persistence.orm_models import UserORM
 
 
 logger = logging.getLogger(__name__)
@@ -71,14 +72,13 @@ class StatusResponse(BaseModel):
 )
 async def send_message(
     req: SendMessageRequest,
-    _token: dict = Depends(verify_jwt_token),
+    _admin: UserORM = Depends(RequireAdmin),
     messaging: MessagingService = Depends(get_messaging_service),
 ) -> SendMessageResponse:
     """
     Dispatch an outbound message to Telegram or Email.
 
-    Requires a valid JWT bearer token.  In production, restrict this
-    endpoint to admin-role tokens via the RequireAdmin dependency.
+    Admin-only: this sends as the bot / configured mailbox to any recipient.
     """
     try:
         success = await messaging.send_message(
@@ -118,7 +118,7 @@ async def messaging_status(
 ) -> StatusResponse:
     """
     Returns a real-time readiness check for each messaging channel.
-    Does NOT require authentication — useful for health dashboards.
+    Requires an authenticated user (enforced at router registration).
     """
     return StatusResponse(
         telegram=messaging.telegram.is_ready if messaging.telegram else False,

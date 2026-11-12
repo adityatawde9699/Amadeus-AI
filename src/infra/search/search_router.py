@@ -3,17 +3,17 @@ Tiered Search Router for Amadeus AI.
 
 Routes search queries across free/paid providers in priority order:
 1. Wikipedia API     — factual/encyclopedic queries (free, unlimited)
-2. DuckDuckGo       — general web search via duckduckgo-search lib (free, no key)
+2. DuckDuckGo       — general web search via the ddgs lib (free, no key)
 3. Tavily            — deep research (1,000 req/month free, paid after)
 
-All HTTP calls use aiohttp for async, non-blocking I/O.
+All HTTP calls use httpx (AsyncClient) for async, non-blocking I/O.
 """
 
 import asyncio
 import logging
 from datetime import date
 
-import aiohttp
+import httpx
 
 
 logger = logging.getLogger(__name__)
@@ -47,21 +47,21 @@ class SearchRouter:
     ) -> None:
         self._tavily_key = tavily_api_key
         self._count_date: date = date.today()
-        self._session: aiohttp.ClientSession | None = None
+        self._session: httpx.AsyncClient | None = None
 
     async def initialize(self) -> None:
         """Initialize shared HTTP session for search providers."""
-        if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession()
+        if self._session is None or self._session.is_closed:
+            self._session = httpx.AsyncClient(follow_redirects=True)
 
     async def close(self) -> None:
         """Close shared HTTP session."""
-        if self._session is not None and not self._session.closed:
-            await self._session.close()
+        if self._session is not None and not self._session.is_closed:
+            await self._session.aclose()
         self._session = None
 
-    async def _get_session(self) -> aiohttp.ClientSession:
-        if self._session is None or self._session.closed:
+    async def _get_session(self) -> httpx.AsyncClient:
+        if self._session is None or self._session.is_closed:
             await self.initialize()
         if self._session is None:
             raise RuntimeError("search router HTTP session is unavailable")
@@ -156,20 +156,20 @@ class SearchRouter:
             subject = (
                 query.replace("who is ", "").replace("what is ", "").replace("define ", "").strip()
             )
-            async with session.get(
-                url + subject.replace(" ", "_"), timeout=aiohttp.ClientTimeout(total=5)
-            ) as r:
-                if r.status == 200:
-                    data = await r.json()
-                    extract = data.get("extract", "")
-                    if extract:
-                        page = data.get("content_urls", {}).get("desktop", {}).get("page", "")
-                        return {
-                            "title": data.get("title", subject),
-                            "snippet": extract[:800],
-                            "url": page or f"https://en.wikipedia.org/wiki/{subject.replace(' ', '_')}",
-                            "provider": "wikipedia",
-                        }
+            r = await session.get(
+                url + subject.replace(" ", "_"), timeout=5
+            )
+            if r.status_code == 200:
+                data = r.json()
+                extract = data.get("extract", "")
+                if extract:
+                    page = data.get("content_urls", {}).get("desktop", {}).get("page", "")
+                    return {
+                        "title": data.get("title", subject),
+                        "snippet": extract[:800],
+                        "url": page or f"https://en.wikipedia.org/wiki/{subject.replace(' ', '_')}",
+                        "provider": "wikipedia",
+                    }
         except Exception as e:
             logger.debug("Wikipedia structured search failed: %s", type(e).__name__)
         return None
@@ -177,10 +177,7 @@ class SearchRouter:
     async def _ddg_results(self, query: str, max_results: int) -> list[dict[str, str]]:
         """Structured DuckDuckGo results for :meth:`search_results`."""
         try:
-            try:
-                from ddgs import DDGS
-            except ImportError:
-                from duckduckgo_search import DDGS  # legacy name
+            from ddgs import DDGS
 
             def _do_search() -> list[dict]:
                 with DDGS() as ddgs:
@@ -215,22 +212,22 @@ class SearchRouter:
                 "search_depth": "advanced",
                 "max_results": 5,
             }
-            async with session.post(
-                url, json=payload, timeout=aiohttp.ClientTimeout(total=15)
-            ) as r:
-                if r.status == 200:
-                    data = await r.json()
-                    out: list[dict[str, str]] = []
-                    for result in data.get("results", []):
-                        out.append(
-                            {
-                                "title": result.get("title", ""),
-                                "snippet": (result.get("content", "") or "")[:500],
-                                "url": result.get("url", ""),
-                                "provider": "tavily",
-                            }
-                        )
-                    return out
+            r = await session.post(
+                url, json=payload, timeout=15
+            )
+            if r.status_code == 200:
+                data = r.json()
+                out: list[dict[str, str]] = []
+                for result in data.get("results", []):
+                    out.append(
+                        {
+                            "title": result.get("title", ""),
+                            "snippet": (result.get("content", "") or "")[:500],
+                            "url": result.get("url", ""),
+                            "provider": "tavily",
+                        }
+                    )
+                return out
         except Exception as e:
             logger.debug("Tavily structured search failed: %s", type(e).__name__)
         return []
@@ -244,15 +241,15 @@ class SearchRouter:
             subject = (
                 query.replace("who is ", "").replace("what is ", "").replace("define ", "").strip()
             )
-            async with session.get(
-                url + subject.replace(" ", "_"), timeout=aiohttp.ClientTimeout(total=5)
-            ) as r:
-                if r.status == 200:
-                    data = await r.json()
-                    extract = data.get("extract", "")
-                    return extract[:800] if extract else ""
-                if r.status == 404:
-                    return await self._wikipedia_search_fallback(subject)
+            r = await session.get(
+                url + subject.replace(" ", "_"), timeout=5
+            )
+            if r.status_code == 200:
+                data = r.json()
+                extract = data.get("extract", "")
+                return extract[:800] if extract else ""
+            if r.status_code == 404:
+                return await self._wikipedia_search_fallback(subject)
             return ""
         except Exception as e:
             logger.debug("Wikipedia search failed: %s", type(e).__name__)
@@ -271,21 +268,21 @@ class SearchRouter:
         headers = {"User-Agent": "AmadeusAI/2.0 (https://github.com/adityatawde9699/Amadeus-AI)"}
         try:
             session = await self._get_session()
-            async with session.get(
-                search_api, params=params, headers=headers, timeout=aiohttp.ClientTimeout(total=5)
-            ) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    results = data.get("query", {}).get("search", [])
-                    if results:
-                        title = results[0].get("title", "")
-                        snippet = (
-                            results[0]
-                            .get("snippet", "")
-                            .replace('<span class="searchmatch">', "")
-                            .replace("</span>", "")
-                        )
-                        return f"Wikipedia result for '{query}':\n{title}: {snippet}..."
+            response = await session.get(
+                search_api, params=params, headers=headers, timeout=5
+            )
+            if response.status_code == 200:
+                data = response.json()
+                results = data.get("query", {}).get("search", [])
+                if results:
+                    title = results[0].get("title", "")
+                    snippet = (
+                        results[0]
+                        .get("snippet", "")
+                        .replace('<span class="searchmatch">', "")
+                        .replace("</span>", "")
+                    )
+                    return f"Wikipedia result for '{query}':\n{title}: {snippet}..."
         except Exception as e:
             logger.debug("Wikipedia fallback failed: %s", type(e).__name__)
         return ""
@@ -297,11 +294,7 @@ class SearchRouter:
         snippets, and source URLs.
         """
         try:
-            # Try the new package name first (renamed from duckduckgo_search → ddgs)
-            try:
-                from ddgs import DDGS
-            except ImportError:
-                from duckduckgo_search import DDGS  # legacy name, still works
+            from ddgs import DDGS  # successor of the duckduckgo-search package
 
             # Run the synchronous DDGS in a thread to avoid blocking the event loop
             def _do_search() -> list[dict]:
@@ -348,23 +341,23 @@ class SearchRouter:
                 "search_depth": "advanced",
                 "max_results": 3,
             }
-            async with session.post(
-                url, json=payload, timeout=aiohttp.ClientTimeout(total=15)
-            ) as r:
-                if r.status == 200:
-                    data = await r.json()
-                    results = data.get("results", [])
-                    snippets = []
-                    for result in results[:3]:
-                        title = result.get("title", "")
-                        content = result.get("content", "")
-                        url_str = result.get("url", "")
-                        if content:
-                            snippet = f"**{title}**\n{content[:300]}"
-                            if url_str:
-                                snippet += f"\nSource: {url_str}"
-                            snippets.append(snippet)
-                    return "\n\n".join(snippets)
+            r = await session.post(
+                url, json=payload, timeout=15
+            )
+            if r.status_code == 200:
+                data = r.json()
+                results = data.get("results", [])
+                snippets = []
+                for result in results[:3]:
+                    title = result.get("title", "")
+                    content = result.get("content", "")
+                    url_str = result.get("url", "")
+                    if content:
+                        snippet = f"**{title}**\n{content[:300]}"
+                        if url_str:
+                            snippet += f"\nSource: {url_str}"
+                        snippets.append(snippet)
+                return "\n\n".join(snippets)
             return ""
         except Exception as e:
             logger.debug("Tavily search failed: %s", type(e).__name__)

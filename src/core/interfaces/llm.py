@@ -1,7 +1,7 @@
 """
 LLM Adapter Interface for Amadeus AI.
 
-All LLM provider adapters (Ollama, LlamaCpp, Groq, Gemini, OpenAI) must
+All LLM provider adapters (LlamaCpp, Groq, Gemini) must
 conform to this interface. The LLMRouter uses duck-typing today but this
 Protocol provides static type-checking enforcement via mypy.
 
@@ -30,11 +30,9 @@ class LLMAdapter(ABC):
     This enforces a consistent API surface and enables static type analysis.
 
     Implementing classes:
-        - OllamaAdapter      (local server, offline)
         - LlamaCppAdapter    (local GGUF file, offline)
         - GroqAdapter        (cloud, free tier)
         - GeminiAdapter      (cloud, free tier)
-        - OpenAIAdapter      (cloud, paid)
     """
 
     # =========================================================================

@@ -20,7 +20,7 @@
 |---|---|
 | Any Telegram user could control the daemon | SEC-03: `MASTER_TELEGRAM_CHAT_ID` allowlist enforced |
 | No WhatsApp webhook HMAC verification | SEC-02: `X-Hub-Signature-256` HMAC enforced; forged payloads → 403 |
-| Prompt injection in ReAct prompt | SEC-01: `<user_task>` boundary + `[BLOCKED:TOKEN]` neutralisation |
+| Prompt injection via tool output / user input | SEC-01: `<user_task>` + `<untrusted_data>` fences, `[BLOCKED:TOKEN]` neutralisation, and a taint gate requiring approval for state-changing tools after external content (implemented 2026-11; previously documented but missing) |
 | Filesystem exfiltration via `copy_file`/`move_file` | CQ-01/02: `_assert_in_allowed_dirs()` enforced on all path operations |
 | Per-message `AmadeusService` construction (OOM) | ARCH-01: DI singleton reused across all messages |
 | AgentOrchestrator shutdown never executed (zombie tasks) | DR-02: `shutdown()` implemented with `cancel()` + `await` |

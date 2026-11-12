@@ -15,7 +15,7 @@ import webbrowser
 from datetime import datetime
 from typing import Any
 
-import aiohttp
+import httpx
 
 from src.core.config import get_settings
 from src.infra.tools.base import Tool, ToolCategory, tool
@@ -23,23 +23,23 @@ from src.infra.tools.base import Tool, ToolCategory, tool
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
-_http_session: aiohttp.ClientSession | None = None
+_http_session: httpx.AsyncClient | None = None
 
 async def initialize_info_tools_http_session() -> None:
     """Create the shared HTTP session used by information tools."""
     global _http_session
-    if _http_session is None or _http_session.closed:
-        _http_session = aiohttp.ClientSession()
+    if _http_session is None or _http_session.is_closed:
+        _http_session = httpx.AsyncClient(follow_redirects=True)
 
 async def close_info_tools_http_session() -> None:
     """Close the shared HTTP session used by information tools."""
     global _http_session
-    if _http_session is not None and not _http_session.closed:
-        await _http_session.close()
+    if _http_session is not None and not _http_session.is_closed:
+        await _http_session.aclose()
     _http_session = None
 
-async def _get_http_session() -> aiohttp.ClientSession:
-    if _http_session is None or _http_session.closed:
+async def _get_http_session() -> httpx.AsyncClient:
+    if _http_session is None or _http_session.is_closed:
         await initialize_info_tools_http_session()
     if _http_session is None:
         raise RuntimeError("info tools HTTP session is unavailable")
@@ -137,34 +137,34 @@ async def get_weather_async(location: str = "India") -> str:
 
     try:
         session = await _get_http_session()
-        async with session.get(
-            base_url, params=params, timeout=aiohttp.ClientTimeout(total=10)
-        ) as response:
-            if response.status == 404:
-                return f"Sorry, I couldn't find weather data for '{location}'."
-            if response.status != 200:
-                return f"Weather service error (status {response.status})."
+        response = await session.get(
+            base_url, params=params, timeout=10
+        )
+        if response.status_code == 404:
+            return f"Sorry, I couldn't find weather data for '{location}'."
+        if response.status_code != 200:
+            return f"Weather service error (status {response.status_code})."
 
-            data = await response.json()
+        data = response.json()
 
-            temp = data["main"]["temp"]
-            feels_like = data["main"]["feels_like"]
-            humidity = data["main"]["humidity"]
-            description = data["weather"][0]["description"]
-            city_name = data["name"]
-            country = data["sys"].get("country", "")
-            wind_speed = data.get("wind", {}).get("speed", 0)
-            wind_kmh = round(wind_speed * 3.6, 1)
+        temp = data["main"]["temp"]
+        feels_like = data["main"]["feels_like"]
+        humidity = data["main"]["humidity"]
+        description = data["weather"][0]["description"]
+        city_name = data["name"]
+        country = data["sys"].get("country", "")
+        wind_speed = data.get("wind", {}).get("speed", 0)
+        wind_kmh = round(wind_speed * 3.6, 1)
 
-            return (
-                f"Weather in {city_name}, {country}: {description.capitalize()}. "
-                f"Temperature is {temp:.1f}°C (feels like {feels_like:.1f}°C). "
-                f"Humidity is {humidity}% with winds at {wind_kmh} km/h."
-            )
+        return (
+            f"Weather in {city_name}, {country}: {description.capitalize()}. "
+            f"Temperature is {temp:.1f}°C (feels like {feels_like:.1f}°C). "
+            f"Humidity is {humidity}% with winds at {wind_kmh} km/h."
+        )
 
-    except TimeoutError:
+    except (TimeoutError, httpx.TimeoutException):
         return "Weather request timed out. Please try again."
-    except aiohttp.ClientError as e:
+    except httpx.HTTPError as e:
         return f"Network error fetching weather: {e}"
     except KeyError as e:
         return f"Unexpected weather data format: {e}"
@@ -219,33 +219,33 @@ async def get_news_async(
 
     try:
         session = await _get_http_session()
-        async with session.get(
-            base_url, params=params, timeout=aiohttp.ClientTimeout(total=10)
-        ) as response:
-            if response.status != 200:
-                return f"News service error (status {response.status})."
+        response = await session.get(
+            base_url, params=params, timeout=10
+        )
+        if response.status_code != 200:
+            return f"News service error (status {response.status_code})."
 
-            data = await response.json()
+        data = response.json()
 
-            if data.get("status") != "ok":
-                return f"News API error: {data.get('message', 'Unknown error')}"
+        if data.get("status") != "ok":
+            return f"News API error: {data.get('message', 'Unknown error')}"
 
-            articles = data.get("articles", [])
+        articles = data.get("articles", [])
 
-            if not articles:
-                return f"No news articles found for {category} in {country}."
+        if not articles:
+            return f"No news articles found for {category} in {country}."
 
-            headlines = []
-            for i, article in enumerate(articles[:count], 1):
-                title = article.get("title", "No title")
-                source = article.get("source", {}).get("name", "Unknown")
-                headlines.append(f"{i}. {title} ({source})")
+        headlines = []
+        for i, article in enumerate(articles[:count], 1):
+            title = article.get("title", "No title")
+            source = article.get("source", {}).get("name", "Unknown")
+            headlines.append(f"{i}. {title} ({source})")
 
-            return f"Top {len(headlines)} {category} headlines:\n" + "\n".join(headlines)
+        return f"Top {len(headlines)} {category} headlines:\n" + "\n".join(headlines)
 
-    except TimeoutError:
+    except (TimeoutError, httpx.TimeoutException):
         return "News request timed out. Please try again."
-    except aiohttp.ClientError as e:
+    except httpx.HTTPError as e:
         return f"Network error fetching news: {e}"
     except Exception as e:
         return f"Sorry, I couldn't fetch the news: {e}"
@@ -334,35 +334,35 @@ async def wikipedia_search_async(query: str, sentences: int = 3) -> str:
 
     try:
         session = await _get_http_session()
-        async with session.get(
-            search_url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)
-        ) as response:
-            if response.status == 404:
-                return await _wikipedia_search_fallback(query, session)
-            if response.status != 200:
-                return f"Wikipedia error (status {response.status})."
+        response = await session.get(
+            search_url, headers=headers, timeout=10
+        )
+        if response.status_code == 404:
+            return await _wikipedia_search_fallback(query, session)
+        if response.status_code != 200:
+            return f"Wikipedia error (status {response.status_code})."
 
-            data = await response.json()
+        data = response.json()
 
-            title = data.get("title", query)
-            extract = data.get("extract", "")
+        title = data.get("title", query)
+        extract = data.get("extract", "")
 
-            if not extract:
-                return f"No Wikipedia article found for '{query}'."
+        if not extract:
+            return f"No Wikipedia article found for '{query}'."
 
-            sentences_list = extract.split(". ")
-            limited = ". ".join(sentences_list[:sentences])
-            if not limited.endswith("."):
-                limited += "."
+        sentences_list = extract.split(". ")
+        limited = ". ".join(sentences_list[:sentences])
+        if not limited.endswith("."):
+            limited += "."
 
-            return f"From Wikipedia - {title}:\n{limited}"
+        return f"From Wikipedia - {title}:\n{limited}"
 
-    except TimeoutError:
+    except (TimeoutError, httpx.TimeoutException):
         return "Wikipedia request timed out."
     except Exception as e:
         return f"Error searching Wikipedia: {e}"
 
-async def _wikipedia_search_fallback(query: str, session: aiohttp.ClientSession) -> str:
+async def _wikipedia_search_fallback(query: str, session: httpx.AsyncClient) -> str:
     """Fallback search using Wikipedia's search API."""
     search_api = "https://en.wikipedia.org/w/api.php"
     params: dict[str, str | int] = {
@@ -375,24 +375,24 @@ async def _wikipedia_search_fallback(query: str, session: aiohttp.ClientSession)
 
     headers = {"User-Agent": "AmadeusAI/2.0 (https://github.com/adityatawde9699/Amadeus-AI)"}
     try:
-        async with session.get(
-            search_api, params=params, headers=headers, timeout=aiohttp.ClientTimeout(total=10)
-        ) as response:
-            data = await response.json()
-            results = data.get("query", {}).get("search", [])
+        response = await session.get(
+            search_api, params=params, headers=headers, timeout=10
+        )
+        data = response.json()
+        results = data.get("query", {}).get("search", [])
 
-            if not results:
-                return f"No Wikipedia results found for '{query}'."
+        if not results:
+            return f"No Wikipedia results found for '{query}'."
 
-            title = results[0].get("title", "")
-            snippet = (
-                results[0]
-                .get("snippet", "")
-                .replace('<span class="searchmatch">', "")
-                .replace("</span>", "")
-            )
+        title = results[0].get("title", "")
+        snippet = (
+            results[0]
+            .get("snippet", "")
+            .replace('<span class="searchmatch">', "")
+            .replace("</span>", "")
+        )
 
-            return f"Wikipedia result for '{query}':\n{title}: {snippet}..."
+        return f"Wikipedia result for '{query}':\n{title}: {snippet}..."
 
     except Exception as e:
         return f"Wikipedia search failed: {e}"
@@ -419,13 +419,14 @@ def calculate(expression: str) -> str:
 
     # Normalise common alternate operators
     expr = re.sub(r"(?<=\d)\s*x\s*(?=\d)", "*", expression)
-    expr = expr.replace("÷", "/").replace("^", "**")
+    expr = expr.replace("÷", "/").replace("×", "*").replace("−", "-").replace("^", "**")
 
     functions = {
         "sqrt": math.sqrt,
         "abs": abs,
         "round": round,
-        "pow": pow,
+        # NOTE: ``pow`` is deliberately absent — it bypassed the exponent guard
+        # (``pow(10, 10**1000)``). Use ``**``, which goes through _safe_pow.
         "log": math.log,
         "log10": math.log10,
         "sin": math.sin,
@@ -448,6 +449,24 @@ def calculate(expression: str) -> str:
         ast.USub: operator.neg,
     }
 
+    max_bits = 4096  # ~1233 decimal digits — far beyond any real calculation
+
+    def _check(value: float | int) -> float | int:
+        """Reject integers too large to be meaningful (bounds CPU and memory)."""
+        if isinstance(value, int) and value.bit_length() > max_bits:
+            raise ValueError("result is too large")
+        return value
+
+    def _safe_pow(base: float | int, exp: float | int) -> float | int:
+        if abs(exp) > 1000:
+            raise ValueError("exponent is too large")
+        # Estimate the result size BEFORE computing it: chained powers such as
+        # ((10**1000)**1000)**1000 each pass the exponent cap but explode.
+        if isinstance(base, int) and isinstance(exp, int) and exp > 0 and abs(base) > 1:
+            if base.bit_length() * exp > max_bits:
+                raise ValueError("result is too large")
+        return _check(operator.pow(base, exp))
+
     def _eval_node(node: ast.AST) -> float | int:
         if isinstance(node, ast.Expression):
             return _eval_node(node.body)
@@ -460,9 +479,9 @@ def calculate(expression: str) -> str:
         if isinstance(node, ast.BinOp) and type(node.op) in binary_ops:
             left = _eval_node(node.left)
             right = _eval_node(node.right)
-            if isinstance(node.op, ast.Pow) and abs(right) > 1000:
-                raise ValueError("exponent is too large")
-            return binary_ops[type(node.op)](left, right)
+            if isinstance(node.op, ast.Pow):
+                return _safe_pow(left, right)
+            return _check(binary_ops[type(node.op)](left, right))
         if isinstance(node, ast.UnaryOp) and type(node.op) in unary_ops:
             return unary_ops[type(node.op)](_eval_node(node.operand))
         if isinstance(node, ast.Name) and node.id in constants:
@@ -473,7 +492,7 @@ def calculate(expression: str) -> str:
                 raise NameError(node.func.id)
             if node.keywords:
                 raise ValueError("keyword arguments are not supported")
-            return func(*[_eval_node(arg) for arg in node.args])
+            return _check(func(*[_eval_node(arg) for arg in node.args]))
         raise ValueError("unsupported expression")
 
     try:
@@ -481,6 +500,8 @@ def calculate(expression: str) -> str:
         return f"{expression} = {result}"
     except ZeroDivisionError:
         return "Error: Division by zero."
+    except OverflowError:
+        return "Calculation error: result is too large"
     except NameError as e:
         return f"Unknown function or variable: {e}"
     except SyntaxError:
@@ -609,16 +630,16 @@ async def convert_currency(
     if rates is None:
         try:
             session = await _get_http_session()
-            async with session.get(
+            response = await session.get(
                 f"https://open.er-api.com/v6/latest/{src}",
-                timeout=aiohttp.ClientTimeout(total=10),
-            ) as response:
-                if response.status != 200:
-                    return f"Currency service error (status {response.status})."
-                data = await response.json()
-        except TimeoutError:
+                timeout=10,
+            )
+            if response.status_code != 200:
+                return f"Currency service error (status {response.status_code})."
+            data = response.json()
+        except (TimeoutError, httpx.TimeoutException):
             return "Currency request timed out. Please try again."
-        except aiohttp.ClientError as e:
+        except httpx.HTTPError as e:
             return f"Network error fetching exchange rates: {e}"
 
         if data.get("result") != "success":
