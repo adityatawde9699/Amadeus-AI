@@ -378,8 +378,10 @@ class TestTaskSchedulerGuards:
         sched = TaskScheduler(poll_interval_seconds=999)
         dispatch = AsyncMock()
 
-        with patch("src.runtime.scheduler.get_session"), \
-             patch("src.runtime.scheduler.ScheduledTaskRepository") as MockRepo:
+        with (
+            patch("src.runtime.scheduler.get_session"),
+            patch("src.runtime.scheduler.ScheduledTaskRepository") as MockRepo,
+        ):
             MockRepo.return_value.requeue_stuck_running = AsyncMock(return_value=0)
             MockRepo.return_value.claim_due = AsyncMock(return_value=[])
 
@@ -397,8 +399,10 @@ class TestTaskSchedulerGuards:
         sched = TaskScheduler(poll_interval_seconds=999)
         dispatch = AsyncMock()
 
-        with patch("src.runtime.scheduler.get_session"), \
-             patch("src.runtime.scheduler.ScheduledTaskRepository") as MockRepo:
+        with (
+            patch("src.runtime.scheduler.get_session"),
+            patch("src.runtime.scheduler.ScheduledTaskRepository") as MockRepo,
+        ):
             MockRepo.return_value.requeue_stuck_running = AsyncMock(return_value=0)
             MockRepo.return_value.claim_due = AsyncMock(return_value=[])
 

@@ -88,9 +88,7 @@ class ExpertNodes(ActionHelpers, OutcomeMemory, GraphBase):
 
         # Get the expert's constrained tool menu
         if profile.categories:
-            tool_menu = self.tool_registry.get_tools_menu_for_categories(
-                list(profile.categories)
-            )
+            tool_menu = self.tool_registry.get_tools_menu_for_categories(list(profile.categories))
         else:
             # Generalist gets all tools
             tool_menu = self.tool_registry.get_tools_menu()
@@ -231,10 +229,12 @@ parameter names shown in parentheses after the tool name. Respond with JSON only
 
         try:
             from src.app.services.tool_dispatcher import ToolDispatcher
+
             timeout = ToolDispatcher.TOOL_TIMEOUTS.get(tool_name, ToolDispatcher.DEFAULT_TIMEOUT)
             result = await asyncio.wait_for(
                 self.tool_executor.execute(
-                    tool, tool_args,
+                    tool,
+                    tool_args,
                     permission_profile=permission_profile,
                     session_id=state.get("session_id"),
                     # Without in-graph HITL, enforce the taint gate through the
@@ -243,9 +243,7 @@ parameter names shown in parentheses after the tool name. Respond with JSON only
                 ),
                 timeout=timeout,
             )
-            observation = (
-                str(result.result) if result.success else f"Error: {result.error_message}"
-            )
+            observation = str(result.result) if result.success else f"Error: {result.error_message}"
             tool_used = [tool_name] if result.success else []
             update: dict = {
                 "observations": [f"{tool_name}: {observation}"],
@@ -284,7 +282,9 @@ parameter names shown in parentheses after the tool name. Respond with JSON only
 
         # Max iterations check
         if iteration >= max_iterations:
-            logger.info("Max iterations (%d) reached for %s — synthesizing", max_iterations, expert_name)
+            logger.info(
+                "Max iterations (%d) reached for %s — synthesizing", max_iterations, expert_name
+            )
             return {"should_continue": False}
 
         next_tool = "FINISH"
@@ -339,9 +339,11 @@ Respond with JSON only:
             except Exception as e:
                 logger.warning("Expert reflect LLM failed: %s — finishing", e)
                 next_tool = "FINISH"
-                next_args = {"answer": " ".join(
-                    o.split(":", 1)[-1].strip() for o in observations if ":" in o
-                )}
+                next_args = {
+                    "answer": " ".join(
+                        o.split(":", 1)[-1].strip() for o in observations if ":" in o
+                    )
+                }
         else:
             done_tools = {o.split(":")[0] for o in observations}
             next_tool, next_args = self._keyword_match(task, done_tools, profile)
@@ -352,7 +354,9 @@ Respond with JSON only:
             step_scope = state.get("current_step", 0)
             sig = f"{step_scope}:{self._action_signature(next_tool, next_args)}"
             if sig in seen_signatures:
-                logger.warning("Cycle detected for '%s' in %s — forcing finish", next_tool, expert_name)
+                logger.warning(
+                    "Cycle detected for '%s' in %s — forcing finish", next_tool, expert_name
+                )
                 return {"should_continue": False}
             return {
                 "current_tool": next_tool,
@@ -365,9 +369,7 @@ Respond with JSON only:
         # FINISH
         final = next_args.get("answer", "")
         if not final and observations:
-            final = " ".join(
-                o.split(":", 1)[-1].strip() for o in observations if ":" in o
-            )
+            final = " ".join(o.split(":", 1)[-1].strip() for o in observations if ":" in o)
 
         return {
             "current_tool": "FINISH",
@@ -406,9 +408,7 @@ Respond with JSON only:
         # If scoped to an expert, only consider tools in its categories
         if profile and profile.categories:
             allowed_tools = {
-                t.name for t in self.tool_registry.get_tools_by_categories(
-                    list(profile.categories)
-                )
+                t.name for t in self.tool_registry.get_tools_by_categories(list(profile.categories))
             }
         else:
             allowed_tools = set(self.tool_registry.list_names())
@@ -425,7 +425,10 @@ Respond with JSON only:
                 continue
             if tool_name not in allowed_tools:
                 continue
-            if any(kw in task_lower for kw in keywords) and tool_name in self.tool_registry.list_names():
+            if (
+                any(kw in task_lower for kw in keywords)
+                and tool_name in self.tool_registry.list_names()
+            ):
                 return tool_name, tool_input
 
         # All matched or nothing matched

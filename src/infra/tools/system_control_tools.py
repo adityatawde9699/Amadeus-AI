@@ -123,7 +123,9 @@ def take_screenshot(filename: str | None = None, **kwargs: Any) -> str:
             )
             result = subprocess.run(
                 ["powershell", "-Command", ps_cmd],
-                check=False, capture_output=True, timeout=15,
+                check=False,
+                capture_output=True,
+                timeout=15,
             )
             if result.returncode == 0 and save_path.exists():
                 return f"Screenshot saved to: {save_path}"
@@ -209,7 +211,9 @@ def list_open_apps(**kwargs: Any) -> str:
 
             titles: list[str] = []
 
-            @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int))
+            @ctypes.WINFUNCTYPE(
+                ctypes.c_bool, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int)
+            )
             def foreach_window(hwnd: Any, lParam: Any) -> bool:
                 if IsWindowVisible(hwnd):
                     buf = ctypes.create_unicode_buffer(512)
@@ -230,8 +234,15 @@ def list_open_apps(**kwargs: Any) -> str:
     elif platform.system() == "Darwin":
         try:
             result = subprocess.run(
-                ["osascript", "-e", 'tell application "System Events" to get name of every process whose background only is false'],
-                check=False, capture_output=True, text=True, timeout=5,
+                [
+                    "osascript",
+                    "-e",
+                    'tell application "System Events" to get name of every process whose background only is false',
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             apps = result.stdout.strip().split(", ")
             return "Open apps: " + ", ".join(apps)
@@ -312,7 +323,9 @@ def terminate_process(process_name: str, **kwargs: Any) -> str:
                 terminated_count += 1
 
         if terminated_count > 0:
-            return f"Successfully terminated {terminated_count} process(es) matching '{process_name}'."
+            return (
+                f"Successfully terminated {terminated_count} process(es) matching '{process_name}'."
+            )
         return f"No processes found matching '{process_name}'."
     except Exception as e:
         return f"Error terminating process: {e}"

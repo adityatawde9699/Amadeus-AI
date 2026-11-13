@@ -31,14 +31,34 @@ logger = logging.getLogger(__name__)
 # Domain suffix / substring → reliability weight.
 _HIGH_TRUST_SUFFIXES = (".gov", ".edu", ".int", ".mil", ".ac.uk", ".gov.uk")
 _HIGH_TRUST_DOMAINS = (
-    "wikipedia.org", "nature.com", "science.org", "sciencedirect.com",
-    "arxiv.org", "ncbi.nlm.nih.gov", "who.int", "ieee.org", "acm.org",
-    "springer.com", "jstor.org", "nasa.gov", "oecd.org", "un.org",
+    "wikipedia.org",
+    "nature.com",
+    "science.org",
+    "sciencedirect.com",
+    "arxiv.org",
+    "ncbi.nlm.nih.gov",
+    "who.int",
+    "ieee.org",
+    "acm.org",
+    "springer.com",
+    "jstor.org",
+    "nasa.gov",
+    "oecd.org",
+    "un.org",
 )
 _MEDIUM_TRUST_DOMAINS = (
-    "reuters.com", "apnews.com", "bbc.com", "bbc.co.uk", "economist.com",
-    "nytimes.com", "theguardian.com", "bloomberg.com", "wsj.com",
-    "github.com", "docs.python.org", "developer.mozilla.org",
+    "reuters.com",
+    "apnews.com",
+    "bbc.com",
+    "bbc.co.uk",
+    "economist.com",
+    "nytimes.com",
+    "theguardian.com",
+    "bloomberg.com",
+    "wsj.com",
+    "github.com",
+    "docs.python.org",
+    "developer.mozilla.org",
 )
 _PROVIDER_WEIGHT = {"wikipedia": 0.15, "tavily": 0.1, "duckduckgo": 0.0, "web": 0.0}
 

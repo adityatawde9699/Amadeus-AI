@@ -55,9 +55,7 @@ class MessagingService:
                 logger.error("Email adapter not configured")
                 return False
             return await self.email.send_email(
-                to=recipient_id,
-                subject=subject or "Message from Amadeus",
-                body=text
+                to=recipient_id, subject=subject or "Message from Amadeus", body=text
             )
 
         logger.error("Unsupported messaging platform: %s", platform)
@@ -71,7 +69,11 @@ class MessagingService:
         results = {}
 
         if "telegram" in platforms and self.telegram and self.settings.MASTER_TELEGRAM_CHAT_ID:
-            chat_ids = [cid.strip() for cid in self.settings.MASTER_TELEGRAM_CHAT_ID.split(",") if cid.strip()]
+            chat_ids = [
+                cid.strip()
+                for cid in self.settings.MASTER_TELEGRAM_CHAT_ID.split(",")
+                if cid.strip()
+            ]
             for cid in chat_ids:
                 results[f"telegram:{cid}"] = await self.send_message(cid, text, platform="telegram")
 

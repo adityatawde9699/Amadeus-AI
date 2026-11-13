@@ -60,15 +60,15 @@ class ToolDispatcher:
     # Per-tool execution timeout in seconds.
     # Tools not listed here fall back to DEFAULT_TIMEOUT.
     TOOL_TIMEOUTS: ClassVar[dict[str, int]] = {
-        "execute_python_script": 300,   # Docker sandbox
-        "web_search":            30,
-        "get_weather":           20,
-        "get_news":              20,
-        "wikipedia_search":      20,
-        "send_email":            30,
-        "read_unread_emails":    30,
+        "execute_python_script": 300,  # Docker sandbox
+        "web_search": 30,
+        "get_weather": 20,
+        "get_news": 20,
+        "wikipedia_search": 20,
+        "send_email": 30,
+        "read_unread_emails": 30,
         "create_excel_spreadsheet": 60,
-        "create_word_document":  60,
+        "create_word_document": 60,
     }
     DEFAULT_TIMEOUT: ClassVar[int] = 15
 
@@ -179,7 +179,9 @@ class ToolDispatcher:
                 span.set_attribute("tool.error", result.error_message)
 
             if self.event_bus:
-                await self.event_bus.emit("tool.failed", {"tool_name": tool_name, "error": result.error_message})
+                await self.event_bus.emit(
+                    "tool.failed", {"tool_name": tool_name, "error": result.error_message}
+                )
 
             return ToolDispatchResult(
                 success=False,
@@ -196,6 +198,7 @@ class ToolDispatcher:
     def _bump_tool_metric(tool_name: str) -> None:
         try:
             from src.infra.metrics import amadeus_tool_calls_total
+
             amadeus_tool_calls_total.labels(tool_name=tool_name).inc()
         except Exception:
             pass
@@ -203,6 +206,7 @@ class ToolDispatcher:
     def _bump_cache_metric(self) -> None:
         try:
             from src.infra.metrics import amadeus_cache_hit_rate
+
             if self._cache:
                 stats = self._cache.get_stats()
                 amadeus_cache_hit_rate.set(stats["hit_rate_pct"])

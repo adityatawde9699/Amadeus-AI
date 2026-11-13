@@ -14,6 +14,7 @@ from src.infra.tools.base import Tool, ToolCategory, tool
 
 logger = logging.getLogger(__name__)
 
+
 @tool(
     name="get_network_info",
     description=(
@@ -36,11 +37,8 @@ def get_network_info(**kwargs: Any) -> str:
 
     status = "Online" if local_ip != "Unknown" else "Offline"
 
-    return (
-        f"Network Status: {status}\n"
-        f"Hostname: {hostname}\n"
-        f"Local IP: {local_ip}"
-    )
+    return f"Network Status: {status}\nHostname: {hostname}\nLocal IP: {local_ip}"
+
 
 # Hostname labels, IPv4 dotted quads and IPv6 literals (letters/digits/.:-).
 _HOST_RE = re.compile(r"[A-Za-z0-9.:\-]{1,253}")
@@ -61,8 +59,8 @@ _HOST_RE = re.compile(r"[A-Za-z0-9.:\-]{1,253}")
         "count": {
             "type": "integer",
             "description": "Number of packets to send (default: 4).",
-            "default": 4
-        }
+            "default": 4,
+        },
     },
 )
 def ping_host(host: str, count: int = 4, **kwargs: Any) -> str:
@@ -87,6 +85,7 @@ def ping_host(host: str, count: int = 4, **kwargs: Any) -> str:
         return f"Ping failed for {host}:\n{result.stderr.strip() or result.stdout.strip()}"
     except Exception as e:
         return f"Error pinging {host}: {e}"
+
 
 def get_network_tools() -> list[Tool]:
     """Get all network tools."""

@@ -16,6 +16,7 @@ from src.infra.tools.base import Tool, ToolCapability, ToolCategory, tool
 
 logger = logging.getLogger(__name__)
 
+
 def build_agent_tools(
     memory_service: Any | None = None,
     goal_repository: IGoalRepository | None = None,
@@ -136,7 +137,10 @@ def build_agent_tools(
         category=ToolCategory.PRODUCTIVITY,
         parameters={
             "title": {"type": "string", "description": "Short title of the goal."},
-            "description": {"type": "string", "description": "Detailed description of the goal and its success criteria."},
+            "description": {
+                "type": "string",
+                "description": "Detailed description of the goal and its success criteria.",
+            },
         },
     )
     async def create_goal(title: str, description: str, **kwargs: Any) -> str:
@@ -146,6 +150,7 @@ def build_agent_tools(
                 return "Goal repository is not available."
 
             from src.core.domain.models import Goal, GoalStatus
+
             goal = Goal(
                 title=title,
                 description=description,
@@ -163,7 +168,10 @@ def build_agent_tools(
         category=ToolCategory.PRODUCTIVITY,
         parameters={
             "goal_id": {"type": "integer", "description": "The ID of the goal to update."},
-            "status": {"type": "string", "description": "The new status: 'active', 'completed', or 'abandoned'."},
+            "status": {
+                "type": "string",
+                "description": "The new status: 'active', 'completed', or 'abandoned'.",
+            },
         },
     )
     async def update_goal(goal_id: int, status: str, **kwargs: Any) -> str:
@@ -173,6 +181,7 @@ def build_agent_tools(
                 return "Goal repository is not available."
 
             from src.core.domain.models import GoalStatus
+
             try:
                 goal_status = GoalStatus(status.lower())
             except ValueError:
@@ -247,9 +256,20 @@ def build_agent_tools(
         description="List, add, or remove plugins for Amadeus. Use this to extend your own capabilities. Actions: 'list', 'add', 'remove'.",
         category=ToolCategory.DEVELOPER,
         parameters={
-            "action": {"type": "string", "description": "Action to perform: 'list', 'add', 'remove'"},
-            "plugin_name": {"type": "string", "description": "Name of the plugin file (e.g., 'my_tool.py')", "default": ""},
-            "content": {"type": "string", "description": "Content of the plugin file (for 'add' action)", "default": ""},
+            "action": {
+                "type": "string",
+                "description": "Action to perform: 'list', 'add', 'remove'",
+            },
+            "plugin_name": {
+                "type": "string",
+                "description": "Name of the plugin file (e.g., 'my_tool.py')",
+                "default": "",
+            },
+            "content": {
+                "type": "string",
+                "description": "Content of the plugin file (for 'add' action)",
+                "default": "",
+            },
         },
         requires_confirmation=True,
         # Writing executable plugin code is administrator-only: require the
@@ -264,7 +284,9 @@ def build_agent_tools(
             min_permission="system_full",
         ),
     )
-    async def manage_plugins(action: str, plugin_name: str = "", content: str = "", **kwargs: Any) -> str:
+    async def manage_plugins(
+        action: str, plugin_name: str = "", content: str = "", **kwargs: Any
+    ) -> str:
         """Manage Amadeus plugins (administrator-only)."""
         settings = get_settings()
         plugins_dir = settings.BASE_DIR / "plugins"
@@ -316,7 +338,11 @@ def build_agent_tools(
         category=ToolCategory.DEVELOPER,
         parameters={
             "query": {"type": "string", "description": "Text pattern to search for"},
-            "file_pattern": {"type": "string", "description": "File pattern to filter (e.g., '*.py')", "default": "*"},
+            "file_pattern": {
+                "type": "string",
+                "description": "File pattern to filter (e.g., '*.py')",
+                "default": "*",
+            },
         },
     )
     async def search_codebase(query: str, file_pattern: str = "*", **kwargs: Any) -> str:
@@ -330,9 +356,7 @@ def build_agent_tools(
             args = ["grep", "-r", "-l", f"--include={file_pattern}", "--", query, target_dir]
 
             process = await asyncio.create_subprocess_exec(
-                *args,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
 
             try:
@@ -349,7 +373,9 @@ def build_agent_tools(
                 return f"No matches found for '{query}' in {file_pattern}. {err}"
 
             files = out.split("\n")
-            return f"Found '{query}' in {len(files)} files:\n" + "\n".join(f"- {f}" for f in files[:10])
+            return f"Found '{query}' in {len(files)} files:\n" + "\n".join(
+                f"- {f}" for f in files[:10]
+            )
         except Exception as e:
             return f"Error searching codebase: {e}"
 
@@ -358,7 +384,10 @@ def build_agent_tools(
         description="Breaks down a high-level goal into smaller, actionable sub-tasks and adds them to your task list.",
         category=ToolCategory.PRODUCTIVITY,
         parameters={
-            "goal_id": {"type": "integer", "description": "The ID of the parent goal to decompose."},
+            "goal_id": {
+                "type": "integer",
+                "description": "The ID of the parent goal to decompose.",
+            },
         },
     )
     async def decompose_goal(goal_id: int, **kwargs: Any) -> str:
@@ -383,18 +412,23 @@ Description: {neutralize(goal.description)}
 Respond ONLY with a list of tasks, one per line, without numbers or bullets. Just the plain text task description.
 """
             response = await llm_generate(prompt)
-            tasks_text = [line.strip("- ").strip() for line in response.strip().split("\n") if line.strip()]
+            tasks_text = [
+                line.strip("- ").strip() for line in response.strip().split("\n") if line.strip()
+            ]
 
             if not tasks_text:
                 return "Failed to generate sub-tasks."
 
             from src.core.domain.models import Task
+
             created_tasks = []
             for task_desc in tasks_text:
                 created = await task_repository.create(Task(content=task_desc))
                 created_tasks.append(created)
 
-            lines = [f"Decomposed Goal #{goal_id} ('{goal.title}') into {len(created_tasks)} tasks added to your task list:"]
+            lines = [
+                f"Decomposed Goal #{goal_id} ('{goal.title}') into {len(created_tasks)} tasks added to your task list:"
+            ]
             for i, task in enumerate(created_tasks, 1):
                 lines.append(f"{i}. [{task.id}] {task.content}")
 

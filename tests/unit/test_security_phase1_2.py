@@ -28,10 +28,10 @@ from src.core.domain.models import PermissionProfile, profile_for_role
 @pytest.mark.parametrize(
     ("raw", "expected_valid"),
     [
-        (None, False),       # missing
-        ("", False),         # empty
-        ("   ", False),      # whitespace
-        ("abc", False),      # malformed
+        (None, False),  # missing
+        ("", False),  # empty
+        ("   ", False),  # whitespace
+        ("abc", False),  # malformed
         ("123,abc", False),  # mixed-invalid → whole list invalid (fail closed)
         ("123", True),
         ("123, 456 ,789", True),
@@ -47,14 +47,24 @@ def test_telegram_allowlist_parsing(raw, expected_valid):
 
 def test_validate_settings_requires_allowlist_with_token():
     # Dev: warning only.
-    dev = Settings(ENV="development", TELEGRAM_BOT_TOKEN="x", MASTER_TELEGRAM_CHAT_ID=None,
-                   SKIP_CONFIG_VALIDATION=True)
+    dev = Settings(
+        ENV="development",
+        TELEGRAM_BOT_TOKEN="x",
+        MASTER_TELEGRAM_CHAT_ID=None,
+        SKIP_CONFIG_VALIDATION=True,
+    )
     report = validate_settings(dev)
     assert any("MASTER_TELEGRAM_CHAT_ID" in w for w in report["warnings"])
 
     # Production: hard error (fail closed).
-    prod = Settings(ENV="production", TELEGRAM_BOT_TOKEN="x", MASTER_TELEGRAM_CHAT_ID="",
-                    SECRET_KEY="k" * 32, GEMINI_API_KEY="g", SKIP_CONFIG_VALIDATION=True)
+    prod = Settings(
+        ENV="production",
+        TELEGRAM_BOT_TOKEN="x",
+        MASTER_TELEGRAM_CHAT_ID="",
+        SECRET_KEY="k" * 32,
+        GEMINI_API_KEY="g",
+        SKIP_CONFIG_VALIDATION=True,
+    )
     report = validate_settings(prod)
     assert any("MASTER_TELEGRAM_CHAT_ID" in e for e in report["errors"])
     assert report["valid"] is False
@@ -158,8 +168,13 @@ def test_profile_rank_and_mapping():
 def _make_tool(name, category, requires_confirmation=False):
     from src.infra.tools.base import ToolCategory, tool
 
-    @tool(name=name, description="d", category=getattr(ToolCategory, category),
-          parameters={}, requires_confirmation=requires_confirmation)
+    @tool(
+        name=name,
+        description="d",
+        category=getattr(ToolCategory, category),
+        parameters={},
+        requires_confirmation=requires_confirmation,
+    )
     async def _fn(**kwargs):
         return "ran"
 

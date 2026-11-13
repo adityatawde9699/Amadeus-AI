@@ -44,13 +44,25 @@ class FakeSearch:
         if self._results is not None:
             return self._results
         return [
-            {"title": "NASA exoplanets", "snippet": "A" * 120,
-             "url": "https://nasa.gov/exo", "provider": "web"},
-            {"title": "Some blog", "snippet": "B" * 120,
-             "url": "https://blog.example.com/x", "provider": "duckduckgo"},
+            {
+                "title": "NASA exoplanets",
+                "snippet": "A" * 120,
+                "url": "https://nasa.gov/exo",
+                "provider": "web",
+            },
+            {
+                "title": "Some blog",
+                "snippet": "B" * 120,
+                "url": "https://blog.example.com/x",
+                "provider": "duckduckgo",
+            },
             # Duplicate of the first (tests dedup).
-            {"title": "NASA exoplanets", "snippet": "A" * 120,
-             "url": "https://nasa.gov/exo", "provider": "web"},
+            {
+                "title": "NASA exoplanets",
+                "snippet": "A" * 120,
+                "url": "https://nasa.gov/exo",
+                "provider": "web",
+            },
         ]
 
 
@@ -121,8 +133,13 @@ class TestReporter:
         )
         md = ReportBuilder().build_markdown(report)
         for header in (
-            "# Research Report: X", "Executive Summary", "Key Findings",
-            "Detailed Analysis", "Risks", "Open Questions", "Future Directions",
+            "# Research Report: X",
+            "Executive Summary",
+            "Key Findings",
+            "Detailed Analysis",
+            "Risks",
+            "Open Questions",
+            "Future Directions",
             "## Sources",
         ):
             assert header in md

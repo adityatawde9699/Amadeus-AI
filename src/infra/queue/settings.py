@@ -9,7 +9,10 @@ from src.core.config import get_settings
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-async def execute_tool_job(ctx: dict[str, Any], tool_name: str, args: dict[str, Any], context_dict: dict[str, Any]) -> dict[str, Any]:
+
+async def execute_tool_job(
+    ctx: dict[str, Any], tool_name: str, args: dict[str, Any], context_dict: dict[str, Any]
+) -> dict[str, Any]:
     """
     Background job to execute slow tools using ToolDispatcher.
     """
@@ -26,7 +29,9 @@ async def execute_tool_job(ctx: dict[str, Any], tool_name: str, args: dict[str, 
         registry = get_tool_registry()
         executor = ToolExecutor()
         cache = get_cache_service()
-        dispatcher = ToolDispatcher(tool_registry=registry, tool_executor=executor, cache_service=cache)
+        dispatcher = ToolDispatcher(
+            tool_registry=registry, tool_executor=executor, cache_service=cache
+        )
 
         # Deserialize the RequestContext dict back to an object.
         # Fail closed: a job whose payload is missing/blank/invalid `permissions`
@@ -61,14 +66,12 @@ async def execute_tool_job(ctx: dict[str, Any], tool_name: str, args: dict[str, 
         }
     except Exception as e:
         logger.exception("Background job execution failed for tool '%s'", tool_name)
-        return {
-            "success": False,
-            "output": f"Job execution failed: {e}",
-            "error_message": str(e)
-        }
+        return {"success": False, "output": f"Job execution failed: {e}", "error_message": str(e)}
+
 
 class WorkerSettings:
     """Settings for the Arq worker."""
+
     functions = [execute_tool_job]
     redis_settings = RedisSettings.from_dsn(settings.REDIS_URL or "redis://localhost:6379/0")
     max_jobs = 10

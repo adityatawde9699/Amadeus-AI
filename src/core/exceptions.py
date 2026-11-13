@@ -135,6 +135,7 @@ class DatabaseConnectionError(PersistenceError):
     def __init__(self, message: str = "Failed to connect to database"):
         super().__init__(message)
 
+
 # =============================================================================
 # LLM/AI ERRORS
 # =============================================================================

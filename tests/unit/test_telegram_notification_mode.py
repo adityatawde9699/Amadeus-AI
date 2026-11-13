@@ -121,9 +121,14 @@ class _FakeOrchestrator:
         )
         report = ResearchReport(topic=topic)
         manifest = ResearchManifest(
-            topic=topic, slug="run", created_at=report.generated_at,
-            subtopic_count=1, question_count=2, source_count=3,
-            providers=["web"], stage_durations_ms={},
+            topic=topic,
+            slug="run",
+            created_at=report.generated_at,
+            subtopic_count=1,
+            question_count=2,
+            source_count=3,
+            providers=["web"],
+            stage_durations_ms={},
         )
         return ResearchResult(report=report, manifest=manifest, artifacts=[ref])
 

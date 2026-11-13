@@ -36,21 +36,20 @@ async def detailed_health(amadeus: AmadeusService = Depends(get_amadeus_service)
         cache_stats=cache_stats,
     )
 
+
 @router.get("/health/dependencies", tags=["Health"])
 async def get_dependencies_health() -> dict[str, Any]:
     """
     Check the health of external dependencies like Redis, Qdrant, and LLM endpoints.
     """
     from src.infra.resilience.watchdog import DependencyWatchdog
+
     watchdog = DependencyWatchdog(settings)
     redis_ok = await watchdog.check_redis()
     qdrant_ok = await watchdog.check_qdrant()
     llms_ok = await watchdog.check_llm_providers()
-    return {
-        "redis": redis_ok,
-        "qdrant": qdrant_ok,
-        "llm_providers": llms_ok
-    }
+    return {"redis": redis_ok, "qdrant": qdrant_ok, "llm_providers": llms_ok}
+
 
 @router.get("/system/status", response_model=SystemStatusResponse, tags=["System"])
 async def get_system_status() -> SystemStatusResponse:

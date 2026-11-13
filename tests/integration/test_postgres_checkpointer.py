@@ -30,8 +30,10 @@ async def test_paused_run_resumes_on_another_worker(postgres_container, monkeypa
         worker_a, calls_a = _build_graph(_INJECTED_FLOW, [])
         worker_a.set_checkpointer(saver_a)
         paused = await worker_a.ainvoke(
-            task="find news", context=_ctx("pg-resume-1"),
-            routing_intent="conversational", allow_orchestration=False,
+            task="find news",
+            context=_ctx("pg-resume-1"),
+            routing_intent="conversational",
+            allow_orchestration=False,
         )
     assert paused.requires_hitl is True
     assert [name for name, _ in calls_a] == ["web_search"]

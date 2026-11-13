@@ -60,27 +60,52 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 INCLUDE_EXTENSIONS: frozenset[str] = frozenset(
-    {".py", ".md", ".txt", ".toml", ".yaml", ".yml", ".env",
-     ".json", ".cfg", ".ini", ".rst", ".pdf"}
+    {
+        ".py",
+        ".md",
+        ".txt",
+        ".toml",
+        ".yaml",
+        ".yml",
+        ".env",
+        ".json",
+        ".cfg",
+        ".ini",
+        ".rst",
+        ".pdf",
+    }
 )
 
 # Directories never worth indexing
 SKIP_DIRS: frozenset[str] = frozenset(
     {
-        ".git", ".svn", ".hg",
-        ".venv", "venv", "env", "amadeus_venv",
-        "__pycache__", ".mypy_cache", ".ruff_cache", ".pytest_cache",
-        "node_modules", ".npm",
-        "dist", "build", "_build", "buck-out",
-        ".idea", ".vscode",
+        ".git",
+        ".svn",
+        ".hg",
+        ".venv",
+        "venv",
+        "env",
+        "amadeus_venv",
+        "__pycache__",
+        ".mypy_cache",
+        ".ruff_cache",
+        ".pytest_cache",
+        "node_modules",
+        ".npm",
+        "dist",
+        "build",
+        "_build",
+        "buck-out",
+        ".idea",
+        ".vscode",
         "site-packages",
         "migrations",
     }
 )
 
-MAX_FILE_BYTES = 512_000   # 512 KB — skip huge auto-generated files
-CHUNK_CHARS = 1_500        # characters per chunk
-CHUNK_OVERLAP = 200        # character overlap between adjacent chunks
+MAX_FILE_BYTES = 512_000  # 512 KB — skip huge auto-generated files
+CHUNK_CHARS = 1_500  # characters per chunk
+CHUNK_OVERLAP = 200  # character overlap between adjacent chunks
 
 _EMBED_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 _DEFAULT_INDEX_DIR = Path("data") / "workspace_index"
@@ -132,7 +157,7 @@ class SearchResult:
         self.file_path = file_path
         self.snippet = snippet
         self.start_line = start_line
-        self.score = score           # final RRF score
+        self.score = score  # final RRF score
         self.semantic_rank = semantic_rank
         self.bm25_rank = bm25_rank
 
@@ -193,10 +218,10 @@ class WorkspaceIndexer:
         self._max_chunks = max_chunks
 
         # Populated after build() / load()
-        self._matrix: Any = None           # np.ndarray (N, 768) — dense embeddings
-        self._manifest: list[dict] = []    # parallel metadata list
-        self._bm25: Any = None             # BM25Okapi instance (in-memory)
-        self._embed_model: Any = None      # SentenceTransformer
+        self._matrix: Any = None  # np.ndarray (N, 768) — dense embeddings
+        self._manifest: list[dict] = []  # parallel metadata list
+        self._bm25: Any = None  # BM25Okapi instance (in-memory)
+        self._embed_model: Any = None  # SentenceTransformer
         self._ready = False
 
     # ------------------------------------------------------------------
@@ -298,7 +323,7 @@ class WorkspaceIndexer:
                 "file": file_path,
                 "start_line": start_line,
                 "mtime": mtime,
-                "snippet": chunk_text[:300],   # raw text — clean for display
+                "snippet": chunk_text[:300],  # raw text — clean for display
                 "text_hash": hashlib.md5(chunk_text.encode(), usedforsecurity=False).hexdigest(),
             }
             key = self._chunk_key(meta)
@@ -314,8 +339,8 @@ class WorkspaceIndexer:
                 enriched = self._enrich_for_embedding(header, chunk_text)
                 to_embed_indices.append(len(rows))
                 rows.append(None)
-                all_chunk_texts.append(chunk_text)   # raw → BM25 / display
-                to_embed_texts.append(enriched)       # enriched → encoder
+                all_chunk_texts.append(chunk_text)  # raw → BM25 / display
+                to_embed_texts.append(enriched)  # enriched → encoder
 
             manifest.append(meta)
 
@@ -456,9 +481,7 @@ class WorkspaceIndexer:
                     q_tokens = _bm25_tokenize(query)
                     bm25_scores: Any = self._bm25.get_scores(q_tokens)
                     bm25_ranked = np.argsort(bm25_scores)[::-1][:candidate_pool].tolist()
-                    bm25_rank_of = {
-                        chunk_idx: rank for rank, chunk_idx in enumerate(bm25_ranked)
-                    }
+                    bm25_rank_of = {chunk_idx: rank for rank, chunk_idx in enumerate(bm25_ranked)}
                 except Exception as exc:
                     logger.warning("WorkspaceIndexer: BM25 scoring failed: %s", exc)
 
@@ -507,9 +530,10 @@ class WorkspaceIndexer:
                 )
 
             logger.debug(
-                "WorkspaceIndexer: query='%.40s' → %d results "
-                "(semantic+bm25 pool=%d, bm25=%s).",
-                query, len(results), len(candidate_indices),
+                "WorkspaceIndexer: query='%.40s' → %d results (semantic+bm25 pool=%d, bm25=%s).",
+                query,
+                len(results),
+                len(candidate_indices),
                 "on" if self._bm25 else "off",
             )
             return results
@@ -548,9 +572,7 @@ class WorkspaceIndexer:
 
             corpus = [_bm25_tokenize(t) for t in chunk_texts]
             self._bm25 = BM25Okapi(corpus)
-            logger.info(
-                "WorkspaceIndexer: BM25 index built (%d docs).", len(corpus)
-            )
+            logger.info("WorkspaceIndexer: BM25 index built (%d docs).", len(corpus))
         except ImportError:
             logger.warning(
                 "WorkspaceIndexer: rank_bm25 not installed — "
@@ -602,18 +624,13 @@ class WorkspaceIndexer:
         results: list[Path] = []
         try:
             for dirpath, dirnames, filenames in os.walk(self._root, topdown=True):
-                dirnames[:] = [
-                    d for d in dirnames
-                    if d not in SKIP_DIRS and not d.startswith(".")
-                ]
+                dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and not d.startswith(".")]
                 for filename in filenames:
                     fp = Path(dirpath) / filename
                     if fp.suffix.lower() in INCLUDE_EXTENSIONS:
                         results.append(fp)
         except PermissionError as exc:
-            logger.debug(
-                "WorkspaceIndexer: permission denied walking '%s': %s", self._root, exc
-            )
+            logger.debug("WorkspaceIndexer: permission denied walking '%s': %s", self._root, exc)
         return results
 
     def _read_file(self, path: Path) -> str:
@@ -621,9 +638,7 @@ class WorkspaceIndexer:
         try:
             size = path.stat().st_size
             if size > MAX_FILE_BYTES:
-                logger.debug(
-                    "WorkspaceIndexer: skipping large file '%s' (%d bytes).", path, size
-                )
+                logger.debug("WorkspaceIndexer: skipping large file '%s' (%d bytes).", path, size)
                 return ""
 
             if path.suffix.lower() == ".pdf":
@@ -707,9 +722,7 @@ class WorkspaceIndexer:
         if ext == ".py":
             parts.append("Type: Python")
             # Extract top-level import names (up to 8, preserving order)
-            raw_imports = re.findall(
-                r"^(?:import|from)\s+([a-zA-Z0-9_]+)", text, re.MULTILINE
-            )
+            raw_imports = re.findall(r"^(?:import|from)\s+([a-zA-Z0-9_]+)", text, re.MULTILINE)
             seen: dict[str, None] = {}
             for imp in raw_imports:
                 seen[imp] = None
@@ -717,9 +730,7 @@ class WorkspaceIndexer:
             if unique_imports:
                 parts.append(f"Imports: {', '.join(unique_imports)}")
             # Capture module-level globals (ALL_CAPS convention) — first 4
-            globals_found = re.findall(
-                r"^([A-Z][A-Z0-9_]{2,})\s*=", text, re.MULTILINE
-            )
+            globals_found = re.findall(r"^([A-Z][A-Z0-9_]{2,})\s*=", text, re.MULTILINE)
             if globals_found:
                 parts.append(f"Globals: {', '.join(globals_found[:4])}")
 

@@ -34,7 +34,6 @@ except ImportError:
     logger.warning("pywin32 not installed. Office tools will be unavailable.")
 
 
-
 from contextlib import contextmanager
 
 

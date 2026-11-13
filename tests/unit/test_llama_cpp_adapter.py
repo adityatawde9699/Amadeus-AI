@@ -79,7 +79,7 @@ def test_build_messages_no_context() -> None:
     msgs = LlamaCppAdapter._build_messages("Hello", context=None)
     assert msgs == [
         {"role": "system", "content": LlamaCppAdapter._LOCAL_SYSTEM_PROMPT},
-        {"role": "user", "content": "Hello"}
+        {"role": "user", "content": "Hello"},
     ]
 
 
@@ -114,7 +114,7 @@ def test_build_messages_context_with_no_messages_attr() -> None:
     msgs = LlamaCppAdapter._build_messages("Hi", context=context)
     assert msgs == [
         {"role": "system", "content": LlamaCppAdapter._LOCAL_SYSTEM_PROMPT},
-        {"role": "user", "content": "Hi"}
+        {"role": "user", "content": "Hi"},
     ]
 
 
@@ -206,10 +206,13 @@ async def test_generate_response_raises_llm_response_error_on_runtime_failure(
     fake_llm = MagicMock()
     fake_llm.create_chat_completion.side_effect = RuntimeError("CUDA OOM")
 
-    with patch(
-        "src.infra.llm.llama_cpp_adapter.LlamaCppAdapter._get_llm",
-        new=AsyncMock(return_value=fake_llm),
-    ), pytest.raises(LLMResponseError, match="LlamaCpp generation failed"):
+    with (
+        patch(
+            "src.infra.llm.llama_cpp_adapter.LlamaCppAdapter._get_llm",
+            new=AsyncMock(return_value=fake_llm),
+        ),
+        pytest.raises(LLMResponseError, match="LlamaCpp generation failed"),
+    ):
         await adapter.generate_response("Hello")
 
 
@@ -303,6 +306,7 @@ async def test_get_llm_skips_flash_attn_when_not_supported(
     mock_module.Llama = mock_llama_cls
 
     import inspect as _inspect
+
     fake_sig = _inspect.signature(
         lambda model_path, n_threads, n_ctx, n_batch, use_mmap, use_mlock, verbose: None
     )
@@ -326,7 +330,10 @@ async def test_get_llm_injects_4bit_kv_quantization_when_enabled(
     from src.infra.llm.llama_cpp_adapter import GGML_TYPE_Q4_0
 
     adapter = LlamaCppAdapter(
-        model_path=model_path, threads=1, context_length=512, quantize_kv_4bit=True,
+        model_path=model_path,
+        threads=1,
+        context_length=512,
+        quantize_kv_4bit=True,
     )
 
     captured_kwargs: dict[str, Any] = {}
@@ -341,10 +348,12 @@ async def test_get_llm_injects_4bit_kv_quantization_when_enabled(
     mock_module.Llama = mock_llama_cls
 
     import inspect as _inspect
+
     # Simulate a build that supports type_k / type_v / flash_attn
     fake_sig = _inspect.signature(
-        lambda model_path, n_threads, n_ctx, n_batch, use_mmap, use_mlock,
-               verbose, flash_attn, type_k, type_v: None
+        lambda model_path, n_threads, n_ctx, n_batch, use_mmap, use_mlock, verbose, flash_attn, type_k, type_v: (
+            None
+        )
     )
 
     with patch.dict("sys.modules", {"llama_cpp": mock_module}):
@@ -374,9 +383,11 @@ async def test_get_llm_skips_4bit_kv_when_disabled(
     mock_module.Llama = mock_llama_cls
 
     import inspect as _inspect
+
     fake_sig = _inspect.signature(
-        lambda model_path, n_threads, n_ctx, n_batch, use_mmap, use_mlock,
-               verbose, flash_attn, type_k, type_v: None
+        lambda model_path, n_threads, n_ctx, n_batch, use_mmap, use_mlock, verbose, flash_attn, type_k, type_v: (
+            None
+        )
     )
 
     with patch.dict("sys.modules", {"llama_cpp": mock_module}):
@@ -412,10 +423,15 @@ async def test_get_llm_passes_gpu_offload_configuration(model_path: str) -> None
         captured_kwargs.update(locals())
         return MagicMock()
 
-    with patch.dict("sys.modules", {"llama_cpp": MagicMock(
-        Llama=fake_llama,
-        llama_supports_gpu_offload=MagicMock(return_value=True),
-    )}):
+    with patch.dict(
+        "sys.modules",
+        {
+            "llama_cpp": MagicMock(
+                Llama=fake_llama,
+                llama_supports_gpu_offload=MagicMock(return_value=True),
+            )
+        },
+    ):
         await adapter._get_llm()
 
     assert captured_kwargs["n_gpu_layers"] == -1

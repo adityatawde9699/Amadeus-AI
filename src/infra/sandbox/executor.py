@@ -107,15 +107,15 @@ class DockerSandboxExecutor:
                     working_dir="/workspace",
                     # ── Resource clamping ──────────────────────────
                     mem_limit="128m",
-                    memswap_limit="128m",        # no swap beyond the mem limit
-                    nano_cpus=500_000_000,       # 0.5 CPU cores
-                    pids_limit=128,              # fork-bomb guard
+                    memswap_limit="128m",  # no swap beyond the mem limit
+                    nano_cpus=500_000_000,  # 0.5 CPU cores
+                    pids_limit=128,  # fork-bomb guard
                     # ── Security hardening ─────────────────────────
-                    network_disabled=True,       # No outbound connections
+                    network_disabled=True,  # No outbound connections
                     network_mode="none",
-                    user="1000:1000",            # Non-root execution
-                    read_only=True,             # Read-only root filesystem
-                    cap_drop=["ALL"],           # Drop all Linux capabilities
+                    user="1000:1000",  # Non-root execution
+                    read_only=True,  # Read-only root filesystem
+                    cap_drop=["ALL"],  # Drop all Linux capabilities
                     security_opt=["no-new-privileges"],
                     # Minimal writable scratch space (capped, non-exec).
                     tmpfs={"/tmp": "rw,size=16m,nosuid,nodev,noexec"},
@@ -127,11 +127,21 @@ class DockerSandboxExecutor:
 
                 try:
                     exit_info = container.wait(timeout=timeout)
-                    status_code = exit_info.get("StatusCode", 0) if isinstance(exit_info, dict) else 0
+                    status_code = (
+                        exit_info.get("StatusCode", 0) if isinstance(exit_info, dict) else 0
+                    )
                     stdout = container.logs(stdout=True, stderr=False)
                     stderr = container.logs(stdout=False, stderr=True)
-                    out = stdout.decode("utf-8", errors="replace") if isinstance(stdout, bytes) else str(stdout)
-                    err = stderr.decode("utf-8", errors="replace") if isinstance(stderr, bytes) else str(stderr)
+                    out = (
+                        stdout.decode("utf-8", errors="replace")
+                        if isinstance(stdout, bytes)
+                        else str(stdout)
+                    )
+                    err = (
+                        stderr.decode("utf-8", errors="replace")
+                        if isinstance(stderr, bytes)
+                        else str(stderr)
+                    )
 
                     if status_code == 0:
                         logger.info("Sandbox execution succeeded (%d chars output).", len(out))
@@ -140,7 +150,9 @@ class DockerSandboxExecutor:
                     return {"status": "error", "output": err or out}
                 except Exception as wait_exc:
                     # Timeout or wait failure → force kill.
-                    logger.warning("Sandbox timed out / wait failed: %s — killing container", wait_exc)
+                    logger.warning(
+                        "Sandbox timed out / wait failed: %s — killing container", wait_exc
+                    )
                     with contextlib.suppress(Exception):
                         container.kill()
                     return {
@@ -149,11 +161,7 @@ class DockerSandboxExecutor:
                     }
 
             except docker.errors.ContainerError as e:
-                stderr = (
-                    e.stderr.decode("utf-8")
-                    if isinstance(e.stderr, bytes)
-                    else str(e.stderr)
-                )
+                stderr = e.stderr.decode("utf-8") if isinstance(e.stderr, bytes) else str(e.stderr)
                 logger.warning("Sandbox execution error: %s", stderr[:200])
                 return {"status": "error", "output": stderr}
 

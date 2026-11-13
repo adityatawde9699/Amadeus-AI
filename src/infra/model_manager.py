@@ -102,7 +102,8 @@ class ModelManager:
         # Download into Model/embed/ using snapshot_download for clean layout
         logger.info(
             "Embed model '%s' not found locally — downloading to %s …",
-            model_name, embed_root,
+            model_name,
+            embed_root,
         )
         downloaded = self._download_embed_model_snapshot(model_name, embed_root)
         if downloaded and downloaded.exists():
@@ -170,8 +171,7 @@ class ModelManager:
                 logger.info("Using configured SLM_MODEL_PATH: %s", p)
                 return p
             logger.warning(
-                "SLM_MODEL_PATH set to '%s' but file does not exist. "
-                "Trying repo download …", p
+                "SLM_MODEL_PATH set to '%s' but file does not exist. Trying repo download …", p
             )
 
         if not settings.SLM_MODEL_FILENAME:
@@ -187,22 +187,23 @@ class ModelManager:
         # 3. Download from HuggingFace
         if not settings.SLM_MODEL_REPO_ID:
             logger.warning(
-                "GGUF file '%s' not found at %s and SLM_MODEL_REPO_ID not set. "
-                "LlamaCpp disabled.",
-                settings.SLM_MODEL_FILENAME, local_gguf,
+                "GGUF file '%s' not found at %s and SLM_MODEL_REPO_ID not set. LlamaCpp disabled.",
+                settings.SLM_MODEL_FILENAME,
+                local_gguf,
             )
             return None
 
         if not settings.MODEL_DOWNLOAD_ENABLED:
             logger.warning(
-                "GGUF model '%s' not found and MODEL_DOWNLOAD_ENABLED=False. "
-                "LlamaCpp disabled.", local_gguf
+                "GGUF model '%s' not found and MODEL_DOWNLOAD_ENABLED=False. LlamaCpp disabled.",
+                local_gguf,
             )
             return None
 
         logger.info(
             "GGUF model '%s' not found — downloading from '%s' …",
-            settings.SLM_MODEL_FILENAME, settings.SLM_MODEL_REPO_ID,
+            settings.SLM_MODEL_FILENAME,
+            settings.SLM_MODEL_REPO_ID,
         )
         return self._download_gguf(
             repo_id=settings.SLM_MODEL_REPO_ID,
@@ -220,7 +221,8 @@ class ModelManager:
 
             logger.info(
                 "Downloading %s from %s — this may take a while for large models…",
-                filename, repo_id,
+                filename,
+                repo_id,
             )
             downloaded_path = hf_hub_download(
                 repo_id=repo_id,
@@ -237,7 +239,5 @@ class ModelManager:
                 "Run: pip install huggingface_hub"
             )
         except Exception as exc:
-            logger.exception(
-                "Failed to download GGUF '%s' from '%s': %s", filename, repo_id, exc
-            )
+            logger.exception("Failed to download GGUF '%s' from '%s': %s", filename, repo_id, exc)
         return None

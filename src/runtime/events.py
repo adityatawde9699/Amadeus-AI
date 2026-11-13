@@ -6,10 +6,12 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+
 class EventBus:
     """
     Asynchronous pub-sub EventBus for internal system events.
     """
+
     def __init__(self):
         self._subscribers: dict[str, list[Callable[[dict[str, Any]], Any]]] = {}
 
@@ -27,6 +29,7 @@ class EventBus:
             @bus.on("event")
             async def my_handler(payload): ...
         """
+
         def _register(fn: Callable[[dict[str, Any]], Any]) -> Callable[[dict[str, Any]], Any]:
             if event not in self._subscribers:
                 self._subscribers[event] = []

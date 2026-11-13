@@ -82,6 +82,7 @@ class AppRegistry:
     def _scan_windows(self) -> dict[str, str]:
         """Use the standard library winreg to find registered App Paths."""
         import winreg as _winreg  # type: ignore[import]  # Windows-only
+
         winreg: Any = _winreg
 
         apps = {}
@@ -124,6 +125,7 @@ class AppRegistry:
     def _scan_linux(self) -> dict[str, str]:
         """Parse .desktop files in standard Linux directories to find executables."""
         import re as _re
+
         apps = {}
         dirs = [Path("/usr/share/applications"), Path.home() / ".local/share/applications"]
         for d in dirs:

@@ -32,6 +32,7 @@ if "google.genai" not in sys.modules:
     sys.modules["google.genai.types"] = MagicMock()
     try:
         import google
+
         _google = google
     except ImportError:
         _google = types.ModuleType("google")
@@ -51,7 +52,6 @@ def _make_service(debug: bool = False) -> "AmadeusService":
 
     with (
         patch("src.app.services.amadeus_service.TurbovecMemoryService") as mock_mem,
-
         patch("src.app.services.amadeus_service.ToolRegistry"),
         patch("src.app.services.amadeus_service.ToolExecutor"),
         patch("src.app.services.amadeus_service.ArgumentExtractor"),
@@ -96,7 +96,9 @@ class TestHandleCommandErrorHandling:
 
         # Force an exception deep inside conversation manager
         mock_cm = AsyncMock()
-        mock_cm.add.side_effect = RuntimeError("DB connection string: postgres://admin:secret@host/db")
+        mock_cm.add.side_effect = RuntimeError(
+            "DB connection string: postgres://admin:secret@host/db"
+        )
         svc._get_conversation_manager = AsyncMock(return_value=mock_cm)
 
         context = MagicMock()

@@ -10,6 +10,7 @@ class RequestContext:
     Isolates request context from service singletons, ensuring safe concurrent execution.
     Passed through AmadeusService, AgentOrchestrator, and ToolDispatcher.
     """
+
     request_id: str
     session_id: str
     user_id: str

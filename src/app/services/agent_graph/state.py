@@ -55,16 +55,16 @@ class AmadeusState(TypedDict, total=False):
     # MoE: The active expert profile name (set by supervisor)
     active_expert: str
     # MoE: Pre-computed routing intent from semantic router
-    routing_intent: str   # 'expert', 'tool', 'conversational', 'cloud_escalation'
-    routing_target: str   # expert_name or tool_name
+    routing_intent: str  # 'expert', 'tool', 'conversational', 'cloud_escalation'
+    routing_target: str  # expert_name or tool_name
     # Orchestration (multi-expert chaining). When `orchestrated` is True, the
     # orchestrator has decomposed the request into `plan_steps`, each dispatched
     # to a specialized expert in sequence; otherwise the single-expert path runs.
     orchestrated: bool
-    plan_steps: list[dict]        # [{"expert": str, "subtask": str}]
+    plan_steps: list[dict]  # [{"expert": str, "subtask": str}]
     current_step: int
     step_results: Annotated[list[str], _merge_lists]
-    root_task: str                # original request, preserved across steps
+    root_task: str  # original request, preserved across steps
     allow_orchestration: bool
     max_sub_agents: int
     # Phase 4 — in-graph HITL gate for risky tools

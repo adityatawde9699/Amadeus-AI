@@ -197,6 +197,7 @@ Guidelines:
                         last_exc = exc
                         if "503" in str(exc) and attempt == 0:
                             import time
+
                             logger.warning("Gemini 503 (High Demand) - retrying in 2s...")
                             time.sleep(2)
                             continue

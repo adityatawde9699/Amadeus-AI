@@ -13,11 +13,13 @@ from src.runtime.scheduler import TaskScheduler
 
 logger = logging.getLogger(__name__)
 
+
 class AmadeusRuntime:
     """
     The core runtime daemon for Amadeus AI.
     It encapsulates all state and sub-services and is transport-agnostic.
     """
+
     def __init__(self, config: Settings):
         self.config = config
         self.event_bus = EventBus()
@@ -49,6 +51,7 @@ class AmadeusRuntime:
 
         # We can wire the container here
         from src.container import get_amadeus_service, get_llm_router
+
         self.amadeus_service = get_amadeus_service()
         await self.amadeus_service.initialize()  # Initialize semantic router and memory
         self.cognitive_core.configure(self.amadeus_service.handle_command)
@@ -92,9 +95,7 @@ class AmadeusRuntime:
         try:
             from src.runtime.watchers import start_watchers
 
-            self._watchers = await start_watchers(
-                self.config, self.event_bus, self.amadeus_service
-            )
+            self._watchers = await start_watchers(self.config, self.event_bus, self.amadeus_service)
         except Exception:
             logger.exception("Failed to start event watchers")
 
@@ -175,13 +176,19 @@ class AmadeusRuntime:
         if current_task:
             self._active_tasks.add(current_task)
 
-        await self.event_bus.emit("task.started", {"request_id": context.request_id, "input": input_text})
+        await self.event_bus.emit(
+            "task.started", {"request_id": context.request_id, "input": input_text}
+        )
         try:
             result = await self.cognitive_core.process(input_text, context)
-            await self.event_bus.emit("task.completed", {"request_id": context.request_id, "success": True})
+            await self.event_bus.emit(
+                "task.completed", {"request_id": context.request_id, "success": True}
+            )
             return result
         except Exception as e:
-            await self.event_bus.emit("task.failed", {"request_id": context.request_id, "error": str(e)})
+            await self.event_bus.emit(
+                "task.failed", {"request_id": context.request_id, "error": str(e)}
+            )
             raise
         finally:
             if current_task is not None and current_task in self._active_tasks:
@@ -194,15 +201,29 @@ class AmadeusRuntime:
         if not self.amadeus_service:
             raise RuntimeError("AmadeusRuntime not started")
 
-        await self.event_bus.emit("tool.started", {"request_id": context.request_id, "tool_name": tool_name})
+        await self.event_bus.emit(
+            "tool.started", {"request_id": context.request_id, "tool_name": tool_name}
+        )
         try:
             dispatcher = self.amadeus_service._tool_dispatcher
             result = await dispatcher.dispatch(tool_name, args, context)
             if result.success:
-                await self.event_bus.emit("tool.completed", {"request_id": context.request_id, "tool_name": tool_name})
+                await self.event_bus.emit(
+                    "tool.completed", {"request_id": context.request_id, "tool_name": tool_name}
+                )
             else:
-                await self.event_bus.emit("tool.failed", {"request_id": context.request_id, "tool_name": tool_name, "error": result.error_message})
+                await self.event_bus.emit(
+                    "tool.failed",
+                    {
+                        "request_id": context.request_id,
+                        "tool_name": tool_name,
+                        "error": result.error_message,
+                    },
+                )
             return result
         except Exception as e:
-            await self.event_bus.emit("tool.failed", {"request_id": context.request_id, "tool_name": tool_name, "error": str(e)})
+            await self.event_bus.emit(
+                "tool.failed",
+                {"request_id": context.request_id, "tool_name": tool_name, "error": str(e)},
+            )
             raise

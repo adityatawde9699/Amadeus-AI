@@ -185,9 +185,8 @@ class ResponseComposer:
 
         parts = [base]
 
-        memory_enabled = (
-            self._memory_service is not None
-            and getattr(self._memory_service, "is_enabled", False)
+        memory_enabled = self._memory_service is not None and getattr(
+            self._memory_service, "is_enabled", False
         )
 
         if user_query and memory_enabled:
@@ -363,10 +362,7 @@ class ResponseComposer:
             "the content provided",
         )
         sentences = cleaned.split(". ")
-        filtered = [
-            s for s in sentences
-            if not s.strip().lower().startswith(_MID_META_PREFIXES)
-        ]
+        filtered = [s for s in sentences if not s.strip().lower().startswith(_MID_META_PREFIXES)]
         if filtered:
             cleaned = ". ".join(filtered).strip()
             # Re-add trailing period if we removed it
@@ -374,7 +370,6 @@ class ResponseComposer:
                 cleaned += "."
 
         return cleaned or text  # fallback to original if everything was stripped
-
 
     async def compose_long_form(
         self,

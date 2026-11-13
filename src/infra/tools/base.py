@@ -54,41 +54,42 @@ class ToolCategory(StrEnum):
     """
 
     # --- OS / Hardware ---
-    APP_CONTROL = "app_control"    # open_program, terminate_program, list_open_apps
-    FILE_SYSTEM = "file_system"    # search_file, copy_file, move_file, delete_file, create_folder
-    OS_CONTROL  = "os_control"     # set_volume, get_volume, set_brightness, take_screenshot
-    MONITORING  = "monitoring"     # cpu/memory/disk/battery/network health, uptime, temps
+    APP_CONTROL = "app_control"  # open_program, terminate_program, list_open_apps
+    FILE_SYSTEM = "file_system"  # search_file, copy_file, move_file, delete_file, create_folder
+    OS_CONTROL = "os_control"  # set_volume, get_volume, set_brightness, take_screenshot
+    MONITORING = "monitoring"  # cpu/memory/disk/battery/network health, uptime, temps
 
     # --- Information ---
     WEB_RESEARCH = "web_research"  # wikipedia_search, open_website, web_search
-    NEWS         = "news"          # get_news
-    WEATHER      = "weather"       # get_weather
-    CALCULATION  = "calculation"   # calculate, convert_*, convert_currency
-    DATETIME     = "datetime"      # get_datetime_info, get_greeting
+    NEWS = "news"  # get_news
+    WEATHER = "weather"  # get_weather
+    CALCULATION = "calculation"  # calculate, convert_*, convert_currency
+    DATETIME = "datetime"  # get_datetime_info, get_greeting
 
     # --- Specialist domains ---
-    DEVELOPER = "developer"        # execute_python_script, terminal_cmd, search_workspace
-    FINANCE   = "finance"          # get_stock_price, get_crypto_price
+    DEVELOPER = "developer"  # execute_python_script, terminal_cmd, search_workspace
+    FINANCE = "finance"  # get_stock_price, get_crypto_price
 
     # --- Productivity / Personal ---
-    TASK_MANAGER  = "task_manager"  # add/list/complete_task, notes, reminders, pomodoro
-    COMMUNICATION = "communication" # email, slack
+    TASK_MANAGER = "task_manager"  # add/list/complete_task, notes, reminders, pomodoro
+    COMMUNICATION = "communication"  # email, slack
 
     # --- Agent Internal ---
-    PRODUCTIVITY = "productivity"   # store_core_memory, forget_core_memory, schedule_future_task
+    PRODUCTIVITY = "productivity"  # store_core_memory, forget_core_memory, schedule_future_task
 
     # -----------------------------------------------------------------------
     # LEGACY ALIASES — kept so existing code that references the old broad
     # names (SYSTEM, INFORMATION) does not crash before it is migrated.
     # -----------------------------------------------------------------------
-    SYSTEM      = "monitoring"
+    SYSTEM = "monitoring"
     INFORMATION = "web_research"
-    RESEARCH    = "web_research"
+    RESEARCH = "web_research"
 
 
 # =============================================================================
 # TOOL CAPABILITY
 # =============================================================================
+
 
 @dataclass
 class ToolCapability:
@@ -157,10 +158,7 @@ class Tool:
         # Ensure parameters are always wrapped in a standard JSON Schema root
         # If the tool author just provided a properties dict, wrap it.
         if self.parameters and self.parameters.get("type") != "object":
-            self.parameters = {
-                "type": "object",
-                "properties": self.parameters
-            }
+            self.parameters = {"type": "object", "properties": self.parameters}
 
     def to_definition(self) -> ToolDefinition:
         """Convert to domain ToolDefinition model."""
@@ -345,6 +343,7 @@ class ToolExecutor:
 
         # Policy engine to enforce execution bounds
         from src.core.config import get_settings
+
         _settings = get_settings()
         self.policy_engine = ToolPolicyEngine(
             is_development_mode=getattr(_settings, "ENV", "production") == "development",
@@ -430,13 +429,18 @@ class ToolExecutor:
             import uuid
 
             from src.core.domain.context import RequestContext
+
             # Use the supplied context when available; otherwise synthesize a
             # minimal one carrying the resolved (least-privilege) profile.
-            eval_ctx = context if context is not None else RequestContext(
-                request_id=str(uuid.uuid4()),
-                session_id=effective_session or "executor",
-                user_id="executor",
-                permissions=permission_profile,
+            eval_ctx = (
+                context
+                if context is not None
+                else RequestContext(
+                    request_id=str(uuid.uuid4()),
+                    session_id=effective_session or "executor",
+                    user_id="executor",
+                    permissions=permission_profile,
+                )
             )
             self.policy_engine.evaluate(tool, args, eval_ctx)
         except ToolPolicyViolation as e:
@@ -596,6 +600,7 @@ class ToolExecutor:
                             amadeus_tool_duration_seconds,
                             amadeus_tool_executions_total,
                         )
+
                         exec_ms = (datetime.now() - start_time).total_seconds() * 1000
                         amadeus_tool_duration_seconds.labels(
                             tool_name=tool.name, success="false"
@@ -660,7 +665,10 @@ class ToolExecutor:
                 # Leave the value as-is; the tool will surface the error itself
                 logger.debug(
                     "_validate_args: could not coerce '%s'=%r to %s for tool '%s'",
-                    param_name, value, annotation, tool.name,
+                    param_name,
+                    value,
+                    annotation,
+                    tool.name,
                 )
 
         # Check for required parameters
@@ -673,15 +681,9 @@ class ToolExecutor:
         )
         missing = []
         for name, param in sig.parameters.items():
-            if (
-                param.kind in _SKIP_KINDS
-                or name in ("self", "cls")
-            ):
+            if param.kind in _SKIP_KINDS or name in ("self", "cls"):
                 continue
-            if (
-                param.default == inspect.Parameter.empty
-                and name not in cleaned
-            ):
+            if param.default == inspect.Parameter.empty and name not in cleaned:
                 missing.append(name)
 
         # Recover from a single misnamed key: local models often send e.g.
@@ -700,9 +702,7 @@ class ToolExecutor:
             and not (cap.modifies_filesystem or cap.modifies_system_state)
         )
         if remap_safe and len(missing) == 1 and len(unknown) == 1:
-            logger.info(
-                "Remapping arg '%s' -> '%s' for tool %s", unknown[0], missing[0], tool.name
-            )
+            logger.info("Remapping arg '%s' -> '%s' for tool %s", unknown[0], missing[0], tool.name)
             cleaned[missing[0]] = args[unknown[0]]
             missing = []
 

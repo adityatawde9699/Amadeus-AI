@@ -93,11 +93,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         once per window, or immediately when the table exceeds the hard cap.
         """
         cutoff = now - window
-        stale = [
-            ip
-            for ip, bucket in self._hits.items()
-            if not bucket or bucket[-1] <= cutoff
-        ]
+        stale = [ip for ip, bucket in self._hits.items() if not bucket or bucket[-1] <= cutoff]
         for ip in stale:
             del self._hits[ip]
         self._last_sweep = now
@@ -129,7 +125,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             try:
                 retry_after_s = await self._redis_retry_after(ip, limit, window)
             except Exception as exc:
-                logger.warning("Auth rate limit: Redis unavailable (%s); using per-process window", exc)
+                logger.warning(
+                    "Auth rate limit: Redis unavailable (%s); using per-process window", exc
+                )
             else:
                 if retry_after_s is not None:
                     return self._too_many(retry_after_s)

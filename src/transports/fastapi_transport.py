@@ -110,16 +110,19 @@ if settings.SENTRY_DSN:
         send_default_pii=False,
     )
 
+
 # Setup OpenTelemetry — only wire the OTLP exporter if the collector is reachable.
 # Without this guard, the gRPC exporter retries every ~1s and floods the logs.
 def _otlp_collector_reachable(host: str = "localhost", port: int = 4317) -> bool:
     """Quick TCP probe to see if the OTLP collector is listening."""
     import socket
+
     try:
         with socket.create_connection((host, port), timeout=0.5):
             return True
     except OSError:
         return False
+
 
 resource = Resource.create({SERVICE_NAME: settings.ASSISTANT_NAME})
 provider = TracerProvider(resource=resource)
@@ -241,6 +244,7 @@ _configured_redis_url = settings.REDIS_URL
 if _configured_redis_url:
     try:
         import redis as _redis_mod
+
         _r = _redis_mod.from_url(_configured_redis_url, socket_connect_timeout=2)
         _r.ping()
         _rate_limit_storage = _configured_redis_url
@@ -395,10 +399,14 @@ app.include_router(
 # Outbound messaging dispatch (authenticated users; /send is admin-only in-route).
 # Uses the same fastapi-users JWT backend as login — the legacy python-jose
 # verifier rejected those tokens (audience mismatch).
-app.include_router(messaging.router, prefix="/api/v1", tags=["Messaging"], dependencies=protected_deps)
+app.include_router(
+    messaging.router, prefix="/api/v1", tags=["Messaging"], dependencies=protected_deps
+)
 
 # HITL Confirmation endpoint — authenticated users; ownership enforced per route.
-app.include_router(confirm.router, prefix="/api/v1", tags=["Confirmation"], dependencies=protected_deps)
+app.include_router(
+    confirm.router, prefix="/api/v1", tags=["Confirmation"], dependencies=protected_deps
+)
 
 
 # =============================================================================

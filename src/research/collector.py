@@ -102,9 +102,7 @@ class InformationCollector:
             return
 
         # Prefer http(s) sources with the shortest snippets (most to gain).
-        fetchable = [
-            s for s in sources if s.url.startswith(("http://", "https://"))
-        ]
+        fetchable = [s for s in sources if s.url.startswith(("http://", "https://"))]
         fetchable.sort(key=lambda s: len(s.snippet))
         targets = fetchable[: self._max_fetch_pages]
         if not targets:

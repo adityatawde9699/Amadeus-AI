@@ -57,6 +57,7 @@ if TYPE_CHECKING:
 # Confirmation Callback
 # ---------------------------------------------------------------------------
 
+
 class TelegramConfirmationCallback(ConfirmationCallback):
     """Hits the user up on Telegram for confirmation using inline buttons."""
 
@@ -77,10 +78,7 @@ class TelegramConfirmationCallback(ConfirmationCallback):
         self.transport._pending_confirmations[request_id] = (future, self.chat_id)
 
         text = (
-            f"⚠️ *Confirmation Required*\n\n"
-            f"Tool: `{tool_name}`\n"
-            f"Preview: {preview}\n"
-            f"Args: `{args}`"
+            f"⚠️ *Confirmation Required*\n\nTool: `{tool_name}`\nPreview: {preview}\nArgs: `{args}`"
         )
         buttons = [
             [
@@ -174,9 +172,7 @@ class TelegramTransport:
                 MessageHandler(filters.TEXT & (~filters.COMMAND), self._handle_message)
             )
             # Register callback query handler for inline button confirmations
-            self._application.add_handler(
-                CallbackQueryHandler(self._handle_callback_query)
-            )
+            self._application.add_handler(CallbackQueryHandler(self._handle_callback_query))
 
             logger.info(
                 "python-telegram-bot Application instance created "
@@ -271,6 +267,7 @@ class TelegramTransport:
         logger.info("Received telegram message from chat_id=%s", chat_id)
 
         import asyncio
+
         task = asyncio.create_task(self._process_and_reply_background(chat_id, text))
         self._active_tasks.add(task)
         task.add_done_callback(self._active_tasks.discard)
@@ -349,9 +346,7 @@ class TelegramTransport:
             # Allowlisted users run at STANDARD; SYSTEM_FULL requires explicit
             # elevation via TELEGRAM_ELEVATED_CHAT_IDS.
             profile = (
-                PermissionProfile.SYSTEM_FULL
-                if chat_id in elevated
-                else PermissionProfile.STANDARD
+                PermissionProfile.SYSTEM_FULL if chat_id in elevated else PermissionProfile.STANDARD
             )
             service.tool_executor.register_confirmation_callback(
                 session_id, TelegramConfirmationCallback(self, chat_id)
@@ -365,7 +360,7 @@ class TelegramTransport:
                     permissions=profile,
                     memory_scope="global",
                     trace_id=str(uuid.uuid4()),
-                    cancellation_token=asyncio.Event()
+                    cancellation_token=asyncio.Event(),
                 )
                 response = await self.runtime.process_task(context, text)
                 logger.info("Telegram response for chat_id=%s: %s", chat_id, str(response)[:100])
@@ -382,6 +377,7 @@ class TelegramTransport:
             # Chaos-03: Surface QueueFullError as a user-readable "busy" message
             # instead of a generic error so the user knows to retry later.
             from src.app.services.agent_loop import QueueFullError
+
             if isinstance(exc, QueueFullError):
                 logger.warning(
                     "AgentOrchestrator queue full for chat_id=%s — sending busy message", chat_id
@@ -417,7 +413,8 @@ class TelegramTransport:
             if clicker_chat_id is not None and clicker_chat_id != owner_chat_id:
                 logger.warning(
                     "Ignoring confirmation for request_id=%s from non-owner chat_id=%s",
-                    request_id, clicker_chat_id,
+                    request_id,
+                    clicker_chat_id,
                 )
                 return
 
@@ -427,7 +424,9 @@ class TelegramTransport:
                 try:
                     # Edit the message to replace buttons with the resulting status
                     old_text = query.message.text if query.message else "Confirmation Required"
-                    await query.edit_message_text(f"{old_text}\n\n*Status*: {status}", parse_mode="Markdown")
+                    await query.edit_message_text(
+                        f"{old_text}\n\n*Status*: {status}", parse_mode="Markdown"
+                    )
                 except Exception as e:
                     logger.debug("Failed to edit message text: %s", e)
 
@@ -470,7 +469,9 @@ class TelegramTransport:
                 return True
             except Exception as exc:
                 # Distinguish a network-level timeout from a bad token / other error
-                is_timeout = "timeout" in type(exc).__name__.lower() or "timed out" in str(exc).lower()
+                is_timeout = (
+                    "timeout" in type(exc).__name__.lower() or "timed out" in str(exc).lower()
+                )
                 if is_timeout:
                     logger.warning(
                         "Telegram connect timed out (attempt %d/%d): %s — "
@@ -558,7 +559,9 @@ class TelegramTransport:
 
         # Guard against empty text — Telegram API rejects it (400 Bad Request).
         if not text or not text.strip():
-            logger.warning("send_message called with empty text for chat_id=%s — using fallback", chat_id)
+            logger.warning(
+                "send_message called with empty text for chat_id=%s — using fallback", chat_id
+            )
             text = "I couldn't generate a response. Please try again."
 
         text = self._truncate(text)
@@ -580,7 +583,8 @@ class TelegramTransport:
                 logger.warning(
                     "telegram_send_skipped chat_id=%s — bot HTTP client already "
                     "shut down (response arrived after shutdown started): %s",
-                    chat_id, exc,
+                    chat_id,
+                    exc,
                 )
                 return False
             logger.exception("telegram_send_failed chat_id=%s error=%s", chat_id, exc)
@@ -604,15 +608,18 @@ class TelegramTransport:
                             "telegram_send_skipped (fallback) chat_id=%s — bot shut down", chat_id
                         )
                         return False
-                    logger.exception("telegram_send_failed (fallback) chat_id=%s error=%s", chat_id, re_exc)
+                    logger.exception(
+                        "telegram_send_failed (fallback) chat_id=%s error=%s", chat_id, re_exc
+                    )
                     return False
                 except Exception as fallback_exc:
-                    logger.exception("telegram_send_failed (fallback) chat_id=%s error=%s", chat_id, fallback_exc)
+                    logger.exception(
+                        "telegram_send_failed (fallback) chat_id=%s error=%s", chat_id, fallback_exc
+                    )
                     return False
 
             logger.exception("telegram_send_failed chat_id=%s error=%s", chat_id, exc)
             return False
-
 
     async def send_buttons(
         self,

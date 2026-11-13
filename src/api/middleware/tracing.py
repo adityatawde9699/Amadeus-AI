@@ -8,13 +8,13 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 logger = logging.getLogger(__name__)
 
+
 class TracingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         tracer = trace.get_tracer(__name__)
 
         with tracer.start_as_current_span(
-            f"{request.method} {request.url.path}",
-            kind=trace.SpanKind.SERVER
+            f"{request.method} {request.url.path}", kind=trace.SpanKind.SERVER
         ) as span:
             span.set_attribute("http.method", request.method)
             span.set_attribute("http.url", str(request.url))

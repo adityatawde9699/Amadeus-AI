@@ -167,8 +167,10 @@ async def test_tool_output_is_fenced_in_reflect_prompt(monkeypatch):
     prompts: list[str] = []
     graph, _ = _build_graph(_INJECTED_FLOW, prompts)
     await graph.ainvoke(
-        task="find news", context=_ctx("taint-1"),
-        routing_intent="conversational", allow_orchestration=False,
+        task="find news",
+        context=_ctx("taint-1"),
+        routing_intent="conversational",
+        allow_orchestration=False,
     )
     reflect = next(p for p in prompts if "IGNORE PREVIOUS" in p)
     assert '<untrusted_data source="web_search">' in reflect
@@ -183,8 +185,10 @@ async def test_taint_gate_forces_confirmation_without_ingraph_hitl(monkeypatch):
     monkeypatch.setattr(get_settings(), "ENABLE_INGRAPH_HITL", False)
     graph, calls = _build_graph(_INJECTED_FLOW, [])
     await graph.ainvoke(
-        task="find news", context=_ctx("taint-2"),
-        routing_intent="conversational", allow_orchestration=False,
+        task="find news",
+        context=_ctx("taint-2"),
+        routing_intent="conversational",
+        allow_orchestration=False,
     )
     by_tool = dict(calls)
     assert by_tool["web_search"]["force_confirmation"] is False  # read-only: no gate
@@ -198,8 +202,10 @@ async def test_taint_gate_pauses_graph_with_ingraph_hitl(monkeypatch):
     monkeypatch.setattr(get_settings(), "ENABLE_INGRAPH_HITL", True)
     graph, calls = _build_graph(_INJECTED_FLOW, [])
     result = await graph.ainvoke(
-        task="find news", context=_ctx("taint-3"),
-        routing_intent="conversational", allow_orchestration=False,
+        task="find news",
+        context=_ctx("taint-3"),
+        routing_intent="conversational",
+        allow_orchestration=False,
     )
     assert result.requires_hitl is True
     assert result.hitl_payload["tool"] == "add_task"
@@ -218,8 +224,10 @@ async def test_no_taint_gate_without_external_content(monkeypatch):
         ['{"plan": "add", "tool": "add_task", "args": {"task_content": "milk"}}'], []
     )
     await graph.ainvoke(
-        task="add milk", context=_ctx("taint-4"),
-        routing_intent="conversational", allow_orchestration=False,
+        task="add milk",
+        context=_ctx("taint-4"),
+        routing_intent="conversational",
+        allow_orchestration=False,
     )
     assert dict(calls)["add_task"]["force_confirmation"] is False
 
@@ -230,7 +238,9 @@ async def test_executor_force_confirmation_fails_closed_without_channel():
     from src.infra.tools.base import Tool, ToolCategory, ToolExecutor
 
     tool = Tool(
-        name="add_task", function=lambda **kw: "added", description="d",
+        name="add_task",
+        function=lambda **kw: "added",
+        description="d",
         category=ToolCategory.TASK_MANAGER,
     )
     res = await ToolExecutor().execute(

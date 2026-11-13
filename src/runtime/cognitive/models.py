@@ -23,6 +23,7 @@ class PlanStatus(StrEnum):
     COMPLETED = "completed"
     CANCELLED = "cancelled"
 
+
 class StepStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
@@ -31,8 +32,10 @@ class StepStatus(StrEnum):
     FAILED = "failed"
     SKIPPED = "skipped"
 
+
 class Observation(BaseModel):
     """Result from a tool, model, or external event."""
+
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     source: str  # e.g., tool name
@@ -40,8 +43,10 @@ class Observation(BaseModel):
     success: bool = True
     metadata: dict[str, Any] = Field(default_factory=dict)
 
+
 class Reflection(BaseModel):
     """Post-step evaluation with confidence and next action."""
+
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     step_id: str
@@ -50,8 +55,10 @@ class Reflection(BaseModel):
     suggested_action: str | None = None
     is_dead_end: bool = False
 
+
 class PlanStep(BaseModel):
     """Atomic executable unit in a plan."""
+
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
     description: str
@@ -67,8 +74,10 @@ class PlanStep(BaseModel):
     started_at: datetime | None = None
     completed_at: datetime | None = None
 
+
 class Plan(BaseModel):
     """Versioned decomposition of a goal or task."""
+
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     goal_id: str | None = None
     request_id: str | None = None

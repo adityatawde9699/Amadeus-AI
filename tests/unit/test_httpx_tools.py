@@ -42,10 +42,20 @@ async def test_stock_price_parses_quote(finance):
         seen.append(request)
         return httpx.Response(
             200,
-            json={"chart": {"result": [{"meta": {
-                "regularMarketPrice": 110.0, "chartPreviousClose": 100.0,
-                "currency": "USD", "shortName": "Apple",
-            }}]}},
+            json={
+                "chart": {
+                    "result": [
+                        {
+                            "meta": {
+                                "regularMarketPrice": 110.0,
+                                "chartPreviousClose": 100.0,
+                                "currency": "USD",
+                                "shortName": "Apple",
+                            }
+                        }
+                    ]
+                }
+            },
         )
 
     out = await finance(handler).get_stock_price("aapl")
@@ -107,7 +117,9 @@ async def test_weather_parses_response(info):
     payload = {
         "main": {"temp": 21.0, "feels_like": 20.0, "humidity": 50},
         "weather": [{"description": "clear sky"}],
-        "name": "Pune", "sys": {"country": "IN"}, "wind": {"speed": 10},
+        "name": "Pune",
+        "sys": {"country": "IN"},
+        "wind": {"speed": 10},
     }
     out = await info(lambda r: httpx.Response(200, json=payload)).get_weather_async("Pune")
     assert out.startswith("Weather in Pune, IN: Clear sky. Temperature is 21.0°C")
@@ -118,9 +130,13 @@ async def test_weather_parses_response(info):
 
 @pytest.mark.asyncio
 async def test_news_headlines(info):
-    payload = {"status": "ok", "articles": [
-        {"title": "A", "source": {"name": "S1"}}, {"title": "B", "source": {"name": "S2"}},
-    ]}
+    payload = {
+        "status": "ok",
+        "articles": [
+            {"title": "A", "source": {"name": "S1"}},
+            {"title": "B", "source": {"name": "S2"}},
+        ],
+    }
     out = await info(lambda r: httpx.Response(200, json=payload)).get_news_async(count="2")
     assert out == "Top 2 general headlines:\n1. A (S1)\n2. B (S2)"
 
@@ -132,9 +148,16 @@ async def test_wikipedia_summary_and_404_fallback(info):
             if "Missing" in request.url.path:
                 return httpx.Response(404)
             return httpx.Response(200, json={"title": "Pune", "extract": "One. Two. Three. Four."})
-        return httpx.Response(200, json={"query": {"search": [
-            {"title": "Found", "snippet": '<span class="searchmatch">x</span> y'},
-        ]}})
+        return httpx.Response(
+            200,
+            json={
+                "query": {
+                    "search": [
+                        {"title": "Found", "snippet": '<span class="searchmatch">x</span> y'},
+                    ]
+                }
+            },
+        )
 
     tools = info(handler)
     out = await tools.wikipedia_search_async("Pune", sentences=2)
@@ -154,15 +177,24 @@ async def test_search_router_wikipedia_and_tavily(monkeypatch):
 
     def handler(request):
         if request.url.host == "en.wikipedia.org":
-            return httpx.Response(200, json={
-                "title": "Python", "extract": "P" * 200,
-                "content_urls": {"desktop": {"page": "https://en.wikipedia.org/wiki/Python"}},
-            })
+            return httpx.Response(
+                200,
+                json={
+                    "title": "Python",
+                    "extract": "P" * 200,
+                    "content_urls": {"desktop": {"page": "https://en.wikipedia.org/wiki/Python"}},
+                },
+            )
         assert request.url.host == "api.tavily.com"
         assert request.method == "POST"
-        return httpx.Response(200, json={"results": [
-            {"title": "T", "content": "C", "url": "https://t.example"},
-        ]})
+        return httpx.Response(
+            200,
+            json={
+                "results": [
+                    {"title": "T", "content": "C", "url": "https://t.example"},
+                ]
+            },
+        )
 
     router = sr.SearchRouter(tavily_api_key="key")
     router._session = _client(handler)

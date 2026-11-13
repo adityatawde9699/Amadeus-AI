@@ -97,9 +97,7 @@ def _validate_scheme_host(url: str) -> str:
 def _check_addresses(host: str, addresses: list[ipaddress._BaseAddress]) -> None:
     for ip in addresses:
         if not _ip_is_public(ip):
-            raise UrlNotAllowedError(
-                f"Refusing to fetch non-public address {ip} for host {host!r}"
-            )
+            raise UrlNotAllowedError(f"Refusing to fetch non-public address {ip} for host {host!r}")
 
 
 def assert_public_url(url: str, *, allow_private: bool = False) -> str:
@@ -135,9 +133,7 @@ async def assert_public_url_async(
     if allow_private:
         return url
     try:
-        addresses = await asyncio.wait_for(
-            asyncio.to_thread(_resolve_addresses, host), dns_timeout
-        )
+        addresses = await asyncio.wait_for(asyncio.to_thread(_resolve_addresses, host), dns_timeout)
     except TimeoutError as exc:
         raise UrlNotAllowedError(f"DNS resolution timed out for {host!r}") from exc
     except (socket.gaierror, OSError) as exc:
@@ -154,9 +150,7 @@ async def _resolve_pinned_ip(host: str, *, dns_timeout: float = DEFAULT_DNS_TIME
     validated, not a hostname the HTTP client would re-resolve at connect time.
     """
     try:
-        addresses = await asyncio.wait_for(
-            asyncio.to_thread(_resolve_addresses, host), dns_timeout
-        )
+        addresses = await asyncio.wait_for(asyncio.to_thread(_resolve_addresses, host), dns_timeout)
     except TimeoutError as exc:
         raise UrlNotAllowedError(f"DNS resolution timed out for {host!r}") from exc
     except (socket.gaierror, OSError) as exc:
@@ -243,9 +237,7 @@ async def fetch_text(
                 async for chunk in resp.aiter_bytes():
                     downloaded += len(chunk)
                     if downloaded > max_bytes:
-                        raise UrlNotAllowedError(
-                            f"Response exceeded {max_bytes} byte cap"
-                        )
+                        raise UrlNotAllowedError(f"Response exceeded {max_bytes} byte cap")
                     chunks.append(chunk)
 
                 # Populate .text/.content from the streamed body we just read.

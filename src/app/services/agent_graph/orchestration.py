@@ -45,8 +45,12 @@ class OrchestrationNodes(ActionHelpers, GraphBase):
         allow = state.get("allow_orchestration", False)
         max_sub_agents = max(1, int(state.get("max_sub_agents", 1)))
 
-        passthrough = {"orchestrated": False, "plan_steps": [], "current_step": 0,
-                       "root_task": task}
+        passthrough = {
+            "orchestrated": False,
+            "plan_steps": [],
+            "current_step": 0,
+            "root_task": task,
+        }
 
         if not allow or max_sub_agents < 2 or not self.llm_generate:
             return passthrough
@@ -58,7 +62,8 @@ class OrchestrationNodes(ActionHelpers, GraphBase):
 
         logger.info(
             "Orchestrator: decomposed into %d expert step(s): %s",
-            len(steps), " → ".join(s["expert"] for s in steps),
+            len(steps),
+            " → ".join(s["expert"] for s in steps),
         )
         return {
             "orchestrated": True,
@@ -70,8 +75,7 @@ class OrchestrationNodes(ActionHelpers, GraphBase):
     async def _decompose(self, task: str, max_steps: int) -> list[dict]:
         """Ask the LLM to split `task` into ordered (expert, subtask) steps."""
         expert_menu = "\n".join(
-            f"- {p.name}: {p.description}"
-            for p in AGENT_PROFILES if p.name != "generalist"
+            f"- {p.name}: {p.description}" for p in AGENT_PROFILES if p.name != "generalist"
         )
         json_template = (
             '{\n  "steps": [\n    {"expert": "expert_name", "subtask": "what to do"}\n  ]\n}'
@@ -135,7 +139,9 @@ Respond with JSON only:
             profile = self._profiles[expert_name]
             logger.info(
                 "Orchestrator step %d/%d → Expert: %s",
-                step_idx + 1, len(plan_steps), profile.display_name,
+                step_idx + 1,
+                len(plan_steps),
+                profile.display_name,
             )
             return {
                 "active_expert": expert_name,
@@ -161,6 +167,7 @@ Respond with JSON only:
             tool = self.tool_registry.get(routing_target)
             if tool:
                 from src.core.domain.agent_profiles import get_profile_for_category
+
                 profile = get_profile_for_category(tool.category)
                 expert_name = profile.name
             else:
@@ -174,7 +181,9 @@ Respond with JSON only:
 
         logger.info(
             "MoE Supervisor: '%s' → Expert: %s (%s)",
-            task[:50], profile.display_name, expert_name,
+            task[:50],
+            profile.display_name,
+            expert_name,
         )
 
         return {
@@ -206,9 +215,7 @@ Respond with JSON only:
         result = state.get("final_answer", "")
         if not result:
             observations = state.get("observations", [])
-            result = " ".join(
-                o.split(":", 1)[-1].strip() for o in observations if ":" in o
-            ).strip()
+            result = " ".join(o.split(":", 1)[-1].strip() for o in observations if ":" in o).strip()
         result = result or "(no output)"
 
         return {
@@ -243,7 +250,7 @@ Respond with JSON only:
         # Combine observations — filter out error and tool-not-found messages
         _ERROR_PREFIXES = (
             "error",
-            "tool '",           # 'Tool 'x' not found in registry'
+            "tool '",  # 'Tool 'x' not found in registry'
             "tool not found",
             "not found in registry",
         )

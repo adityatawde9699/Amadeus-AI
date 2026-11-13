@@ -92,8 +92,7 @@ async def test_journal_persists_one_run_in_two_sessions():
     with (
         patch("src.infra.persistence.database.get_session", _Session),
         patch(
-            "src.infra.persistence.repositories.cognitive_repository."
-            "SQLAlchemyCognitiveRepository",
+            "src.infra.persistence.repositories.cognitive_repository.SQLAlchemyCognitiveRepository",
             return_value=repo,
         ),
     ):
@@ -114,8 +113,6 @@ async def test_journal_persistence_failure_does_not_break_request():
     async def handler(task, context):
         return "ok"
 
-    with patch(
-        "src.infra.persistence.database.get_session", side_effect=RuntimeError("db down")
-    ):
+    with patch("src.infra.persistence.database.get_session", side_effect=RuntimeError("db down")):
         core = CognitiveCore(EventBus(), task_handler=handler, persistence_enabled=True)
         assert await core.process("t", _context()) == "ok"

@@ -12,6 +12,7 @@ from src.runtime.core import AmadeusRuntime
 # Configure logging for CLI
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 
+
 async def main():
     if len(sys.argv) < 2:
         print("Usage: python -m src.transports.cli_transport <message>")
@@ -30,7 +31,7 @@ async def main():
         permissions=PermissionProfile.SYSTEM_FULL,
         memory_scope="global",
         trace_id=str(uuid.uuid4()),
-        cancellation_token=asyncio.Event()
+        cancellation_token=asyncio.Event(),
     )
 
     print(f"\n[User]: {input_text}")
@@ -43,6 +44,7 @@ async def main():
         print(f"Error: {e}")
     finally:
         await runtime.stop()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

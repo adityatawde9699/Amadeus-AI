@@ -124,8 +124,6 @@ class QdrantMemoryService:
         self._initialized = False
         self._circuit_breaker = CircuitBreaker("qdrant", failure_threshold=3, recovery_timeout=60)
 
-
-
     async def initialize(self) -> None:
         """Call this async method before using the service."""
         if self._enabled:
@@ -149,7 +147,9 @@ class QdrantMemoryService:
                 Path(str(self._settings.MEMORY_PERSIST_DIR)).mkdir(parents=True, exist_ok=True)
 
                 if _global_qdrant_client is None:
-                    _global_qdrant_client = AsyncQdrantClient(path=self._settings.MEMORY_PERSIST_DIR)
+                    _global_qdrant_client = AsyncQdrantClient(
+                        path=self._settings.MEMORY_PERSIST_DIR
+                    )
 
                 self._client = _global_qdrant_client
 
@@ -179,7 +179,9 @@ class QdrantMemoryService:
                             await self._client.delete_collection(collection_name)
                             await self._client.create_collection(
                                 collection_name=collection_name,
-                                vectors_config=VectorParams(size=embed_dim, distance=Distance.COSINE),
+                                vectors_config=VectorParams(
+                                    size=embed_dim, distance=Distance.COSINE
+                                ),
                             )
                     except Exception:
                         pass  # Collection info check failed — leave it as-is
@@ -212,6 +214,7 @@ class QdrantMemoryService:
         # Resolve local path via ModelManager
         try:
             from src.infra.model_manager import ModelManager
+
             mm = ModelManager(self._settings)
             load_path, local_dir = mm.resolve_embed_model()
         except Exception as exc:
@@ -227,7 +230,9 @@ class QdrantMemoryService:
             self._use_local_embed = True
             logger.info(
                 "Local embed model loaded: %s → %s (dim=%d)",
-                model_name, load_path, self._embed_dim,
+                model_name,
+                load_path,
+                self._embed_dim,
             )
             return
         except ImportError:
@@ -363,6 +368,7 @@ class QdrantMemoryService:
         if subtype == "identity":
             try:
                 from qdrant_client.models import FieldCondition, Filter, MatchValue
+
                 qr = await self._circuit_breaker.call(
                     self._client.query_points,
                     collection_name=self._settings.MEMORY_COLLECTION_NAME,
@@ -385,9 +391,12 @@ class QdrantMemoryService:
                     await self._circuit_breaker.call(
                         self._client.delete,
                         collection_name=self._settings.MEMORY_COLLECTION_NAME,
-                        points_selector=to_delete
+                        points_selector=to_delete,
                     )
-                    logger.info("Resolved contradiction: deleted %d existing identity memories.", len(to_delete))
+                    logger.info(
+                        "Resolved contradiction: deleted %d existing identity memories.",
+                        len(to_delete),
+                    )
             except Exception as e:
                 logger.warning("Contradiction resolution failed: %s", e)
 
@@ -419,8 +428,6 @@ class QdrantMemoryService:
             span.set_attribute("memory.stored", True)
             logger.debug("Memory stored — id=%s, role=%s", id_str[:8], role)
 
-
-
             return True
         except CircuitBreakerOpenException:
             logger.warning("Qdrant circuit is OPEN. Skipping store.")
@@ -430,6 +437,7 @@ class QdrantMemoryService:
             # P7-Chaos01: Increment memory error counter for Prometheus alerting
             try:
                 from src.infra.metrics import amadeus_memory_errors_total
+
                 amadeus_memory_errors_total.labels(operation="upsert").inc()
             except Exception:
                 pass
@@ -546,6 +554,7 @@ class QdrantMemoryService:
                 # P7-Chaos01: Increment memory error counter for Prometheus alerting
                 try:
                     from src.infra.metrics import amadeus_memory_errors_total
+
                     amadeus_memory_errors_total.labels(operation="search").inc()
                 except Exception:
                     pass
@@ -594,6 +603,7 @@ class QdrantMemoryService:
             return 0
         try:
             from qdrant_client.models import FieldCondition, Filter, MatchValue
+
             count_result = await self._client.count(
                 collection_name=self._settings.MEMORY_COLLECTION_NAME,
                 count_filter=Filter(
@@ -613,7 +623,6 @@ class QdrantMemoryService:
         except Exception as exc:
             logger.warning("Qdrant delete_by_text failed: %s", exc)
             return 0
-
 
     @property
     def is_enabled(self) -> bool:
@@ -744,9 +753,7 @@ class QdrantMemoryService:
                     collection_name=self._settings.MEMORY_COLLECTION_NAME,
                     points_selector=stale_ids,
                 )
-                logger.info(
-                    "Pruned %d stale memories for session=%s", len(stale_ids), session_id
-                )
+                logger.info("Pruned %d stale memories for session=%s", len(stale_ids), session_id)
 
             return len(stale_ids)
         except Exception as exc:

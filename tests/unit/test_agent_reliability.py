@@ -24,9 +24,6 @@ import pytest
 # ---------------------------------------------------------------------------
 
 
-
-
-
 # ---------------------------------------------------------------------------
 # DR-01 — AutonomousObservationLoop task tracking
 # ---------------------------------------------------------------------------
@@ -45,9 +42,7 @@ class TestAutonomousLoopTaskTracking:
         async def fake_loop(self_inner):
             await asyncio.sleep(999)
 
-        with patch.object(
-            AutonomousObservationLoop, "_loop", fake_loop
-        ):
+        with patch.object(AutonomousObservationLoop, "_loop", fake_loop):
             await loop.start()
 
         assert hasattr(loop, "_task"), "_task attribute must exist after start()"
@@ -71,8 +66,7 @@ class TestAutonomousLoopTaskTracking:
             await loop.start()
 
         assert any(
-            getattr(cb, "__name__", "") == "_on_task_done"
-            or cb == loop._on_task_done
+            getattr(cb, "__name__", "") == "_on_task_done" or cb == loop._on_task_done
             for cb in callbacks_registered
         ), "_on_task_done must be registered as a done-callback"
 
@@ -94,9 +88,6 @@ class TestAutonomousLoopTaskTracking:
 # ---------------------------------------------------------------------------
 # DR-02 — AgentOrchestrator.shutdown()
 # ---------------------------------------------------------------------------
-
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -142,6 +133,7 @@ class TestAPSchedulerShutdownConfig:
     def test_scheduler_uses_wait_true(self):
         """Verify the runtime host calls scheduler.shutdown(wait=True)."""
         from pathlib import Path
+
         # The scheduler lifecycle moved out of the FastAPI lifespan into the
         # transport-agnostic RuntimeHost as part of the Telegram-first refactor.
         src = Path("src/runtime/host.py").read_text(encoding="utf-8")

@@ -77,7 +77,8 @@ class ResearchOrchestrator:
             plan = await self._planner.plan(topic)
         logger.info(
             "research: planned %d subtopic(s), %d question(s)",
-            len(plan.subtopics), len(plan.all_questions()),
+            len(plan.subtopics),
+            len(plan.all_questions()),
         )
 
         # 2. Collect ----------------------------------------------------
@@ -120,7 +121,9 @@ class ResearchOrchestrator:
 
         logger.info(
             "research_complete topic=%r sources=%d artifacts=%d",
-            topic, len(sources), len(artifacts),
+            topic,
+            len(sources),
+            len(artifacts),
         )
         return ResearchResult(report=report, manifest=manifest, artifacts=artifacts)
 

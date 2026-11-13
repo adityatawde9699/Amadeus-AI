@@ -78,7 +78,9 @@ class TestTaskEndpoints:
 
     def test_create_task(self, authed_client):
         """Test creating a new task."""
-        response = authed_client.post("/api/v1/tasks", json={"content": "Test task from integration test"})
+        response = authed_client.post(
+            "/api/v1/tasks", json={"content": "Test task from integration test"}
+        )
 
         assert response.status_code == status.HTTP_201_CREATED
         data = response.json()

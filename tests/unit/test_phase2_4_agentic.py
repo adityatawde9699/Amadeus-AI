@@ -136,8 +136,9 @@ class _FakeGoalRepo:
     def __init__(self, goal_id, title, description):
         from src.core.domain.models import Goal, GoalStatus
 
-        self._goal = Goal(id=goal_id, title=title, description=description,
-                          status=GoalStatus.ACTIVE)
+        self._goal = Goal(
+            id=goal_id, title=title, description=description, status=GoalStatus.ACTIVE
+        )
         self.completed = False
 
     async def get_by_id(self, goal_id):
@@ -297,8 +298,9 @@ def _build_risky_graph(monkeypatch, llm_responses):
         description="A destructive operation",
         category=ToolCategory.FILE_SYSTEM,
         requires_confirmation=True,
-        capability=ToolCapability(name="dangerous_op", risk_level="critical",
-                                  requires_confirmation=True),
+        capability=ToolCapability(
+            name="dangerous_op", risk_level="critical", requires_confirmation=True
+        ),
     )
     registry = ToolRegistry()
     registry.register(risky)
@@ -341,7 +343,9 @@ async def test_ingraph_hitl_pause_and_approve(monkeypatch):
         ],
     )
     ctx = RequestContext(
-        request_id="t", session_id="hitl-thread-1", user_id="u",
+        request_id="t",
+        session_id="hitl-thread-1",
+        user_id="u",
         permissions=PermissionProfile.SYSTEM_FULL,
     )
 
@@ -376,7 +380,9 @@ async def test_ingraph_hitl_deny(monkeypatch):
         ],
     )
     ctx = RequestContext(
-        request_id="t", session_id="hitl-thread-2", user_id="u",
+        request_id="t",
+        session_id="hitl-thread-2",
+        user_id="u",
         permissions=PermissionProfile.SYSTEM_FULL,
     )
 
@@ -423,7 +429,9 @@ async def test_reflective_learning_records_outcomes():
         memory_service=mem,
     )
     ctx = RequestContext(
-        request_id="t", session_id="s", user_id="u",
+        request_id="t",
+        session_id="s",
+        user_id="u",
         permissions=PermissionProfile.READ_ONLY,
     )
     state = {
@@ -446,14 +454,26 @@ async def test_reflective_learning_retrieves_outcomes():
     from src.infra.tools.base import ToolExecutor
 
     outcome = MemoryResult(
-        session_id="s", role="system", text="[OUTCOME] tool 'x' FAILED for intent: foo",
-        timestamp=None, type="memory", subtype="outcome", importance=0.5,
-        source="t", distance=0.1,
+        session_id="s",
+        role="system",
+        text="[OUTCOME] tool 'x' FAILED for intent: foo",
+        timestamp=None,
+        type="memory",
+        subtype="outcome",
+        importance=0.5,
+        source="t",
+        distance=0.1,
     )
     chatter = MemoryResult(
-        session_id="s", role="user", text="hello there",
-        timestamp=None, type="memory", subtype="interaction", importance=0.5,
-        source="t", distance=0.1,
+        session_id="s",
+        role="user",
+        text="hello there",
+        timestamp=None,
+        type="memory",
+        subtype="interaction",
+        importance=0.5,
+        source="t",
+        distance=0.1,
     )
     mem = _FakeMemory(outcomes=[outcome, chatter])
     graph = AmadeusGraph(

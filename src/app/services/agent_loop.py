@@ -69,6 +69,7 @@ class AmadeusGraph(OrchestrationNodes, ExpertNodes):
     expert profile. The expert nodes use Plan-and-Solve with a constrained
     tool subset.
     """
+
     def __init__(
         self,
         tool_registry: ToolRegistry,
@@ -89,15 +90,14 @@ class AmadeusGraph(OrchestrationNodes, ExpertNodes):
         self._checkpointer = checkpointer or MemorySaver()
 
         # Pre-build profile lookup for fast access
-        self._profiles: dict[str, AgentProfile] = {
-            p.name: p for p in AGENT_PROFILES
-        }
+        self._profiles: dict[str, AgentProfile] = {p.name: p for p in AGENT_PROFILES}
 
         # Compile the graph
         self._graph: CompiledStateGraph = self._build_graph()
         logger.info(
             "AmadeusGraph MoE compiled (experts=%d, max_iter=%d)",
-            len(self._profiles), max_iterations,
+            len(self._profiles),
+            max_iterations,
         )
 
     def set_checkpointer(self, checkpointer: Any) -> None:

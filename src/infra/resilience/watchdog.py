@@ -8,6 +8,7 @@ from src.runtime.events import EventBus
 
 logger = logging.getLogger(__name__)
 
+
 class DependencyWatchdog:
     """Periodically checks whether optional infrastructure dependencies
     (Redis, Qdrant, LLM providers) are reachable and emits events on
@@ -41,6 +42,7 @@ class DependencyWatchdog:
             return False
         try:
             import redis.asyncio as aioredis
+
             client = aioredis.from_url(self.settings.REDIS_URL, decode_responses=True)
             await client.ping()
             await client.aclose()

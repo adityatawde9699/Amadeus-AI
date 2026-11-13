@@ -59,9 +59,21 @@ _SVM_CONFIDENCE_CUTOFF = 0.35
 # Global intents that are NOT routed to an expert
 _GLOBAL_INTENTS = {
     "conversational": [
-        "hello", "hi there", "how are you?", "good morning", "thanks", "thank you",
-        "who are you?", "what's up?", "hey Amadeus", "tell me a joke", "chat with me",
-        "you're helpful", "bye", "goodbye", "see ya",
+        "hello",
+        "hi there",
+        "how are you?",
+        "good morning",
+        "thanks",
+        "thank you",
+        "who are you?",
+        "what's up?",
+        "hey Amadeus",
+        "tell me a joke",
+        "chat with me",
+        "you're helpful",
+        "bye",
+        "goodbye",
+        "see ya",
     ],
     "cloud_escalation": [
         "debug my fastapi startup error and stack trace",
@@ -171,9 +183,9 @@ class UnifiedSemanticRouter:
         self._threshold = threshold
 
         # Populated by build_index()
-        self._labels: list[str] = []   # Names: expert names or intent names
-        self._types: list[str] = []    # 'expert', 'tool', or 'intent'
-        self._matrix: Any = None       # np.ndarray shape (N, D)
+        self._labels: list[str] = []  # Names: expert names or intent names
+        self._types: list[str] = []  # 'expert', 'tool', or 'intent'
+        self._matrix: Any = None  # np.ndarray shape (N, D)
         self._embed_model: Any = None  # SentenceTransformer instance
         self._ready = False
 
@@ -202,7 +214,8 @@ class UnifiedSemanticRouter:
         except ImportError as exc:
             logger.warning(
                 "UnifiedSemanticRouter: onnxruntime/tokenizers unavailable (%s) — "
-                "falling back to sentence-transformers.", exc,
+                "falling back to sentence-transformers.",
+                exc,
             )
 
         from sentence_transformers import SentenceTransformer
@@ -229,14 +242,13 @@ class UnifiedSemanticRouter:
         # Include anchors + descriptions, not just names — editing a profile's
         # anchor phrases must invalidate the cached embedding matrix.
         profile_names = [
-            f"{p.name}:{p.description}:{'|'.join(p.anchor_phrases)}"
-            for p in AGENT_PROFILES
+            f"{p.name}:{p.description}:{'|'.join(p.anchor_phrases)}" for p in AGENT_PROFILES
         ]
         current_fp = _registry_fingerprint(
-            tool_names, tool_descs, profile_names,
-            backend=getattr(
-                self._embed_model, "fingerprint", type(self._embed_model).__name__
-            ),
+            tool_names,
+            tool_descs,
+            profile_names,
+            backend=getattr(self._embed_model, "fingerprint", type(self._embed_model).__name__),
         )
 
         # Populate tool→category map and the Stage-1 classifier regardless of
@@ -330,7 +342,9 @@ class UnifiedSemanticRouter:
             import numpy as np
 
             q_vec = self._embed_model.encode(
-                query, normalize_embeddings=True, show_progress_bar=False,
+                query,
+                normalize_embeddings=True,
+                show_progress_bar=False,
             )
 
             # ----------------------------------------------------------
@@ -348,7 +362,8 @@ class UnifiedSemanticRouter:
 
                     # Keep expert rows, intent rows, and tool rows whose category matches
                     candidate_indices = [
-                        i for i, (lbl, typ) in enumerate(zip(self._labels, self._types, strict=True))
+                        i
+                        for i, (lbl, typ) in enumerate(zip(self._labels, self._types, strict=True))
                         if typ in ("intent", "expert")
                         or self._tool_category_map.get(lbl, "") in allowed_cats
                     ]
@@ -357,7 +372,10 @@ class UnifiedSemanticRouter:
                         svm_used = True
                         logger.debug(
                             "UnifiedRouter SVM: '%s' → cats=%s (conf=%.2f), %d candidates",
-                            query[:40], top2_categories, confidence, len(candidate_indices),
+                            query[:40],
+                            top2_categories,
+                            confidence,
+                            len(candidate_indices),
                         )
                     else:
                         candidate_indices = None
@@ -383,7 +401,12 @@ class UnifiedSemanticRouter:
 
             logger.debug(
                 "UnifiedRouter: '%s' → %s:%s (score=%.4f, threshold=%.2f, svm=%s)",
-                query[:40], kind, label, score, effective_threshold, svm_used,
+                query[:40],
+                kind,
+                label,
+                score,
+                effective_threshold,
+                svm_used,
             )
 
             if score < effective_threshold:

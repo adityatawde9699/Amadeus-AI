@@ -25,7 +25,6 @@ import pytest
 # ===========================================================================
 
 
-
 if "google.genai" not in sys.modules:
     _genai = types.ModuleType("google.genai")
     _genai.Client = MagicMock()
@@ -33,6 +32,7 @@ if "google.genai" not in sys.modules:
     sys.modules["google.genai.types"] = MagicMock()
     try:
         import google
+
         _google = google
     except ImportError:
         _google = types.ModuleType("google")
@@ -94,9 +94,7 @@ class TestConfirmationGate:
         executor = ToolExecutor(confirmation_callback=_DenyAll())
         tool = _make_tool(requires_confirmation=True)
         # Authorize (SYSTEM_FULL) so the request reaches the confirmation gate.
-        result = await executor.execute(
-            tool, {}, permission_profile=PermissionProfile.SYSTEM_FULL
-        )
+        result = await executor.execute(tool, {}, permission_profile=PermissionProfile.SYSTEM_FULL)
 
         assert result.success is False
         assert "denied" in result.error_message.lower()
@@ -115,9 +113,7 @@ class TestConfirmationGate:
 
         executor = ToolExecutor(confirmation_callback=_ApproveAll())
         tool = _make_tool(requires_confirmation=True)
-        result = await executor.execute(
-            tool, {}, permission_profile=PermissionProfile.SYSTEM_FULL
-        )
+        result = await executor.execute(tool, {}, permission_profile=PermissionProfile.SYSTEM_FULL)
 
         assert result.success is True
 
@@ -129,9 +125,7 @@ class TestConfirmationGate:
 
         executor = ToolExecutor(confirmation_callback=None)
         tool = _make_tool(requires_confirmation=True)
-        result = await executor.execute(
-            tool, {}, permission_profile=PermissionProfile.SYSTEM_FULL
-        )
+        result = await executor.execute(tool, {}, permission_profile=PermissionProfile.SYSTEM_FULL)
 
         assert result.success is False
         assert (
@@ -176,9 +170,7 @@ class TestConfirmationGate:
 
         executor = ToolExecutor(confirmation_callback=_RecordingCallback())
         tool = _make_tool(requires_confirmation=True, name="delete_file")
-        await executor.execute(
-            tool, {}, permission_profile=PermissionProfile.SYSTEM_FULL
-        )
+        await executor.execute(tool, {}, permission_profile=PermissionProfile.SYSTEM_FULL)
 
         assert received_names == ["delete_file"]
 

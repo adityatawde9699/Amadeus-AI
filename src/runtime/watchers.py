@@ -289,11 +289,7 @@ async def start_watchers(
 
     # File watching is a Standard+ feature (mtime rglob can be heavy) and needs
     # at least one configured directory.
-    if (
-        settings.ENABLE_FILE_WATCHER
-        and tier != "lite"
-        and settings.WATCH_DIRS
-    ):
+    if settings.ENABLE_FILE_WATCHER and tier != "lite" and settings.WATCH_DIRS:
         watchers.append(
             FileWatcher(event_bus, settings.WATCH_DIRS, settings.WATCHER_FILE_INTERVAL_SECONDS)
         )
@@ -304,6 +300,7 @@ async def start_watchers(
         await w.start()
     logger.info(
         "Event watchers started: %s (tier=%s)",
-        [w.name for w in watchers] or "none", tier,
+        [w.name for w in watchers] or "none",
+        tier,
     )
     return watchers

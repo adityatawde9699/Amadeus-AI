@@ -39,6 +39,7 @@ def _assert_in_allowed_dirs(path):
     to arbitrary filesystem locations when the LLM is tricked via prompt injection.
     """
     from src.core.config import get_settings
+
     settings = get_settings()
     allowed_roots = [Path(d).expanduser().resolve() for d in settings.SEARCH_ALLOWED_DIRS]
     try:
@@ -52,11 +53,7 @@ def _assert_in_allowed_dirs(path):
         except ValueError:
             continue
     roots_str = ", ".join(str(r) for r in allowed_roots)
-    return (
-        f"Access denied: '{resolved}' is outside the allowed directories ({roots_str})."
-    )
-
-
+    return f"Access denied: '{resolved}' is outside the allowed directories ({roots_str})."
 
 
 # =============================================================================
@@ -204,9 +201,7 @@ def terminate_program(
                 if target.lower() in proc.info["name"].lower():
                     psutil.Process(proc.info["pid"]).terminate()
                     count += 1
-                    logger.info(
-                        "Terminated: %s (PID: %s)", proc.info["name"], proc.info["pid"]
-                    )
+                    logger.info("Terminated: %s (PID: %s)", proc.info["name"], proc.info["pid"])
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
 

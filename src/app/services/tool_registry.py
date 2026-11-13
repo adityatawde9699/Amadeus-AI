@@ -47,7 +47,6 @@ def _genai_types() -> tuple[Any, Any] | None:
         return None
 
 
-
 _ENV_REF = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 
@@ -68,11 +67,14 @@ def resolve_mcp_env(env: dict[str, Any] | None, server_name: str = "") -> dict[s
         if missing:
             logger.warning(
                 "MCP server '%s': env %s not set (references %s); not passing it",
-                server_name, key, ", ".join(missing),
+                server_name,
+                key,
+                ", ".join(missing),
             )
             continue
         resolved[str(key)] = _ENV_REF.sub(lambda m: os.environ[m.group(1)], value)
     return resolved or None
+
 
 class ToolRegistry:
     """
@@ -196,9 +198,7 @@ class ToolRegistry:
         Used by MoE Expert Nodes to build a small, focused tool prompt.
         """
         tools = self.get_tools_by_categories(categories)
-        return "\n".join(
-            self._menu_line(tool) for tool in sorted(tools, key=lambda t: t.name)
-        )
+        return "\n".join(self._menu_line(tool) for tool in sorted(tools, key=lambda t: t.name))
 
     @staticmethod
     def _menu_line(tool: Tool) -> str:
@@ -356,7 +356,10 @@ class ToolRegistry:
                             try:
                                 # Only call if it doesn't require arguments or has defaults
                                 sig = inspect.signature(obj)
-                                if all(p.default != inspect.Parameter.empty for p in sig.parameters.values()):
+                                if all(
+                                    p.default != inspect.Parameter.empty
+                                    for p in sig.parameters.values()
+                                ):
                                     result = obj()
                                     if isinstance(result, list):
                                         for item in result:
@@ -364,7 +367,7 @@ class ToolRegistry:
                                                 self.register(item)
                                                 count += 1
                             except Exception:
-                                pass # Skip if it fails (likely requires args)
+                                pass  # Skip if it fails (likely requires args)
 
                 except Exception as e:
                     logger.exception("Error loading module %s: %s", module_name, e)
@@ -415,7 +418,7 @@ class ToolRegistry:
             if module_name:
                 try:
                     module = importlib.import_module(module_name)
-                    importlib.reload(module) # Ensure fresh load
+                    importlib.reload(module)  # Ensure fresh load
 
                     # 1. Check for register_tools(registry) hook
                     if hasattr(module, "register_tools") and callable(module.register_tools):

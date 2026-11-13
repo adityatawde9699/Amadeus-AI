@@ -12,19 +12,23 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
+
 class CircuitState(Enum):
     CLOSED = "CLOSED"
     OPEN = "OPEN"
     HALF_OPEN = "HALF_OPEN"
 
+
 class CircuitBreakerOpenException(Exception):
     pass
+
 
 class CircuitBreaker:
     """
     Prevents cascading failures by stopping execution if an external dependency
     is repeatedly failing.
     """
+
     def __init__(
         self,
         name: str,

@@ -23,6 +23,7 @@ def _repo(session: AsyncSession, user: UserORM) -> SQLAlchemyTaskRepository:
     owner = None if user.role == UserRoleDB.ADMIN else user.id
     return SQLAlchemyTaskRepository(session, owner_id=owner)
 
+
 # =============================================================================
 # ENDPOINTS
 # =============================================================================

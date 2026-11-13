@@ -27,7 +27,8 @@ class ActionHelpers(GraphBase):
     def _extract_math_expression(cls, task: str) -> str | None:
         """Return the longest arithmetic expression in *task* (needs an operator)."""
         matches = [
-            m.group(0).strip() for m in cls._MATH_EXPR_RE.finditer(task)
+            m.group(0).strip()
+            for m in cls._MATH_EXPR_RE.finditer(task)
             if not re.fullmatch(r"\d{4}-\d{1,2}-\d{1,2}", m.group(0).strip())  # ISO date
         ]
         return max(matches, key=len) if matches else None

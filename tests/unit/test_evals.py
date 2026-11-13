@@ -58,8 +58,11 @@ def test_routing_heldout_has_no_training_leak():
 def test_routing_metrics():
     from evals.routing_eval import metrics
 
-    m = metrics(["weather", "news", "news"], ["weather", "news", "weather"],
-                [["weather"], ["news"], ["weather", "news"]])
+    m = metrics(
+        ["weather", "news", "news"],
+        ["weather", "news", "weather"],
+        [["weather"], ["news"], ["weather", "news"]],
+    )
     assert m["accuracy"] == pytest.approx(2 / 3)
     assert m["top2_accuracy"] == 1.0
     assert m["confusions"] == [("news -> weather", 1)]

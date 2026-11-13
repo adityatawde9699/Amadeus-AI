@@ -45,13 +45,15 @@ logger = logging.getLogger(__name__)
 # PROVIDER HEALTH
 # =============================================================================
 
+
 @dataclass
 class ProviderHealth:
     name: str
     p95_latency_ms: float = 1000.0
-    timeout_rate: float = 0.0      # timeouts / total calls (rolling 100)
+    timeout_rate: float = 0.0  # timeouts / total calls (rolling 100)
     tokens_per_second: float = 20.0
     error_rate: float = 0.0
+
 
 def provider_score(h: ProviderHealth) -> float:
     return (
@@ -59,6 +61,7 @@ def provider_score(h: ProviderHealth) -> float:
         + (1 - h.timeout_rate) * 0.35
         + (1 - h.error_rate) * 0.25
     )
+
 
 # =============================================================================
 # REDIS COUNTER BACKEND
@@ -183,10 +186,7 @@ class LLMRouter:
         self._circuit_breakers: dict[str, CircuitBreaker] = {}
         for p in self._providers:
             self._circuit_breakers[p] = CircuitBreaker(
-                name=f"llm_{p}",
-                failure_threshold=3,
-                recovery_timeout=60,
-                event_bus=self.event_bus
+                name=f"llm_{p}", failure_threshold=3, recovery_timeout=60, event_bus=self.event_bus
             )
 
         # In-memory counters (always present; Redis supplements these)
@@ -260,7 +260,9 @@ class LLMRouter:
         if structured and "JSON" not in prompt.upper():
             prompt += "\n\nIMPORTANT: Respond ONLY with a valid JSON object."
 
-        logger.info("LLMRouter: effective_complexity=%r structured=%r", effective_complexity, structured)
+        logger.info(
+            "LLMRouter: effective_complexity=%r structured=%r", effective_complexity, structured
+        )
 
         # ── Build provider priority list ─────────────────────────────────────
         if effective_complexity == "high" and not self._local_only_mode:
@@ -279,9 +281,7 @@ class LLMRouter:
 
         # Sort cloud providers by health score (best first)
         active_cloud = [p for p in cloud_order if p in self._providers]
-        active_cloud.sort(
-            key=lambda p: provider_score(self._provider_health[p]), reverse=True
-        )
+        active_cloud.sort(key=lambda p: provider_score(self._provider_health[p]), reverse=True)
         active_local = [p for p in local_order if p in self._providers]
 
         # Final ordered list: local first for auto/simple/normal, cloud first for high
@@ -350,12 +350,19 @@ class LLMRouter:
                             prompt=prompt,
                             context=context,
                             temperature=temperature,
-                            max_tokens=max_tokens if max_tokens is not None
+                            max_tokens=max_tokens
+                            if max_tokens is not None
                             else (256 if json_schema else 128 if structured else None),
-                            **({"response_format": {
-                                "type": "json_object",
-                                **({"schema": json_schema} if json_schema else {}),
-                            }} if structured else {}),
+                            **(
+                                {
+                                    "response_format": {
+                                        "type": "json_object",
+                                        **({"schema": json_schema} if json_schema else {}),
+                                    }
+                                }
+                                if structured
+                                else {}
+                            ),
                         )
                         success = True
                     except Exception as e:
@@ -372,9 +379,13 @@ class LLMRouter:
                                 # Quick rolling average for p95 mock
                                 latencies = [x[0] for x in history if x[1]]
                                 if latencies:
-                                    self._provider_health[provider_name].p95_latency_ms = sum(latencies)/len(latencies)
+                                    self._provider_health[provider_name].p95_latency_ms = sum(
+                                        latencies
+                                    ) / len(latencies)
                                 fails = sum(1 for x in history if not x[1])
-                                self._provider_health[provider_name].error_rate = fails / len(history)
+                                self._provider_health[provider_name].error_rate = fails / len(
+                                    history
+                                )
 
                 async with self._lock:
                     self._usage[provider_name] += 1
@@ -449,4 +460,6 @@ class LLMRouter:
                 await llama._get_llm()  # type: ignore[attr-defined]
                 logger.info("LLMRouter: LlamaCpp warmup complete — model is hot.")
             except Exception as exc:
-                logger.warning("LLMRouter: LlamaCpp warmup failed (will retry on first request): %s", exc)
+                logger.warning(
+                    "LLMRouter: LlamaCpp warmup failed (will retry on first request): %s", exc
+                )

@@ -171,12 +171,8 @@ class TestPathSandboxing:
 
         from src.infra.tools.system_tools import _assert_in_allowed_dirs
 
-        with patch(
-            "src.infra.tools.system_tools.get_settings"
-        ) as mock_cfg:
-            mock_cfg.return_value.SEARCH_ALLOWED_DIRS = [
-                str(Path.home() / "Documents")
-            ]
+        with patch("src.infra.tools.system_tools.get_settings") as mock_cfg:
+            mock_cfg.return_value.SEARCH_ALLOWED_DIRS = [str(Path.home() / "Documents")]
             # Simulated traversal
             evil = Path.home() / "Documents" / ".." / ".." / "etc" / "passwd"
             result = _assert_in_allowed_dirs(evil)
@@ -212,8 +208,10 @@ class TestValidateArgsMissingParams:
         result = await executor.execute(tool, {})  # no 'query' provided
 
         assert result.success is False
-        assert "query" in (result.error_message or "").lower() or \
-               "missing" in (result.error_message or "").lower()
+        assert (
+            "query" in (result.error_message or "").lower()
+            or "missing" in (result.error_message or "").lower()
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -227,6 +225,7 @@ class TestMemoryDeduplication:
     def test_same_content_produces_same_uuid(self):
         """Content-based key must be deterministic — no timestamp in key."""
         import uuid as _uuid
+
         session_id = "test_session"
         role = "user"
         text = "I love astronomy"
@@ -241,6 +240,7 @@ class TestMemoryDeduplication:
     def test_different_content_produces_different_uuid(self):
         """Different text must produce different IDs."""
         import uuid as _uuid
+
         session_id = "test_session"
         role = "user"
 

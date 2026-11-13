@@ -19,12 +19,12 @@ from src.infra.memory_service import MemoryResult, QdrantMemoryService
 # Fixtures
 # ===========================================================================
 
+
 class FakeCircuitBreaker:
     async def call(self, func, *args, **kwargs):
         if hasattr(func, "__await__") or inspect.iscoroutinefunction(func):
             return await func(*args, **kwargs)
         return func(*args, **kwargs)
-
 
 
 def _mock_settings(memory_enabled: bool = True) -> MagicMock:

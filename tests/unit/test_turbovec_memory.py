@@ -16,6 +16,7 @@ def temp_settings():
         settings.GEMINI_API_KEY = "test-key"
         yield settings
 
+
 @pytest.fixture
 def mock_turbovec_service(temp_settings):
     service = TurbovecMemoryService(settings=temp_settings)
@@ -28,6 +29,7 @@ def mock_turbovec_service(temp_settings):
     service._embed_async = _mock_embed
 
     return service
+
 
 @pytest.mark.asyncio
 async def test_turbovec_initialization(mock_turbovec_service):
@@ -43,8 +45,11 @@ async def test_turbovec_initialization(mock_turbovec_service):
         assert mock_turbovec_service._db_path.exists()
 
         # Verify tables created
-        async with mock_turbovec_service._db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='memory_payloads'") as cursor:
+        async with mock_turbovec_service._db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='memory_payloads'"
+        ) as cursor:
             assert await cursor.fetchone() is not None
+
 
 @pytest.mark.asyncio
 async def test_turbovec_store_and_retrieve(mock_turbovec_service):
@@ -53,9 +58,7 @@ async def test_turbovec_store_and_retrieve(mock_turbovec_service):
 
         # Store memory
         success = await mock_turbovec_service.store(
-            session_id="test_session",
-            role="user",
-            text="I love testing with pytest"
+            session_id="test_session", role="user", text="I love testing with pytest"
         )
         assert success
 
@@ -65,6 +68,7 @@ async def test_turbovec_store_and_retrieve(mock_turbovec_service):
         assert results[0].text == "I love testing with pytest"
         assert results[0].session_id == "test_session"
         assert results[0].role == "user"
+
 
 @pytest.mark.asyncio
 async def test_turbovec_clear_session(mock_turbovec_service):
@@ -87,6 +91,7 @@ async def test_turbovec_clear_session(mock_turbovec_service):
         results = await mock_turbovec_service.retrieve("B1")
         assert len(results) == 1
         assert results[0].session_id == "session_B"
+
 
 @pytest.mark.asyncio
 async def test_turbovec_delete_by_text(mock_turbovec_service):

@@ -52,8 +52,15 @@ class TestWorkspaceLayout:
         wm = WorkspaceManager(tmp_path / "AMASPACE")
         wm.ensure_layout()
         for required in (
-            "research", "documents", "code", "executions",
-            "logs", "exports", "memory", "datasets", "temp",
+            "research",
+            "documents",
+            "code",
+            "executions",
+            "logs",
+            "exports",
+            "memory",
+            "datasets",
+            "temp",
         ):
             assert (wm.root / required).is_dir(), f"{required} missing"
 

@@ -95,24 +95,39 @@ class QueryPlanner:
     def _heuristic_plan(self, topic: str) -> ResearchPlan:
         """Deterministic fallback plan covering the canonical research facets."""
         facets = [
-            ("Overview & Definitions", [
-                f"What is {topic} and how is it defined?",
-                f"What is the background and history of {topic}?",
-            ]),
-            ("Current State & Key Developments", [
-                f"What is the current state of {topic}?",
-                f"What are the most important recent developments in {topic}?",
-            ]),
-            ("Applications & Impact", [
-                f"What are the main applications or use cases of {topic}?",
-                f"What impact does {topic} have on its field or society?",
-            ]),
-            ("Challenges & Risks", [
-                f"What are the main challenges, limitations, or risks of {topic}?",
-            ]),
-            ("Future Directions", [
-                f"What is the future outlook for {topic}?",
-            ]),
+            (
+                "Overview & Definitions",
+                [
+                    f"What is {topic} and how is it defined?",
+                    f"What is the background and history of {topic}?",
+                ],
+            ),
+            (
+                "Current State & Key Developments",
+                [
+                    f"What is the current state of {topic}?",
+                    f"What are the most important recent developments in {topic}?",
+                ],
+            ),
+            (
+                "Applications & Impact",
+                [
+                    f"What are the main applications or use cases of {topic}?",
+                    f"What impact does {topic} have on its field or society?",
+                ],
+            ),
+            (
+                "Challenges & Risks",
+                [
+                    f"What are the main challenges, limitations, or risks of {topic}?",
+                ],
+            ),
+            (
+                "Future Directions",
+                [
+                    f"What is the future outlook for {topic}?",
+                ],
+            ),
         ][: self._max_subtopics]
 
         subtopics = [

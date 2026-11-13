@@ -35,8 +35,14 @@ MAX_PER_TOOL_BRANCHES = 24
 LEAD_MAX_CHARS = 200
 
 _JSON_TYPES = {"string", "integer", "number", "boolean", "array", "object"}
-_PY_TYPES = {"str": "string", "int": "integer", "float": "number", "bool": "boolean",
-             "list": "array", "dict": "object"}
+_PY_TYPES = {
+    "str": "string",
+    "int": "integer",
+    "float": "number",
+    "bool": "boolean",
+    "list": "array",
+    "dict": "object",
+}
 
 
 def _annotation_type(annotation: Any) -> str | None:
@@ -49,7 +55,7 @@ def _annotation_type(annotation: Any) -> str | None:
     text = annotation.__name__ if isinstance(annotation, type) else str(annotation)
     text = text.replace("typing.", "")
     if text.startswith("Optional[") and text.endswith("]"):
-        text = text[len("Optional["):-1]
+        text = text[len("Optional[") : -1]
     parts = [p.strip() for p in text.split("|")]
     names = {p.split("[")[0] for p in parts if p and p != "None"}
     if len(names) != 1:

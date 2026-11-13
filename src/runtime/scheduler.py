@@ -76,9 +76,7 @@ class TaskScheduler:
         run_at: datetime | None = None,
     ) -> int:
         """Enqueue a durable task; returns its id."""
-        return await enqueue_task(
-            prompt, session_id, delay_minutes=delay_minutes, run_at=run_at
-        )
+        return await enqueue_task(prompt, session_id, delay_minutes=delay_minutes, run_at=run_at)
 
     async def cancel(self, task_id: int) -> bool:
         async with get_session() as session:

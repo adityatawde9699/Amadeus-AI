@@ -59,8 +59,7 @@ def checkpoint_postgres_url(url: str) -> str:
     base = scheme.split("+", 1)[0]
     if not sep or base not in ("postgresql", "postgres"):
         raise RuntimeError(
-            "CHECKPOINT_BACKEND=postgres needs a PostgreSQL URL "
-            "(set CHECKPOINT_POSTGRES_URL)"
+            "CHECKPOINT_BACKEND=postgres needs a PostgreSQL URL (set CHECKPOINT_POSTGRES_URL)"
         )
     return f"postgresql://{rest}"
 
@@ -82,7 +81,6 @@ class AmadeusService:
         tool_registry: ToolRegistry | None = None,
         conversation_repo: IConversationRepository | None = None,
         goal_repository: IGoalRepository | None = None,
-
         debug_mode: bool = False,
         cache_service: CacheService | None = None,
         auto_start_orchestrator: bool = True,
@@ -103,6 +101,7 @@ class AmadeusService:
         else:
             try:
                 from src.container import get_llm_router
+
                 self.llm_router = get_llm_router()
             except Exception:
                 self.llm_router = None
@@ -120,8 +119,6 @@ class AmadeusService:
         # Note: Telegram transport is often initialized after AmadeusService
         # because of the circular dependency with runtime.
         self.messaging = MessagingService()
-
-
 
         # ── Long-term Memory (Turbovec) ────────────────────────────
         self.memory_service = TurbovecMemoryService(settings=self.settings)
@@ -203,8 +200,7 @@ class AmadeusService:
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, self._semantic_router.build_index)
             logger.info(
-                "SemanticRouter ready=%s after build attempt",
-                self._semantic_router.is_ready
+                "SemanticRouter ready=%s after build attempt", self._semantic_router.is_ready
             )
 
     def _make_checkpointer_cm(self) -> tuple[Any, str]:
@@ -309,9 +305,15 @@ class AmadeusService:
 
         # ── Priority 0: Identity exclusion (Prevents "Who are you" -> web search) ──
         _IDENTITY_PHRASES = [
-            "who are you", "what are you", "your name", "who am i talking to",
-            "what's your name", "tell me about yourself", "who made you",
-            "who created you", "your creator",
+            "who are you",
+            "what are you",
+            "your name",
+            "who am i talking to",
+            "what's your name",
+            "tell me about yourself",
+            "who made you",
+            "who created you",
+            "your creator",
         ]
         if any(p in lower_query for p in _IDENTITY_PHRASES):
             logger.info("Triage override: Identity query detected, routing to conversational")
@@ -325,11 +327,23 @@ class AmadeusService:
 
         # ── Priority 1: Factual knowledge override ──────────────────────────
         _WIKI_PREFIXES = [
-            "who is", "who was", "who are", "who were",
-            "what is", "what was", "what are", "what were",
-            "where is", "where was", "when did", "when was",
-            "tell me about", "who created", "who invented",
-            "who founded", "who wrote",
+            "who is",
+            "who was",
+            "who are",
+            "who were",
+            "what is",
+            "what was",
+            "what are",
+            "what were",
+            "where is",
+            "where was",
+            "when did",
+            "when was",
+            "tell me about",
+            "who created",
+            "who invented",
+            "who founded",
+            "who wrote",
         ]
         _LIVE_PREFIXES = ["who won", "how many", "current score", "what happened"]
 
@@ -349,14 +363,27 @@ class AmadeusService:
         # ── Priority 1.2: Sandbox execution override ──────────────────────────
         # Strong coding intent → always use execute_python_script.
         _SANDBOX_TRIGGERS = [
-            "write and run", "write a python", "run python", "execute python",
-            "run a script", "execute a script", "write a script",
-            "write code and run", "compute with python", "calculate using python",
-            "run this code", "execute this code", "create a python", "create a script",
-            "generate python", "generate a script",
+            "write and run",
+            "write a python",
+            "run python",
+            "execute python",
+            "run a script",
+            "execute a script",
+            "write a script",
+            "write code and run",
+            "compute with python",
+            "calculate using python",
+            "run this code",
+            "execute this code",
+            "create a python",
+            "create a script",
+            "generate python",
+            "generate a script",
         ]
         if any(t in lower_query for t in _SANDBOX_TRIGGERS):
-            logger.info("Triage override: Sandbox execution request detected, routing to execute_python_script")
+            logger.info(
+                "Triage override: Sandbox execution request detected, routing to execute_python_script"
+            )
             return "tool", "execute_python_script"
 
         # ── Priority 1.3: App termination override ────────────────────────────
@@ -369,10 +396,18 @@ class AmadeusService:
             return "tool", "terminate_program"
         # Also catch mid-sentence patterns: "please close chrome", "can you kill vlc"
         _TERMINATE_PATTERNS = [
-            "please close ", "please kill ", "please stop ", "please terminate ",
-            "can you close ", "can you kill ", "can you stop ",
-            "force close ", "force quit ", "force kill ",
-            "shut down ", "shutdown ",
+            "please close ",
+            "please kill ",
+            "please stop ",
+            "please terminate ",
+            "can you close ",
+            "can you kill ",
+            "can you stop ",
+            "force close ",
+            "force quit ",
+            "force kill ",
+            "shut down ",
+            "shutdown ",
         ]
         if any(p in lower_query for p in _TERMINATE_PATTERNS):
             logger.info("Triage override: App close pattern detected, routing to terminate_program")
@@ -386,7 +421,9 @@ class AmadeusService:
 
         # ── Priority 1.5: Content Generation Detection ─────────────────────
         if self._is_content_generation(lower_query):
-            logger.info("Triage override: Content generation detected, routing to content_generation")
+            logger.info(
+                "Triage override: Content generation detected, routing to content_generation"
+            )
             return "content_generation", None
 
         # ── Default: semantic router ────────────────────────────────────────
@@ -401,8 +438,20 @@ class AmadeusService:
         """Return True if the query asks to write/create long-form content."""
         verbs = ["write", "compose", "create", "draft", "generate", "explain in detail"]
         nouns = [
-            "essay", "article", "story", "poem", "code", "script", "program",
-            "letter", "email", "report", "summary", "paragraph", "post", "blog"
+            "essay",
+            "article",
+            "story",
+            "poem",
+            "code",
+            "script",
+            "program",
+            "letter",
+            "email",
+            "report",
+            "summary",
+            "paragraph",
+            "post",
+            "blog",
         ]
         return any(v in lower_query for v in verbs) and any(n in lower_query for n in nouns)
 
@@ -469,9 +518,7 @@ class AmadeusService:
 
         if self.tool_registry.get(actual_tool_name):
             args = await self._arg_extractor.extract(actual_tool_name, user_input)
-            result = await self._tool_dispatcher.dispatch(
-                actual_tool_name, args, context
-            )
+            result = await self._tool_dispatcher.dispatch(actual_tool_name, args, context)
             if result.success:
                 if actual_tool_name == "fetch_webpage_content":
                     # Specialized summary for webpage content
@@ -479,7 +526,7 @@ class AmadeusService:
                         user_input,
                         actual_tool_name,
                         result.output,
-                        instruction="Summarize the content of the webpage provided below. Be thorough but concise."
+                        instruction="Summarize the content of the webpage provided below. Be thorough but concise.",
                     )
                 else:
                     prose = await self._composer.compose_tool_response(
@@ -559,7 +606,8 @@ class AmadeusService:
         if result.success:
             logger.info(
                 "MoE agent completed: expert=%s, tools=%s",
-                result.expert_used, result.tools_used,
+                result.expert_used,
+                result.tools_used,
             )
             return result.final_answer, result.tools_used
         return result.error or "I couldn't complete that task.", []
@@ -719,7 +767,9 @@ class AmadeusService:
 
     def _make_llm_generate(self) -> Callable[..., Awaitable[str]] | None:
         """Build an async LLM generate closure for the LangGraph agent."""
-        if getattr(self, "llm_router", None) is None and not (hasattr(self, "client") and self.client):
+        if getattr(self, "llm_router", None) is None and not (
+            hasattr(self, "client") and self.client
+        ):
             return None
 
         async def _generate(prompt: str, **kwargs: Any) -> str:
@@ -730,7 +780,9 @@ class AmadeusService:
             router = getattr(self, "llm_router", None)
             if router is not None:
                 response, _ = await router.generate(
-                    prompt, complexity=complexity, structured=structured,
+                    prompt,
+                    complexity=complexity,
+                    structured=structured,
                     json_schema=json_schema,
                 )
                 return response
@@ -744,7 +796,12 @@ class AmadeusService:
                 None,
                 lambda: self.client.models.generate_content(
                     model=self.model_name,
-                    contents=prompt + ("\n\nIMPORTANT: Respond ONLY with a valid JSON object." if structured else ""),
+                    contents=prompt
+                    + (
+                        "\n\nIMPORTANT: Respond ONLY with a valid JSON object."
+                        if structured
+                        else ""
+                    ),
                 ),
             )
             return str(response.text) if hasattr(response, "text") else str(response)
@@ -755,6 +812,7 @@ class AmadeusService:
     def _bump_gemini_metric() -> None:
         try:
             from src.infra.metrics import amadeus_llm_calls_total
+
             amadeus_llm_calls_total.labels(provider="gemini").inc()
         except Exception:
             pass

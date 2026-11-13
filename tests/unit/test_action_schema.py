@@ -30,8 +30,9 @@ def _count(n: int = 3) -> str:
 
 
 def _tool(name, fn, category=ToolCategory.WEATHER, parameters=None):
-    return Tool(name=name, function=fn, description="d", category=category,
-                parameters=parameters or {})
+    return Tool(
+        name=name, function=fn, description="d", category=category, parameters=parameters or {}
+    )
 
 
 def test_args_schema_uses_signature_names_and_types():
@@ -57,12 +58,12 @@ def test_per_tool_schema_accepts_valid_and_rejects_invented_actions():
         jsonschema.validate(action, schema)
 
     bad = [
-        {"plan": "p", "tool": "rm_rf", "args": {}},                          # unknown tool
-        {"plan": "p", "tool": "get_weather", "args": {"city": "Pune"}},      # wrong arg key
-        {"plan": "p", "tool": "get_weather", "args": {}},                     # missing required
-        {"plan": "p", "tool": "count", "args": {"n": "three"}},               # wrong type
-        {"tool": "count", "args": {}},                                        # no reasoning
-        {"plan": "x" * 500, "tool": "count", "args": {}},                     # unbounded text
+        {"plan": "p", "tool": "rm_rf", "args": {}},  # unknown tool
+        {"plan": "p", "tool": "get_weather", "args": {"city": "Pune"}},  # wrong arg key
+        {"plan": "p", "tool": "get_weather", "args": {}},  # missing required
+        {"plan": "p", "tool": "count", "args": {"n": "three"}},  # wrong type
+        {"tool": "count", "args": {}},  # no reasoning
+        {"plan": "x" * 500, "tool": "count", "args": {}},  # unbounded text
     ]
     for action in bad:
         with pytest.raises(jsonschema.ValidationError):
@@ -96,8 +97,9 @@ def _graph(llm_generate):
 
     registry = ToolRegistry()
     registry.register(_tool("get_weather", _weather))
-    return AmadeusGraph(tool_registry=registry, tool_executor=MagicMock(),
-                        llm_generate=llm_generate)
+    return AmadeusGraph(
+        tool_registry=registry, tool_executor=MagicMock(), llm_generate=llm_generate
+    )
 
 
 @pytest.mark.asyncio

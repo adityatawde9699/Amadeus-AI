@@ -202,9 +202,7 @@ class ScheduledTaskORM(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now(), index=True)
     executed_at: Mapped[datetime | None] = mapped_column(nullable=True, index=True)
 
-    __table_args__ = (
-        Index("idx_scheduled_status_runat", "status", "run_at"),
-    )
+    __table_args__ = (Index("idx_scheduled_status_runat", "status", "run_at"),)
 
     def __repr__(self) -> str:
         return f"<ScheduledTask(id={self.id}, status={self.status.value}, run_at={self.run_at})>"
@@ -256,9 +254,7 @@ class GoalStepORM(Base):
     __tablename__ = "goal_steps"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
-    goal_id: Mapped[int] = mapped_column(
-        ForeignKey("goals.id", ondelete="CASCADE"), index=True
-    )
+    goal_id: Mapped[int] = mapped_column(ForeignKey("goals.id", ondelete="CASCADE"), index=True)
     seq: Mapped[int] = mapped_column(Integer, default=0, index=True)
     expert: Mapped[str | None] = mapped_column(String(64), nullable=True)
     subtask: Mapped[str] = mapped_column(Text)
@@ -672,5 +668,3 @@ class ConversationSummaryORM(Base):
 
     def __repr__(self) -> str:
         return f"<ConversationSummary(id={self.id}, msgs={self.messages_summarized})>"
-
-

@@ -119,13 +119,11 @@ class KnowledgeSynthesizer:
                 f"{', '.join(sorted({s.domain for s in top if s.domain})[:3]) or 'web sources'}."
             )
             analysis_parts = [
-                f"- {s.title} ({s.domain or s.provider}): {s.snippet[:_SNIPPET_CHARS]}"
-                for s in top
+                f"- {s.title} ({s.domain or s.provider}): {s.snippet[:_SNIPPET_CHARS]}" for s in top
             ]
             analysis = (
                 "Automated synthesis was unavailable, so the following are the "
-                "highest-reliability findings gathered per source:\n\n"
-                + "\n".join(analysis_parts)
+                "highest-reliability findings gathered per source:\n\n" + "\n".join(analysis_parts)
             )
             findings = [f"{s.title} — {s.domain or s.provider}" for s in top[:5]]
         else:

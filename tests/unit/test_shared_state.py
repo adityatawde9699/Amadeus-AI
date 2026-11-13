@@ -137,8 +137,9 @@ def _app(server, monkeypatch, limit=3):
     monkeypatch.setattr(settings, "RATE_LIMIT_ENABLED", True)
     monkeypatch.setattr(settings, "RATE_LIMIT_AUTH_REQUESTS", limit)
     monkeypatch.setattr(settings, "RATE_LIMIT_AUTH_WINDOW_SECONDS", 60)
-    monkeypatch.setattr(rate_limit.RateLimitMiddleware, "_redis_client",
-                        lambda self: _client(server))
+    monkeypatch.setattr(
+        rate_limit.RateLimitMiddleware, "_redis_client", lambda self: _client(server)
+    )
     app = FastAPI()
     app.add_middleware(rate_limit.RateLimitMiddleware)
 
@@ -154,8 +155,10 @@ def test_auth_limit_is_shared_between_workers(server, monkeypatch):
 
     worker_a = TestClient(_app(server, monkeypatch))
     worker_b = TestClient(_app(server, monkeypatch))
-    codes = [c.post("/api/v1/auth/jwt/login").status_code
-             for c in (worker_a, worker_b, worker_a, worker_b)]
+    codes = [
+        c.post("/api/v1/auth/jwt/login").status_code
+        for c in (worker_a, worker_b, worker_a, worker_b)
+    ]
     assert codes == [200, 200, 200, 429]  # limit 3 holds across both workers
 
 

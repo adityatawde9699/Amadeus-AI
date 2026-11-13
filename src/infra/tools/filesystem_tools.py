@@ -53,7 +53,11 @@ def _safe_resolve(user_path: str) -> Path | None:
     ),
     category=ToolCategory.FILE_SYSTEM,
     parameters={
-        "path": {"type": "string", "description": "Relative path within workspace (use '.' for root)", "default": "."}
+        "path": {
+            "type": "string",
+            "description": "Relative path within workspace (use '.' for root)",
+            "default": ".",
+        }
     },
     requires_confirmation=False,
 )

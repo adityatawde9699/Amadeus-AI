@@ -113,9 +113,7 @@ class OnnxEmbedder:
             "attention_mask": attention_mask,
         }
         if "token_type_ids" in self._input_names:
-            feed["token_type_ids"] = np.array(
-                [e.type_ids for e in encodings], dtype=np.int64
-            )
+            feed["token_type_ids"] = np.array([e.type_ids for e in encodings], dtype=np.int64)
 
         # Output 0 is the token-level hidden states: (batch, seq, dim)
         hidden = self._session.run(None, feed)[0]

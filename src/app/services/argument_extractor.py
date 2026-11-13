@@ -36,11 +36,7 @@ logger = logging.getLogger(__name__)
 
 def _user_input_block(user_input: str) -> str:
     escaped = escape(user_input, quote=False)
-    return (
-        "<user_input>\n"
-        f"{escaped}\n"
-        "</user_input>"
-    )
+    return f"<user_input>\n{escaped}\n</user_input>"
 
 
 class ArgumentExtractor:
@@ -80,7 +76,9 @@ class ArgumentExtractor:
             return await self._extract_word_args(text)
 
         # ── 1.5 specialized code generator ───────────────────────────
-        if tool_name == "execute_python_script" and not any(marker in text for marker in ("def ", "import ", "print(", "=", ":")):
+        if tool_name == "execute_python_script" and not any(
+            marker in text for marker in ("def ", "import ", "print(", "=", ":")
+        ):
             # If input is natural language (no code markers), generate code first.
             logger.info("Natural language coding request detected, using LLM to generate code")
             return await self._generate_code_with_llm(text)
@@ -149,14 +147,17 @@ class ArgumentExtractor:
             valid_keys = list(properties_dict.keys())
 
             filtered = {
-                k: str(v).strip()
-                for k, v in parsed.items()
-                if k in valid_keys and str(v).strip()
+                k: str(v).strip() for k, v in parsed.items() if k in valid_keys and str(v).strip()
             }
             return filtered if filtered else None
 
         except json.JSONDecodeError as exc:
-            logger.warning("JSON decode failed in LLM extraction for '%s': %s. Raw: %s", tool_name, exc, raw_text)
+            logger.warning(
+                "JSON decode failed in LLM extraction for '%s': %s. Raw: %s",
+                tool_name,
+                exc,
+                raw_text,
+            )
             return None
         except Exception as exc:
             logger.warning("LLM arg extraction failed for '%s': %s", tool_name, exc)
@@ -192,7 +193,11 @@ class ArgumentExtractor:
                 }
         except Exception as exc:
             logger.warning("Excel arg extraction failed: %s — using defaults", exc)
-        return {"file_name": "spreadsheet.xlsx", "columns": ["Column1", "Column2", "Column3"], "data": []}
+        return {
+            "file_name": "spreadsheet.xlsx",
+            "columns": ["Column1", "Column2", "Column3"],
+            "data": [],
+        }
 
     async def _extract_word_args(self, user_input: str) -> dict[str, Any]:
         """Parse a natural-language Word request into file_name / title / content."""
@@ -256,13 +261,13 @@ class ArgumentExtractor:
         if tool_name == "open_program":
             for kw in ("open ", "launch ", "start ", "run "):
                 if kw in lower:
-                    return {"app_name": text[lower.index(kw) + len(kw):].strip()}
+                    return {"app_name": text[lower.index(kw) + len(kw) :].strip()}
             return {"app_name": text}
 
         if tool_name == "terminate_program":
             for kw in ("close ", "kill ", "stop ", "terminate ", "end "):
                 if kw in lower:
-                    return {"process_name": text[lower.index(kw) + len(kw):].strip()}
+                    return {"process_name": text[lower.index(kw) + len(kw) :].strip()}
             return {"process_name": text}
 
         if tool_name == "search_file":
@@ -270,7 +275,12 @@ class ArgumentExtractor:
             for kw in ("find ", "locate ", "where is ", "search for ", "search "):
                 if kw in cleaned:
                     idx = cleaned.index(kw) + len(kw)
-                    return {"file_name": text.lower().replace("a pdf named ", "").replace("a file named ", "")[idx:].strip()}
+                    return {
+                        "file_name": text.lower()
+                        .replace("a pdf named ", "")
+                        .replace("a file named ", "")[idx:]
+                        .strip()
+                    }
             return {"file_name": text}
 
         if tool_name in ("web_search", "wikipedia_search"):
@@ -283,7 +293,8 @@ class ArgumentExtractor:
             if match:
                 return {"location": match.group(1).strip()}
             filtered = [
-                w for w in lower.split()
+                w
+                for w in lower.split()
                 if w not in {"how", "what", "is", "the", "weather", "today", "like", "in"}
             ]
             return {"location": " ".join(filtered) if filtered else "current location"}
@@ -305,22 +316,29 @@ class ArgumentExtractor:
             return {"level": 70}
 
         if tool_name in (
-            "take_screenshot", "get_volume", "list_open_apps", "get_battery_info",
-            "system_status", "get_running_processes", "get_cpu_usage",
-            "get_memory_usage", "get_disk_usage", "get_network_info",
+            "take_screenshot",
+            "get_volume",
+            "list_open_apps",
+            "get_battery_info",
+            "system_status",
+            "get_running_processes",
+            "get_cpu_usage",
+            "get_memory_usage",
+            "get_disk_usage",
+            "get_network_info",
         ):
             return {}
 
         if tool_name == "calculate":
             for kw in ("calculate ", "compute ", "what is ", "evaluate "):
                 if kw in lower:
-                    return {"expression": text[lower.index(kw) + len(kw):].strip()}
+                    return {"expression": text[lower.index(kw) + len(kw) :].strip()}
             return {"expression": text}
 
         if tool_name == "create_note":
             for kw in ("note ", "note: ", "save note "):
                 if kw in lower:
-                    return {"content": text[lower.index(kw) + len(kw):].strip()}
+                    return {"content": text[lower.index(kw) + len(kw) :].strip()}
             return {"content": text}
 
         if tool_name == "add_reminder":
@@ -343,7 +361,6 @@ class ArgumentExtractor:
             if time_str:
                 title = title.replace(time_str.lower(), "").strip().rstrip("at").strip()
             return {"title": title or text, "time": time_str}
-
 
         if tool_name == "set_timer":
             minutes = re.search(r"(\d+)\s*minute", lower)
@@ -400,19 +417,34 @@ class ArgumentExtractor:
     @staticmethod
     def _parse_news_args(lower: str) -> dict[str, Any]:
         country_map = {
-            "usa": "us", "us": "us", "america": "us", "american": "us",
-            "india": "in", "indian": "in",
-            "uk": "gb", "britain": "gb", "england": "gb",
-            "australia": "au", "canada": "ca",
+            "usa": "us",
+            "us": "us",
+            "america": "us",
+            "american": "us",
+            "india": "in",
+            "indian": "in",
+            "uk": "gb",
+            "britain": "gb",
+            "england": "gb",
+            "australia": "au",
+            "canada": "ca",
         }
         cat_map = {
-            "tech": "technology", "technology": "technology",
-            "business": "business", "finance": "business", "economy": "business",
-            "sports": "sports", "sport": "sports",
-            "health": "health", "medical": "health",
+            "tech": "technology",
+            "technology": "technology",
+            "business": "business",
+            "finance": "business",
+            "economy": "business",
+            "sports": "sports",
+            "sport": "sports",
+            "health": "health",
+            "medical": "health",
             "science": "science",
-            "entertainment": "entertainment", "bollywood": "entertainment",
-            "political": "general", "politics": "general", "wars": "general",
+            "entertainment": "entertainment",
+            "bollywood": "entertainment",
+            "political": "general",
+            "politics": "general",
+            "wars": "general",
         }
         country = "in"
         for kw, code in country_map.items():

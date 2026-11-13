@@ -71,13 +71,11 @@ jobs:
       - name: Lint (ruff)
         run: uv run ruff check src/ tests/
 
-      # TEMPORARILY NON-BLOCKING (2026-11-12): 70 files are unformatted and mypy
-      # reports 99 errors. Run `uv run ruff format src/` in a dedicated commit and
-      # burn down mypy errors, then remove continue-on-error from both steps.
       - name: Format check (ruff)
-        run: uv run ruff format --check src/
-        continue-on-error: true
+        run: uv run ruff format --check src/ tests/
 
+      # TEMPORARILY NON-BLOCKING (2026-11-12): mypy reports ~95 errors, mostly
+      # pre-existing. Burn them down, then remove continue-on-error.
       - name: Type check (mypy)
         run: uv run mypy src/ --ignore-missing-imports
         continue-on-error: true

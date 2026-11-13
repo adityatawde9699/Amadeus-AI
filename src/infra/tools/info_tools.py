@@ -25,11 +25,13 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 _http_session: httpx.AsyncClient | None = None
 
+
 async def initialize_info_tools_http_session() -> None:
     """Create the shared HTTP session used by information tools."""
     global _http_session
     if _http_session is None or _http_session.is_closed:
         _http_session = httpx.AsyncClient(follow_redirects=True)
+
 
 async def close_info_tools_http_session() -> None:
     """Close the shared HTTP session used by information tools."""
@@ -38,6 +40,7 @@ async def close_info_tools_http_session() -> None:
         await _http_session.aclose()
     _http_session = None
 
+
 async def _get_http_session() -> httpx.AsyncClient:
     if _http_session is None or _http_session.is_closed:
         await initialize_info_tools_http_session()
@@ -45,9 +48,11 @@ async def _get_http_session() -> httpx.AsyncClient:
         raise RuntimeError("info tools HTTP session is unavailable")
     return _http_session
 
+
 # =============================================================================
 # GREETING & TIME TOOLS
 # =============================================================================
+
 
 @tool(
     name="get_greeting",
@@ -72,6 +77,7 @@ def get_greeting() -> str:
         greetings = ["Hello", "Hi there", "Hey"]
 
     return random.choice(greetings)
+
 
 @tool(
     name="get_datetime_info",
@@ -111,9 +117,11 @@ def get_datetime_info(query: str = "time") -> str:
         return f"It is {now.strftime('%I:%M %p')} on {now.strftime('%A, %B %d, %Y')}"
     return f"It's {now.strftime('%I:%M %p')} on {now.strftime('%A, %B %d, %Y')}"
 
+
 # =============================================================================
 # WEATHER TOOLS
 # =============================================================================
+
 
 @tool(
     name="get_weather",
@@ -124,7 +132,12 @@ def get_datetime_info(query: str = "time") -> str:
         "Trigger: 'weather in Mumbai', 'is it raining', 'temperature today', 'how hot is it'"
     ),
     category=ToolCategory.WEATHER,
-    parameters={"location": {"type": "string", "description": "City name or location (e.g., 'Mumbai', 'New York')"}},
+    parameters={
+        "location": {
+            "type": "string",
+            "description": "City name or location (e.g., 'Mumbai', 'New York')",
+        }
+    },
 )
 async def get_weather_async(location: str = "India") -> str:
     """Fetches current weather for a location using OpenWeatherMap API."""
@@ -137,9 +150,7 @@ async def get_weather_async(location: str = "India") -> str:
 
     try:
         session = await _get_http_session()
-        response = await session.get(
-            base_url, params=params, timeout=10
-        )
+        response = await session.get(base_url, params=params, timeout=10)
         if response.status_code == 404:
             return f"Sorry, I couldn't find weather data for '{location}'."
         if response.status_code != 200:
@@ -171,9 +182,11 @@ async def get_weather_async(location: str = "India") -> str:
     except Exception as e:
         return f"Sorry, I couldn't fetch the weather: {e}"
 
+
 # =============================================================================
 # NEWS TOOLS
 # =============================================================================
+
 
 @tool(
     name="get_news",
@@ -190,7 +203,10 @@ async def get_weather_async(location: str = "India") -> str:
             "description": "News category: general, business, technology, sports, health, entertainment, science",
         },
         "country": {"type": "string", "description": "ISO country code: in, us, gb, au, ca"},
-        "count": {"type": "integer", "description": "Number of headlines to fetch (default: 5, max: 20)"},
+        "count": {
+            "type": "integer",
+            "description": "Number of headlines to fetch (default: 5, max: 20)",
+        },
     },
 )
 async def get_news_async(
@@ -219,9 +235,7 @@ async def get_news_async(
 
     try:
         session = await _get_http_session()
-        response = await session.get(
-            base_url, params=params, timeout=10
-        )
+        response = await session.get(base_url, params=params, timeout=10)
         if response.status_code != 200:
             return f"News service error (status {response.status_code})."
 
@@ -250,9 +264,11 @@ async def get_news_async(
     except Exception as e:
         return f"Sorry, I couldn't fetch the news: {e}"
 
+
 # =============================================================================
 # WEB BROWSING TOOLS
 # =============================================================================
+
 
 @tool(
     name="open_website",
@@ -263,7 +279,9 @@ async def get_news_async(
         "Trigger: 'open youtube.com', 'google python tutorials', 'browse reddit'"
     ),
     category=ToolCategory.WEB_RESEARCH,
-    parameters={"query": {"type": "string", "description": "A URL to open or a search query for Google"}},
+    parameters={
+        "query": {"type": "string", "description": "A URL to open or a search query for Google"}
+    },
 )
 def open_website(query: str | None = None, url: str | None = None, **kwargs: Any) -> str:
     """Opens a website or performs a Google search."""
@@ -291,9 +309,11 @@ def open_website(query: str | None = None, url: str | None = None, **kwargs: Any
     except Exception as e:
         return f"Failed to open browser: {e}"
 
+
 # =============================================================================
 # WIKIPEDIA TOOLS
 # =============================================================================
+
 
 @tool(
     name="wikipedia_search",
@@ -334,9 +354,7 @@ async def wikipedia_search_async(query: str, sentences: int = 3) -> str:
 
     try:
         session = await _get_http_session()
-        response = await session.get(
-            search_url, headers=headers, timeout=10
-        )
+        response = await session.get(search_url, headers=headers, timeout=10)
         if response.status_code == 404:
             return await _wikipedia_search_fallback(query, session)
         if response.status_code != 200:
@@ -362,6 +380,7 @@ async def wikipedia_search_async(query: str, sentences: int = 3) -> str:
     except Exception as e:
         return f"Error searching Wikipedia: {e}"
 
+
 async def _wikipedia_search_fallback(query: str, session: httpx.AsyncClient) -> str:
     """Fallback search using Wikipedia's search API."""
     search_api = "https://en.wikipedia.org/w/api.php"
@@ -375,9 +394,7 @@ async def _wikipedia_search_fallback(query: str, session: httpx.AsyncClient) -> 
 
     headers = {"User-Agent": "AmadeusAI/2.0 (https://github.com/adityatawde9699/Amadeus-AI)"}
     try:
-        response = await session.get(
-            search_api, params=params, headers=headers, timeout=10
-        )
+        response = await session.get(search_api, params=params, headers=headers, timeout=10)
         data = response.json()
         results = data.get("query", {}).get("search", [])
 
@@ -397,9 +414,11 @@ async def _wikipedia_search_fallback(query: str, session: httpx.AsyncClient) -> 
     except Exception as e:
         return f"Wikipedia search failed: {e}"
 
+
 # =============================================================================
 # CALCULATION TOOLS
 # =============================================================================
+
 
 @tool(
     name="calculate",
@@ -509,9 +528,11 @@ def calculate(expression: str) -> str:
     except Exception as e:
         return f"Calculation error: {e}"
 
+
 # =============================================================================
 # CONVERSION TOOLS
 # =============================================================================
+
 
 @tool(
     name="convert_temperature",
@@ -550,6 +571,7 @@ def convert_temperature(value: float, from_unit: str, to_unit: str) -> str:
 
     return f"{value}° = {result:.2f}° {unit_name}"
 
+
 @tool(
     name="convert_length",
     description=(
@@ -586,6 +608,7 @@ def convert_length(value: float, from_unit: str, to_unit: str) -> str:
     result = meters / to_meters[to_unit]
 
     return f"{value} {from_unit} = {result:.4f} {to_unit}"
+
 
 # Cached FX rates: base currency → (fetched_at_timestamp, {code: rate})
 _fx_cache: dict[str, tuple[float, dict[str, float]]] = {}
@@ -672,6 +695,7 @@ JOKES = [
     ("Why do programmers hate nature?", "It has too many bugs!"),
 ]
 
+
 @tool(
     name="tell_joke",
     description=(
@@ -685,9 +709,11 @@ def tell_joke() -> str:
     setup, punchline = random.choice(JOKES)
     return f"{setup}\n\n{punchline}"
 
+
 # =============================================================================
 # TIMER TOOLS
 # =============================================================================
+
 
 @tool(
     name="set_timer",
@@ -698,7 +724,10 @@ def tell_joke() -> str:
     ),
     category=ToolCategory.TASK_MANAGER,
     parameters={
-        "duration_seconds": {"type": "integer", "description": "Timer duration in seconds (e.g., 300 for 5 minutes)"},
+        "duration_seconds": {
+            "type": "integer",
+            "description": "Timer duration in seconds (e.g., 300 for 5 minutes)",
+        },
         "message": {"type": "string", "description": "Message when timer completes"},
     },
 )
@@ -722,6 +751,7 @@ async def set_timer_async(duration_seconds: int, message: str = "Timer finished!
         duration_str = f"{duration_seconds}s"
 
     return f"Timer set for {duration_str}. I'll remind you when it's done."
+
 
 def parse_duration(duration_str: str) -> int:
     """Parses a duration string into seconds."""
@@ -750,9 +780,11 @@ def parse_duration(duration_str: str) -> int:
 
     return total_seconds
 
+
 # =============================================================================
 # WEB SEARCH TOOL (via SearchRouter)
 # =============================================================================
+
 
 @tool(
     name="web_search",
@@ -764,8 +796,14 @@ def parse_duration(duration_str: str) -> int:
     ),
     category=ToolCategory.WEB_RESEARCH,
     parameters={
-        "query": {"type": "string", "description": "The search query - be specific for better results"},
-        "depth": {"type": "string", "description": "'quick' (default, fast DuckDuckGo) or 'deep' (Tavily deep research)"},
+        "query": {
+            "type": "string",
+            "description": "The search query - be specific for better results",
+        },
+        "depth": {
+            "type": "string",
+            "description": "'quick' (default, fast DuckDuckGo) or 'deep' (Tavily deep research)",
+        },
     },
 )
 async def web_search_async(query: str, depth: str = "quick") -> str:
@@ -782,9 +820,11 @@ async def web_search_async(query: str, depth: str = "quick") -> str:
         logger.exception("web_search failed: %s", type(e).__name__)
         return f"Search failed: {e}"
 
+
 # =============================================================================
 # TOOL COLLECTION
 # =============================================================================
+
 
 def get_info_tools() -> list[Tool]:
     """Get all information tools for manual registration."""

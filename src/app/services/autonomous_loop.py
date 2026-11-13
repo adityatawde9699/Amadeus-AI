@@ -26,9 +26,7 @@ class AutonomousObservationLoop:
         """Start the background observation loop."""
         self._running = True
         self._task: asyncio.Task | None = None  # type: ignore[type-arg]
-        logger.info(
-            "Starting Autonomous Observation Loop (interval: %sm)", self.interval_minutes
-        )
+        logger.info("Starting Autonomous Observation Loop (interval: %sm)", self.interval_minutes)
         # DR-01: Store task reference so exceptions are never silently swallowed.
         self._task = asyncio.create_task(self._loop())
         self._task.add_done_callback(self._on_task_done)
@@ -47,7 +45,8 @@ class AutonomousObservationLoop:
             if exc is not None:
                 logger.error(
                     "AutonomousObservationLoop task raised an unhandled exception: %s",
-                    exc, exc_info=exc,
+                    exc,
+                    exc_info=exc,
                 )
         except asyncio.CancelledError:
             logger.info("AutonomousObservationLoop task was cancelled cleanly.")
@@ -97,6 +96,7 @@ class AutonomousObservationLoop:
             if alerts and self.session_ids:
                 logger.warning("System health alerts detected: %s", alerts)
                 from src.container import global_container
+
                 svc = global_container.amadeus_service()
 
                 alert_msg = "⚠️ **System Health Alert**\n\n" + "\n".join(alerts)
@@ -109,6 +109,7 @@ class AutonomousObservationLoop:
         """Trigger the agent to observe its state."""
         try:
             from src.core.config import get_settings
+
             settings = get_settings()
 
             # Enforce Rate Limiting
@@ -121,7 +122,8 @@ class AutonomousObservationLoop:
             if len(history) >= settings.PROACTIVE_MESSAGE_LIMIT_PER_HOUR:
                 logger.info(
                     "Skipping proactive observation for session %s (Rate limit reached: %d/hr)",
-                    session_id, len(history)
+                    session_id,
+                    len(history),
                 )
                 return
 
@@ -129,7 +131,9 @@ class AutonomousObservationLoop:
             self._recent_observations[session_id].append(now)
 
             if settings.PROACTIVE_DRY_RUN:
-                logger.info("[DRY RUN] Would trigger proactive observation for session %s", session_id)
+                logger.info(
+                    "[DRY RUN] Would trigger proactive observation for session %s", session_id
+                )
                 return
 
             logger.info("Triggering autonomous observation for session %s", session_id)

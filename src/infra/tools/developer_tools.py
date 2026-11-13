@@ -44,6 +44,7 @@ def _get_sandbox():
         return _sandbox
 
     from src.core.config import get_settings
+
     settings = get_settings()
     sandbox_mode = str(getattr(settings, "SANDBOX_MODE", "disabled")).lower()
 
@@ -175,6 +176,7 @@ def execute_python_script(code: str | None = None, **kwargs: Any) -> str:
 async def terminal_cmd(command: str | None = None, **kwargs: Any) -> str:
     """Execute a command on the host OS without invoking a shell."""
     import asyncio
+
     cmd = command or kwargs.get("cmd", "")
     if not cmd or not cmd.strip():
         return "Error: No command provided."
@@ -185,9 +187,7 @@ async def terminal_cmd(command: str | None = None, **kwargs: Any) -> str:
             return "Error: No command provided."
 
         process = await asyncio.create_subprocess_exec(
-            *args,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+            *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
 
         try:

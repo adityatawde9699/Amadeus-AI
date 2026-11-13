@@ -265,7 +265,6 @@ class APIConfirmationCallback(ConfirmationCallback):
             if session_id is None or self.is_owner(p, session_id)
         ]
 
-
     # Async accessors — what the API routes call, so the in-process and Redis
     # backends are interchangeable.
     async def aapprove(self, request_id: str, approved: bool) -> bool:
@@ -349,9 +348,13 @@ class RedisConfirmationCallback(APIConfirmationCallback):
                     pipe.zrem(self._index_key, request_id)
                     await pipe.execute()
             except Exception:
-                logger.warning("confirmation_redis_cleanup_failed", extra={"request_id": request_id})
+                logger.warning(
+                    "confirmation_redis_cleanup_failed", extra={"request_id": request_id}
+                )
         if popped is None:
-            logger.warning("confirmation_timeout", extra={"tool": tool_name, "request_id": request_id})
+            logger.warning(
+                "confirmation_timeout", extra={"tool": tool_name, "request_id": request_id}
+            )
             return False
         return _as_str(popped[1]) == "1"
 
@@ -383,13 +386,15 @@ class RedisConfirmationCallback(APIConfirmationCallback):
         for raw in raws:
             pending = self._decode(raw)
             if pending and (session_id is None or self.is_owner(pending, session_id)):
-                out.append({
-                    "request_id": pending.request_id,
-                    "tool_name": pending.tool_name,
-                    "args": pending.args,
-                    "preview": pending.preview,
-                    "created_at": pending.created_at.isoformat(),
-                })
+                out.append(
+                    {
+                        "request_id": pending.request_id,
+                        "tool_name": pending.tool_name,
+                        "args": pending.args,
+                        "preview": pending.preview,
+                        "created_at": pending.created_at.isoformat(),
+                    }
+                )
         return out
 
     # Sync accessors can't reach Redis; fail loudly instead of returning stale data.

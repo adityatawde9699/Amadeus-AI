@@ -245,6 +245,7 @@ def _build_tool_registry() -> ToolRegistry:
 
             # Since TurbovecMemoryService requires no args to instantiate its wrapper
             from src.infra.turbovec_memory import TurbovecMemoryService
+
             memory_service = TurbovecMemoryService()
 
             # Use the global _build_goal_repo_factory and cast them to appease typecheckers
@@ -266,13 +267,14 @@ def _build_tool_registry() -> ToolRegistry:
             async def _dispatch_bg(prompt: str) -> None:
                 from src.core.domain.context import RequestContext
                 from src.core.domain.models import PermissionProfile
+
                 svc = get_amadeus_service()
                 # Least privilege: agent-scheduled background work runs at STANDARD.
                 context = RequestContext(
                     request_id="bg-task",
                     session_id="background",
                     user_id="system",
-                    permissions=PermissionProfile.STANDARD
+                    permissions=PermissionProfile.STANDARD,
                 )
                 await svc.handle_background_event(prompt, context=context)
 
@@ -280,9 +282,7 @@ def _build_tool_registry() -> ToolRegistry:
             async def _schedule_task(prompt: str, session_id: str, minutes: float) -> int:
                 from src.runtime.scheduler import enqueue_task
 
-                return await enqueue_task(
-                    prompt, session_id or "background", delay_minutes=minutes
-                )
+                return await enqueue_task(prompt, session_id or "background", delay_minutes=minutes)
 
             # Durable long-horizon goal execution (Phase 2).
             async def _execute_goal(goal_id: int) -> str:
@@ -362,6 +362,7 @@ def _build_llm_router() -> LLMRouter:
     # Resolve GGUF path: SLM_MODEL_PATH > Model/<filename> > auto-download
     try:
         from src.infra.model_manager import ModelManager
+
         mm = ModelManager(settings)
         resolved_gguf = mm.resolve_gguf_model()
     except Exception as e:
@@ -439,9 +440,7 @@ def _build_output_policy(storage_service: object) -> object:
 # ── Research engine ───────────────────────────────────────────────────────────
 
 
-def _build_research_orchestrator(
-    search_router: object, storage_service: object
-) -> object:
+def _build_research_orchestrator(search_router: object, storage_service: object) -> object:
     from src.research.collector import InformationCollector
     from src.research.orchestrator import ResearchOrchestrator
     from src.research.planner import QueryPlanner
@@ -459,12 +458,11 @@ def _build_research_orchestrator(
         router = None
 
     if router is not None:
+
         async def llm_generate(  # type: ignore[misc]
             prompt: str, complexity: str = "high", structured: bool = False
         ) -> str:
-            text, _ = await router.generate(
-                prompt, complexity=complexity, structured=structured
-            )
+            text, _ = await router.generate(prompt, complexity=complexity, structured=structured)
             return text
 
     planner = QueryPlanner(llm_generate, max_subtopics=settings.RESEARCH_MAX_SUBTOPICS)
@@ -495,7 +493,6 @@ def _build_command_router(research_orchestrator: object) -> object:
         research_orchestrator,  # type: ignore[arg-type]
         forward_progress=settings.RESEARCH_PROGRESS_NOTIFICATIONS,
     )
-
 
 
 # =============================================================================
@@ -535,17 +532,13 @@ class Container(containers.DeclarativeContainer):
 
     # AMASPACE workspace persistence (Tasks 3 & 4)
     workspace_manager = providers.Singleton(_build_workspace_manager)
-    artifact_registry = providers.Singleton(
-        _build_artifact_registry, workspace=workspace_manager
-    )
+    artifact_registry = providers.Singleton(_build_artifact_registry, workspace=workspace_manager)
     storage_service = providers.Singleton(
         _build_storage_service,
         workspace=workspace_manager,
         registry=artifact_registry,
     )
-    output_policy = providers.Singleton(
-        _build_output_policy, storage_service=storage_service
-    )
+    output_policy = providers.Singleton(_build_output_policy, storage_service=storage_service)
 
     # Research engine (Task 2) + command-and-control router (Task 1)
     research_orchestrator = providers.Singleton(
@@ -573,7 +566,6 @@ class Container(containers.DeclarativeContainer):
         goal_repository=goal_repo,
         llm_router=llm_router,
     )
-
 
 
 # =============================================================================

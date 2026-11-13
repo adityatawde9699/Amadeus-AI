@@ -16,8 +16,6 @@ from src.core.prompt_safety import (
 
 
 if TYPE_CHECKING:
-
-
     from src.core.domain.context import RequestContext
 
 logger = logging.getLogger(__name__)
@@ -55,10 +53,7 @@ class OutcomeMemory(GraphBase):
             seen.add(tool_name)
             failed = result.lower().startswith(("error", "skipped"))
             verdict = "FAILED" if failed else "succeeded"
-            text = (
-                f"[OUTCOME] tool '{tool_name}' {verdict} for intent: {intent} "
-                f"→ {result[:160]}"
-            )
+            text = f"[OUTCOME] tool '{tool_name}' {verdict} for intent: {intent} → {result[:160]}"
             try:
                 await self.memory_service.store(
                     session_id=context.session_id,
@@ -82,10 +77,7 @@ class OutcomeMemory(GraphBase):
             results = await self.memory_service.retrieve(task, top_k=top_k * 3)
         except Exception:
             return ""
-        lines = [
-            r.text for r in results
-            if getattr(r, "subtype", "") == "outcome"
-        ][:top_k]
+        lines = [r.text for r in results if getattr(r, "subtype", "") == "outcome"][:top_k]
         if not lines:
             return ""
         # Outcomes are recorded from tool output, so they are persisted

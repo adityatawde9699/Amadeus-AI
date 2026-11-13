@@ -67,6 +67,7 @@ def build_web_research_tools(search_router: Any = None) -> list[Tool]:
             router = search_router
             if router is None:
                 from src.container import get_search_router
+
                 router = get_search_router()
                 # Ensure the HTTP session is initialized
                 if hasattr(router, "initialize"):
@@ -103,9 +104,10 @@ def build_web_research_tools(search_router: Any = None) -> list[Tool]:
         from src.infra.tools.net_guard import UrlNotAllowedError, fetch_text
 
         settings = get_settings()
-        allow_private = bool(
-            getattr(settings, "ALLOW_PRIVATE_NETWORK_FETCH", False)
-        ) and not settings.is_production
+        allow_private = (
+            bool(getattr(settings, "ALLOW_PRIVATE_NETWORK_FETCH", False))
+            and not settings.is_production
+        )
 
         try:
             resp = await fetch_text(url, allow_private=allow_private)

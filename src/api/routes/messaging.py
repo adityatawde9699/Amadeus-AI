@@ -38,10 +38,7 @@ class SendMessageRequest(BaseModel):
         description="Target channel: 'telegram' or 'email'."
     )
     to: str = Field(
-        description=(
-            "Recipient identifier — Telegram chat_id (int as string), "
-            "or email address."
-        )
+        description=("Recipient identifier — Telegram chat_id (int as string), or email address.")
     )
     message: str = Field(description="Message body to send.")
 
@@ -82,10 +79,7 @@ async def send_message(
     """
     try:
         success = await messaging.send_message(
-            recipient_id=req.to,
-            text=req.message,
-            platform=req.channel,
-            subject=req.subject
+            recipient_id=req.to, text=req.message, platform=req.channel, subject=req.subject
         )
 
         return SendMessageResponse(

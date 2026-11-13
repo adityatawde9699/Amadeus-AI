@@ -92,9 +92,7 @@ class GoalExecutor:
                 if not steps:
                     return f"Could not decompose goal #{goal_id} into steps."
                 await repo.create_steps(goal_id, steps)
-                logger.info(
-                    "Goal #%d decomposed into %d step(s)", goal_id, len(steps)
-                )
+                logger.info("Goal #%d decomposed into %d step(s)", goal_id, len(steps))
 
         if background:
             task = asyncio.create_task(self._drive(goal_id))
@@ -164,9 +162,7 @@ class GoalExecutor:
                         await repo.mark_failed(step.id, result)
 
                 if not ok:
-                    logger.warning(
-                        "Goal #%d halted at step %d: %s", goal_id, step.seq, result
-                    )
+                    logger.warning("Goal #%d halted at step %d: %s", goal_id, step.seq, result)
                     return f"Goal #{goal_id} halted at step {step.seq + 1}: {result}"
 
             # All steps consumed — complete the goal if nothing is left open.

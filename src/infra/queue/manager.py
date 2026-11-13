@@ -55,10 +55,14 @@ class QueueManager:
             )
             if required:
                 logger.exception(message, e)
-                raise RuntimeError("Background job queue requires Redis, but Redis is unavailable") from e
+                raise RuntimeError(
+                    "Background job queue requires Redis, but Redis is unavailable"
+                ) from e
             logger.warning(message, e)
 
-    async def enqueue_tool(self, tool_name: str, args: dict[str, Any], context: RequestContext) -> str:
+    async def enqueue_tool(
+        self, tool_name: str, args: dict[str, Any], context: RequestContext
+    ) -> str:
         """
         Enqueue a tool execution job.
 
@@ -73,7 +77,9 @@ class QueueManager:
             "request_id": context.request_id,
             "session_id": context.session_id,
             "user_id": context.user_id,
-            "permissions": context.permissions.value if hasattr(context.permissions, "value") else str(context.permissions),
+            "permissions": context.permissions.value
+            if hasattr(context.permissions, "value")
+            else str(context.permissions),
             "memory_scope": context.memory_scope,
             "trace_id": context.trace_id,
         }

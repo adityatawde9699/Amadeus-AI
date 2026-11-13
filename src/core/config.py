@@ -45,6 +45,7 @@ def load_or_create_ipc_secret() -> str:
     IPC clients (system tray, GUI) will need to re-authenticate.
     """
     import logging as _logging
+
     _ipc_logger = _logging.getLogger(__name__)
 
     token_path = get_project_root() / "data" / "ipc_secret.token"
@@ -71,7 +72,8 @@ def load_or_create_ipc_secret() -> str:
             _ipc_logger.critical(
                 "Cannot read IPC secret token file (%s): %s. "
                 "Regenerating — connected IPC clients will need to re-authenticate.",
-                token_path, exc,
+                token_path,
+                exc,
             )
 
     token = secrets.token_hex(32)
@@ -133,8 +135,8 @@ class Settings(BaseSettings):
     # runtime EventBus and a dispatcher wakes the agent. Tier-gated: Lite runs
     # threshold checks only; Standard/Power also enable the file watcher.
     ENABLE_EVENT_WATCHERS: bool = False
-    ENABLE_THRESHOLD_WATCHER: bool = True   # system health thresholds (CPU/mem/disk/battery)
-    ENABLE_FILE_WATCHER: bool = True        # directory change watcher (Standard+ only)
+    ENABLE_THRESHOLD_WATCHER: bool = True  # system health thresholds (CPU/mem/disk/battery)
+    ENABLE_FILE_WATCHER: bool = True  # directory change watcher (Standard+ only)
     # Phase 4 — pause risky tool steps *inside* the graph via LangGraph
     # interrupt(), resuming on approval. Off by default: the tool-executor
     # confirmation gate already provides HITL for the live Telegram path, and
@@ -548,7 +550,7 @@ class Settings(BaseSettings):
             # "sqlite:///" (inside "aiosqlite:///"), and a blind replace turned
             # an async URL into "sqlite+aiosqlite+aiosqlite:///".
             if self.DATABASE_URL.startswith("sqlite://"):
-                return "sqlite+aiosqlite://" + self.DATABASE_URL[len("sqlite://"):]
+                return "sqlite+aiosqlite://" + self.DATABASE_URL[len("sqlite://") :]
             return self.DATABASE_URL
         # For PostgreSQL, replace psycopg2 with asyncpg
         if "postgresql" in self.DATABASE_URL.lower():
@@ -668,6 +670,7 @@ def _get_or_create_secret_key(settings: "Settings") -> str:
     # request; a fresh key each call made every issued token unverifiable.
     if _EPHEMERAL_SECRET_KEY is None:
         import logging as _logging
+
         _logging.getLogger(__name__).warning(
             "SECRET_KEY is not set — generating an ephemeral key. "
             "All JWT sessions will be invalidated on restart. "

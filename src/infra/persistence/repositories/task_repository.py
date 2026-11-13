@@ -66,9 +66,7 @@ class SQLAlchemyTaskRepository(ITaskRepository):
 
     async def get_all(self, limit: int | None = None, offset: int = 0) -> list[Task]:
         # id breaks ties between rows created within the same clock tick.
-        query = self._scoped(select(TaskORM)).order_by(
-            TaskORM.created_at.desc(), TaskORM.id.desc()
-        )
+        query = self._scoped(select(TaskORM)).order_by(TaskORM.created_at.desc(), TaskORM.id.desc())
         if limit:
             query = query.limit(limit)
         if offset:

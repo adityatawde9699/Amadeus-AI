@@ -21,6 +21,7 @@ import pytest
 # Fixture: skip gracefully when Docker is not available
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="module")
 def sandbox():
     """Provide a DockerSandboxExecutor, skipping if Docker is unreachable."""
@@ -40,6 +41,7 @@ def sandbox():
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 def test_hello_world(sandbox):

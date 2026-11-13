@@ -73,9 +73,7 @@ class ArtifactRegistry:
             return []
         hits: list[ArtifactMetadata] = []
         for record in self.all():
-            haystack = " ".join(
-                [record.title, record.origin, " ".join(record.tags)]
-            ).lower()
+            haystack = " ".join([record.title, record.origin, " ".join(record.tags)]).lower()
             if q in haystack:
                 hits.append(record)
                 if len(hits) >= limit:

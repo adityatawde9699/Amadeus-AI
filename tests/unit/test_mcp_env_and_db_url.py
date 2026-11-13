@@ -44,8 +44,11 @@ async def test_connect_passes_env_to_server_params(monkeypatch):
         "npx -y some-server --flag", "test", env={"TOKEN": "${MCP_TEST_TOKEN}"}
     )
     assert count == 0
-    assert seen == {"command": "npx", "args": ["-y", "some-server", "--flag"],
-                    "env": {"TOKEN": "t0k"}}
+    assert seen == {
+        "command": "npx",
+        "args": ["-y", "some-server", "--flag"],
+        "env": {"TOKEN": "t0k"},
+    }
 
 
 @pytest.mark.parametrize(

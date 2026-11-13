@@ -113,9 +113,7 @@ class SearchRouter:
         # Fallback: return whatever DDG returned, even if short
         return ddg_result or "Search results unavailable at this time."
 
-    async def search_results(
-        self, query: str, max_results: int = 5
-    ) -> list[dict[str, str]]:
+    async def search_results(self, query: str, max_results: int = 5) -> list[dict[str, str]]:
         """Structured multi-provider search for the Research Engine.
 
         Unlike :meth:`search` (which returns a pre-formatted prose blob for the
@@ -156,9 +154,7 @@ class SearchRouter:
             subject = (
                 query.replace("who is ", "").replace("what is ", "").replace("define ", "").strip()
             )
-            r = await session.get(
-                url + subject.replace(" ", "_"), timeout=5
-            )
+            r = await session.get(url + subject.replace(" ", "_"), timeout=5)
             if r.status_code == 200:
                 data = r.json()
                 extract = data.get("extract", "")
@@ -212,9 +208,7 @@ class SearchRouter:
                 "search_depth": "advanced",
                 "max_results": 5,
             }
-            r = await session.post(
-                url, json=payload, timeout=15
-            )
+            r = await session.post(url, json=payload, timeout=15)
             if r.status_code == 200:
                 data = r.json()
                 out: list[dict[str, str]] = []
@@ -241,9 +235,7 @@ class SearchRouter:
             subject = (
                 query.replace("who is ", "").replace("what is ", "").replace("define ", "").strip()
             )
-            r = await session.get(
-                url + subject.replace(" ", "_"), timeout=5
-            )
+            r = await session.get(url + subject.replace(" ", "_"), timeout=5)
             if r.status_code == 200:
                 data = r.json()
                 extract = data.get("extract", "")
@@ -268,9 +260,7 @@ class SearchRouter:
         headers = {"User-Agent": "AmadeusAI/2.0 (https://github.com/adityatawde9699/Amadeus-AI)"}
         try:
             session = await self._get_session()
-            response = await session.get(
-                search_api, params=params, headers=headers, timeout=5
-            )
+            response = await session.get(search_api, params=params, headers=headers, timeout=5)
             if response.status_code == 200:
                 data = response.json()
                 results = data.get("query", {}).get("search", [])
@@ -329,7 +319,6 @@ class SearchRouter:
             logger.debug("DuckDuckGo search failed: %s — %s", type(e).__name__, e)
             return ""
 
-
     async def _tavily_search(self, query: str) -> str:
         """Query Tavily API for deep research (1,000 req/month free)."""
         try:
@@ -341,9 +330,7 @@ class SearchRouter:
                 "search_depth": "advanced",
                 "max_results": 3,
             }
-            r = await session.post(
-                url, json=payload, timeout=15
-            )
+            r = await session.post(url, json=payload, timeout=15)
             if r.status_code == 200:
                 data = r.json()
                 results = data.get("results", [])

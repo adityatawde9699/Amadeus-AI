@@ -11,7 +11,6 @@ RAM usage during inference — especially useful for large context windows on
 memory-constrained machines.
 """
 
-
 import asyncio
 import logging
 import threading
@@ -33,10 +32,10 @@ logger = logging.getLogger(__name__)
 # ── GGML quantization type constants ─────────────────────────────────────────
 # These mirror the ggml_type enum from llama.cpp.
 # We only reference the ones needed for 4-bit KV-cache quantization.
-GGML_TYPE_F16 = 1      # 16-bit float  (default KV cache type)
-GGML_TYPE_Q4_0 = 2     # 4-bit quantization  (symmetric, fastest)
-GGML_TYPE_Q4_1 = 3     # 4-bit quantization  (asymmetric, slightly better quality)
-GGML_TYPE_Q8_0 = 8     # 8-bit quantization  (good quality / size tradeoff)
+GGML_TYPE_F16 = 1  # 16-bit float  (default KV cache type)
+GGML_TYPE_Q4_0 = 2  # 4-bit quantization  (symmetric, fastest)
+GGML_TYPE_Q4_1 = 3  # 4-bit quantization  (asymmetric, slightly better quality)
+GGML_TYPE_Q8_0 = 8  # 8-bit quantization  (good quality / size tradeoff)
 
 # ── Qwen3 / chain-of-thought stripping ──────────────────────────────────────────────
 import re as _re
@@ -96,7 +95,7 @@ def _strip_think_tags(text: str) -> str:
     if lone_close == -1:
         lone_close = cleaned.lower().find("</think>")
     if lone_close != -1:
-        cleaned = cleaned[lone_close + len("</think>"):]
+        cleaned = cleaned[lone_close + len("</think>") :]
     # 3. Strip untagged thinking preambles
     cleaned = _PREAMBLE_RE.sub("", cleaned)
     # 4. Strip numbered CoT reasoning lines
@@ -181,6 +180,7 @@ class LlamaCppAdapter(ILLMService):
                 # Some llama-cpp-python builds lack flash_attn / type_k / type_v.
                 # We only inject them when the installed version supports them.
                 import inspect
+
                 try:
                     llama_sig = inspect.signature(Llama)
 
@@ -236,8 +236,7 @@ class LlamaCppAdapter(ILLMService):
                             init_kwargs["type_k"] = GGML_TYPE_Q4_0
                             init_kwargs["type_v"] = GGML_TYPE_Q4_0
                             logger.info(
-                                "4-bit KV-cache quantization ENABLED "
-                                "(type_k=Q4_0, type_v=Q4_0)"
+                                "4-bit KV-cache quantization ENABLED (type_k=Q4_0, type_v=Q4_0)"
                             )
                         else:
                             missing = []
@@ -259,10 +258,13 @@ class LlamaCppAdapter(ILLMService):
                 try:
                     self._llm = await asyncio.to_thread(Llama, **init_kwargs)
                 except ValueError as e:
-                    if self.quantize_kv_4bit and ("type_k" in init_kwargs or "type_v" in init_kwargs):
+                    if self.quantize_kv_4bit and (
+                        "type_k" in init_kwargs or "type_v" in init_kwargs
+                    ):
                         logger.warning(
                             "Failed to initialize Llama with 4-bit KV cache (likely model/arch incompatible). "
-                            "Falling back to standard FP16 KV cache. Error: %s", e
+                            "Falling back to standard FP16 KV cache. Error: %s",
+                            e,
                         )
                         retry_fp16 = True
                     else:
@@ -274,6 +276,7 @@ class LlamaCppAdapter(ILLMService):
                     # stays referenced, the retry can't fit on the GPU and fails
                     # with "Failed to load model from file". Collect it first.
                     import gc
+
                     gc.collect()
                     init_kwargs.pop("type_k", None)
                     init_kwargs.pop("type_v", None)
@@ -345,7 +348,8 @@ class LlamaCppAdapter(ILLMService):
 
         if context is not None:
             history = [
-                msg for msg in getattr(context, "messages", [])
+                msg
+                for msg in getattr(context, "messages", [])
                 if getattr(msg, "role", None) in ("user", "assistant")
             ]
             # Keep only the tail — last N turns to respect the 2048 ctx limit
@@ -353,8 +357,7 @@ class LlamaCppAdapter(ILLMService):
             if len(history) > max_msgs:
                 history = history[-max_msgs:]
                 logger.debug(
-                    "LlamaCpp: trimmed conversation history to last %d messages "
-                    "(ctx limit guard)",
+                    "LlamaCpp: trimmed conversation history to last %d messages (ctx limit guard)",
                     max_msgs,
                 )
             for msg in history:
@@ -407,8 +410,7 @@ class LlamaCppAdapter(ILLMService):
         # to the next provider in the LLMRouter.
         if self._failed:
             raise LLMResponseError(
-                "LlamaCpp is in a failed state (llama_decode error). "
-                "Restart the server to reset."
+                "LlamaCpp is in a failed state (llama_decode error). Restart the server to reset."
             )
 
         llm = await self._get_llm()
@@ -423,8 +425,11 @@ class LlamaCppAdapter(ILLMService):
                         max_tokens=max_tokens if max_tokens else self.context_length,
                         temperature=temperature,
                         stream=False,
-                        **({"response_format": kwargs["response_format"]}
-                           if kwargs.get("response_format") else {}),
+                        **(
+                            {"response_format": kwargs["response_format"]}
+                            if kwargs.get("response_format")
+                            else {}
+                        ),
                     )
                 raw = str(res["choices"][0]["message"]["content"]).strip()
                 return _strip_think_tags(raw)

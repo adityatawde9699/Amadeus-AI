@@ -60,7 +60,7 @@ class CommandRouter:
         lowered = stripped.lower()
         for prefix in _RESEARCH_PREFIXES:
             if lowered.startswith(prefix):
-                topic = stripped[len(prefix):].strip()
+                topic = stripped[len(prefix) :].strip()
                 if topic:
                     return ParsedCommand(name="research", argument=topic)
         return None
@@ -98,9 +98,7 @@ class CommandRouter:
     ) -> None:
         title = "Research"
         if self._research is None:
-            await notify(
-                TaskNotification.failed(title, "Research engine is not available.")
-            )
+            await notify(TaskNotification.failed(title, "Research engine is not available."))
             return
 
         await notify(TaskNotification.started(title, detail=f"Topic: {topic}"))
@@ -120,11 +118,7 @@ class CommandRouter:
             )
         except Exception as exc:
             logger.exception("research command failed for topic=%r", topic)
-            await notify(
-                TaskNotification.failed(
-                    title, f"Research failed: {type(exc).__name__}."
-                )
-            )
+            await notify(TaskNotification.failed(title, f"Research failed: {type(exc).__name__}."))
             return
 
         detail = (

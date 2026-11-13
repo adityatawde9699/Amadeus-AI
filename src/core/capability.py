@@ -28,9 +28,9 @@ logger = logging.getLogger(__name__)
 class CapabilityTier(enum.StrEnum):
     """Resolved hardware capability tier (ascending capacity)."""
 
-    LITE = "lite"        # <= ~4GB RAM: single expert, no parallelism (the floor)
+    LITE = "lite"  # <= ~4GB RAM: single expert, no parallelism (the floor)
     STANDARD = "standard"  # ~8-16GB: sequential multi-expert orchestration
-    POWER = "power"      # 16GB+/GPU: parallel sub-agents, deep plans
+    POWER = "power"  # 16GB+/GPU: parallel sub-agents, deep plans
 
 
 @dataclass(frozen=True)
@@ -137,7 +137,11 @@ def resolve_capability(override: str = "auto") -> CapabilityProfile:
     )
     logger.info(
         "Capability tier=%s (ram=%.1fGB cores=%d gpu=%s orchestration=%s max_sub_agents=%d)",
-        profile.tier.value, ram_gb, cpu_cores, has_gpu,
-        profile.allow_orchestration, profile.max_sub_agents,
+        profile.tier.value,
+        ram_gb,
+        cpu_cores,
+        has_gpu,
+        profile.allow_orchestration,
+        profile.max_sub_agents,
     )
     return profile

@@ -37,8 +37,6 @@ def _read_only(name: str) -> ToolCapability:
 logger = logging.getLogger(__name__)
 
 
-
-
 # =============================================================================
 # TASK TOOL FACTORY (SOLID — injected ITaskRepository)
 # =============================================================================
@@ -355,9 +353,7 @@ def build_note_tools(note_repo: INoteRepository) -> list[Tool]:
 def build_reminder_tools(reminder_repo: IReminderRepository) -> list[Tool]:
     """Factory: creates reminder tools with an injected repository."""
 
-    async def add_reminder(
-        title: str | None = None, time: str | None = None, **kwargs: Any
-    ) -> str:
+    async def add_reminder(title: str | None = None, time: str | None = None, **kwargs: Any) -> str:
         reminder_title = title or kwargs.get("text") or kwargs.get("message")
         reminder_time = time or kwargs.get("when") or kwargs.get("at")
         if not reminder_title:
@@ -374,9 +370,7 @@ def build_reminder_tools(reminder_repo: IReminderRepository) -> list[Tool]:
             parsed_time = parsed_time.replace(tzinfo=None)
 
         try:
-            created = await reminder_repo.create(
-                Reminder(title=reminder_title, time=parsed_time)
-            )
+            created = await reminder_repo.create(Reminder(title=reminder_title, time=parsed_time))
             time_str = created.time.strftime("%Y-%m-%d %H:%M")
             return f"⏰ Reminder set: '{reminder_title}' at {time_str}"
         except Exception as e:
@@ -419,5 +413,3 @@ def build_reminder_tools(reminder_repo: IReminderRepository) -> list[Tool]:
             capability=_read_only("list_reminders"),
         ),
     ]
-
-

@@ -4,6 +4,7 @@ Turbovec Memory Service for Amadeus AI.
 Uses Turbovec for high-performance, in-process 4-bit quantized vector search,
 backed by an aiosqlite database for storing the JSON payloads.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -34,11 +35,13 @@ _global_turbovec_index = None
 _global_sqlite_pool = None
 _turbovec_init_lock = None
 
+
 def _get_init_lock() -> asyncio.Lock:
     global _turbovec_init_lock
     if _turbovec_init_lock is None:
         _turbovec_init_lock = asyncio.Lock()
     return _turbovec_init_lock
+
 
 class TurbovecMemoryService:
     """
@@ -101,8 +104,12 @@ class TurbovecMemoryService:
                         hash TEXT UNIQUE
                     )
                 """)
-                await self._db.execute("CREATE INDEX IF NOT EXISTS idx_session ON memory_payloads(session_id)")
-                await self._db.execute("CREATE INDEX IF NOT EXISTS idx_text ON memory_payloads(text)")
+                await self._db.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_session ON memory_payloads(session_id)"
+                )
+                await self._db.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_text ON memory_payloads(text)"
+                )
                 await self._db.commit()
 
                 # Init Turbovec
@@ -111,11 +118,15 @@ class TurbovecMemoryService:
                     if self._index_path.exists():
                         _global_turbovec_index = turbovec.IdMapIndex.load(str(self._index_path))
                     else:
-                        _global_turbovec_index = turbovec.IdMapIndex(dim=self._embed_dim, bit_width=4)
+                        _global_turbovec_index = turbovec.IdMapIndex(
+                            dim=self._embed_dim, bit_width=4
+                        )
 
                 self._index = _global_turbovec_index
 
-                logger.info("Turbovec initialized, dim=%d, size=%d", self._embed_dim, len(self._index))
+                logger.info(
+                    "Turbovec initialized, dim=%d, size=%d", self._embed_dim, len(self._index)
+                )
                 self._initialized = True
             except Exception as e:
                 logger.exception("Turbovec setup failed: %s", e)
@@ -125,6 +136,7 @@ class TurbovecMemoryService:
         model_name = self._settings.EMBED_MODEL_NAME
         try:
             from src.infra.model_manager import ModelManager
+
             mm = ModelManager(self._settings)
             load_path, local_dir = mm.resolve_embed_model()
         except Exception:
@@ -132,6 +144,7 @@ class TurbovecMemoryService:
 
         try:
             from sentence_transformers import SentenceTransformer
+
             self._local_embed_model = SentenceTransformer(load_path)
             self._embed_dim = self._local_embed_model.get_embedding_dimension() or 384
             self._use_local_embed = True
@@ -148,6 +161,7 @@ class TurbovecMemoryService:
 
         try:
             from google import genai
+
             self._genai_client = genai.Client(api_key=self._settings.GEMINI_API_KEY)
             self._embed_model = self._settings.MEMORY_EMBED_MODEL
             self._embed_dim = 768
@@ -155,15 +169,19 @@ class TurbovecMemoryService:
             logger.exception("Gemini embed setup failed: %s", exc)
             self._enabled = False
 
-    async def _embed_async(self, text: str, task_type: str = "retrieval_document") -> list[float] | None:
+    async def _embed_async(
+        self, text: str, task_type: str = "retrieval_document"
+    ) -> list[float] | None:
         if not self._enabled:
             return None
 
         if self._use_local_embed:
             try:
                 loop = asyncio.get_running_loop()
+
                 def _local_embed():
                     return self._local_embed_model.encode(text, show_progress_bar=False).tolist()
+
                 return await loop.run_in_executor(None, _local_embed)
             except Exception as exc:
                 logger.warning("Local embedding failed: %s", exc)
@@ -174,6 +192,7 @@ class TurbovecMemoryService:
 
         def _sync_embed():
             from google.genai import types
+
             result = self._genai_client.models.embed_content(
                 model=self._embed_model,
                 contents=text,
@@ -227,7 +246,7 @@ class TurbovecMemoryService:
                 if subtype == "identity":
                     async with self._db.execute(
                         "SELECT id FROM memory_payloads WHERE subtype=? AND session_id=?",
-                        ("identity", session_id)
+                        ("identity", session_id),
                     ) as cursor:
                         rows = await cursor.fetchall()
                         if rows:
@@ -245,11 +264,15 @@ class TurbovecMemoryService:
                             if to_delete:
                                 for did in to_delete:
                                     self._index.remove(np.uint64(did))
-                                    await self._db.execute("DELETE FROM memory_payloads WHERE id=?", (did,))
+                                    await self._db.execute(
+                                        "DELETE FROM memory_payloads WHERE id=?", (did,)
+                                    )
                                 await self._db.commit()
 
                 # Check if hash already exists to avoid duplicates
-                async with self._db.execute("SELECT id FROM memory_payloads WHERE hash=?", (raw_key,)) as cursor:
+                async with self._db.execute(
+                    "SELECT id FROM memory_payloads WHERE hash=?", (raw_key,)
+                ) as cursor:
                     existing = await cursor.fetchone()
                     if existing:
                         db_id = existing[0]
@@ -262,7 +285,18 @@ class TurbovecMemoryService:
                             """INSERT INTO memory_payloads
                                (session_id, role, text, timestamp, type, subtype, importance, source, trust_score, access_count, hash)
                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)""",
-                            (session_id, role, text, timestamp_str, type, subtype, importance, source, trust_score, raw_key)
+                            (
+                                session_id,
+                                role,
+                                text,
+                                timestamp_str,
+                                type,
+                                subtype,
+                                importance,
+                                source,
+                                trust_score,
+                                raw_key,
+                            ),
                         )
                         await self._db.commit()
                         async with self._db.execute("SELECT last_insert_rowid()") as cursor2:
@@ -303,7 +337,9 @@ class TurbovecMemoryService:
                     return []
 
                 result_ids = [int(i) for i in ret_ids[0]]
-                result_scores = {int(ret_ids[0][i]): float(scores[0][i]) for i in range(len(result_ids))}
+                result_scores = {
+                    int(ret_ids[0][i]): float(scores[0][i]) for i in range(len(result_ids))
+                }
 
                 # Fetch payloads
                 placeholders = ",".join(["?"] * len(result_ids))
@@ -315,7 +351,18 @@ class TurbovecMemoryService:
 
                 async with self._db.execute(query_sql, result_ids) as cursor:
                     async for row in cursor:
-                        db_id, session_id, role, text, timestamp_str, type_, subtype, importance, source, access_count = row
+                        (
+                            db_id,
+                            session_id,
+                            role,
+                            text,
+                            timestamp_str,
+                            type_,
+                            subtype,
+                            importance,
+                            source,
+                            access_count,
+                        ) = row
                         similarity = result_scores.get(db_id, 0.0)
 
                         if similarity < 0.65:
@@ -336,13 +383,25 @@ class TurbovecMemoryService:
                             recency_decay = 1.0
 
                         access_boost = min(0.1, access_count * 0.01)
-                        weighted_score = (0.6 * similarity) + (0.25 * importance) + (0.15 * recency_decay) + access_boost
+                        weighted_score = (
+                            (0.6 * similarity)
+                            + (0.25 * importance)
+                            + (0.15 * recency_decay)
+                            + access_boost
+                        )
 
                         memories.append(
                             MemoryResult(
-                                session_id=session_id, role=role, text=text, timestamp=timestamp_str,
-                                distance=similarity, type=type_, subtype=subtype, importance=importance,
-                                source=source, score=weighted_score
+                                session_id=session_id,
+                                role=role,
+                                text=text,
+                                timestamp=timestamp_str,
+                                distance=similarity,
+                                type=type_,
+                                subtype=subtype,
+                                importance=importance,
+                                source=source,
+                                score=weighted_score,
                             )
                         )
 
@@ -365,7 +424,9 @@ class TurbovecMemoryService:
         assert self._index is not None
 
         try:
-            async with self._db.execute("SELECT id FROM memory_payloads WHERE session_id=?", (session_id,)) as cursor:
+            async with self._db.execute(
+                "SELECT id FROM memory_payloads WHERE session_id=?", (session_id,)
+            ) as cursor:
                 rows = await cursor.fetchall()
                 if not rows:
                     return 0
@@ -374,7 +435,9 @@ class TurbovecMemoryService:
                     if self._index.contains(np.uint64(r[0])):
                         self._index.remove(np.uint64(r[0]))
 
-                await self._db.execute("DELETE FROM memory_payloads WHERE session_id=?", (session_id,))
+                await self._db.execute(
+                    "DELETE FROM memory_payloads WHERE session_id=?", (session_id,)
+                )
                 await self._db.commit()
 
                 loop = asyncio.get_running_loop()
@@ -393,7 +456,9 @@ class TurbovecMemoryService:
         assert self._index is not None
 
         try:
-            async with self._db.execute("SELECT id FROM memory_payloads WHERE text=?", (text,)) as cursor:
+            async with self._db.execute(
+                "SELECT id FROM memory_payloads WHERE text=?", (text,)
+            ) as cursor:
                 rows = await cursor.fetchall()
                 if not rows:
                     return 0
@@ -424,7 +489,10 @@ class TurbovecMemoryService:
             now = datetime.now(UTC)
             cutoff_seconds = older_than_days * 24 * 3600
 
-            async with self._db.execute("SELECT id, timestamp FROM memory_payloads WHERE session_id=? AND subtype != 'identity'", (session_id,)) as cursor:
+            async with self._db.execute(
+                "SELECT id, timestamp FROM memory_payloads WHERE session_id=? AND subtype != 'identity'",
+                (session_id,),
+            ) as cursor:
                 rows = await cursor.fetchall()
 
             to_delete = []
@@ -446,7 +514,9 @@ class TurbovecMemoryService:
                         self._index.remove(np.uint64(db_id))
 
                 placeholders = ",".join(["?"] * len(to_delete))
-                await self._db.execute(f"DELETE FROM memory_payloads WHERE id IN ({placeholders})", to_delete)
+                await self._db.execute(
+                    f"DELETE FROM memory_payloads WHERE id IN ({placeholders})", to_delete
+                )
                 await self._db.commit()
 
                 loop = asyncio.get_running_loop()
@@ -492,7 +562,10 @@ class TurbovecMemoryService:
         try:
             unique_texts = list(dict.fromkeys(texts))
             placeholders = ",".join(["?"] * len(unique_texts))
-            await self._db.execute(f"UPDATE memory_payloads SET access_count = access_count + 1 WHERE text IN ({placeholders})", unique_texts)
+            await self._db.execute(
+                f"UPDATE memory_payloads SET access_count = access_count + 1 WHERE text IN ({placeholders})",
+                unique_texts,
+            )
             await self._db.commit()
         except Exception as exc:
             logger.debug("Failed to increment access counts: %s", exc)

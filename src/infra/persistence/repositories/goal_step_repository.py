@@ -54,9 +54,7 @@ class GoalStepRepository:
             result=orm.result,
         )
 
-    async def create_steps(
-        self, goal_id: int, steps: list[dict]
-    ) -> list[GoalStep]:
+    async def create_steps(self, goal_id: int, steps: list[dict]) -> list[GoalStep]:
         """Persist an ordered list of ``{expert, subtask}`` steps for a goal."""
         created: list[GoalStepORM] = []
         for seq, step in enumerate(steps):
@@ -122,9 +120,7 @@ class GoalStepRepository:
 
     async def requeue_stuck_running(self, goal_id: int | None = None) -> int:
         """Reset RUNNING steps to PENDING (e.g. after a crash mid-step)."""
-        query = select(GoalStepORM).where(
-            GoalStepORM.status == ScheduledTaskStatusDB.RUNNING
-        )
+        query = select(GoalStepORM).where(GoalStepORM.status == ScheduledTaskStatusDB.RUNNING)
         if goal_id is not None:
             query = query.where(GoalStepORM.goal_id == goal_id)
         result = await self._session.execute(query)

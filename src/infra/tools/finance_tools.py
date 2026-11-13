@@ -24,17 +24,29 @@ _UA_HEADERS = {"User-Agent": "AmadeusAI/5.0 (https://github.com/adityatawde9699/
 
 # Common crypto ticker → CoinGecko coin id
 _COINGECKO_IDS = {
-    "btc": "bitcoin", "bitcoin": "bitcoin",
-    "eth": "ethereum", "ethereum": "ethereum",
-    "sol": "solana", "solana": "solana",
-    "doge": "dogecoin", "dogecoin": "dogecoin",
-    "xrp": "ripple", "ripple": "ripple",
-    "ada": "cardano", "cardano": "cardano",
-    "bnb": "binancecoin", "binancecoin": "binancecoin",
-    "ltc": "litecoin", "litecoin": "litecoin",
-    "dot": "polkadot", "polkadot": "polkadot",
-    "matic": "matic-network", "polygon": "matic-network",
-    "shib": "shiba-inu", "usdt": "tether", "usdc": "usd-coin",
+    "btc": "bitcoin",
+    "bitcoin": "bitcoin",
+    "eth": "ethereum",
+    "ethereum": "ethereum",
+    "sol": "solana",
+    "solana": "solana",
+    "doge": "dogecoin",
+    "dogecoin": "dogecoin",
+    "xrp": "ripple",
+    "ripple": "ripple",
+    "ada": "cardano",
+    "cardano": "cardano",
+    "bnb": "binancecoin",
+    "binancecoin": "binancecoin",
+    "ltc": "litecoin",
+    "litecoin": "litecoin",
+    "dot": "polkadot",
+    "polkadot": "polkadot",
+    "matic": "matic-network",
+    "polygon": "matic-network",
+    "shib": "shiba-inu",
+    "usdt": "tether",
+    "usdc": "usd-coin",
 }
 
 
@@ -94,9 +106,7 @@ async def get_stock_price(symbol: str | None = None, **kwargs: Any) -> str:
 
     try:
         session = await _get_http_session()
-        response = await session.get(
-            url, params=params, headers=_UA_HEADERS, timeout=10
-        )
+        response = await session.get(url, params=params, headers=_UA_HEADERS, timeout=10)
         if response.status_code == 404:
             return f"No stock found for symbol '{ticker}'. Check the ticker (Indian stocks need '.NS' or '.BO')."
         if response.status_code != 200:
@@ -160,9 +170,7 @@ async def get_stock_price(symbol: str | None = None, **kwargs: Any) -> str:
         },
     },
 )
-async def get_crypto_price(
-    coin: str | None = None, vs_currency: str = "usd", **kwargs: Any
-) -> str:
+async def get_crypto_price(coin: str | None = None, vs_currency: str = "usd", **kwargs: Any) -> str:
     """Fetch the current price and 24h change for a cryptocurrency."""
     raw = (coin or kwargs.get("symbol") or kwargs.get("name") or "").strip().lower()
     if not raw:
@@ -180,9 +188,7 @@ async def get_crypto_price(
 
     try:
         session = await _get_http_session()
-        response = await session.get(
-            url, params=params, headers=_UA_HEADERS, timeout=10
-        )
+        response = await session.get(url, params=params, headers=_UA_HEADERS, timeout=10)
         if response.status_code == 429:
             return "Crypto service is rate-limited right now. Try again in a minute."
         if response.status_code != 200:
@@ -199,8 +205,11 @@ async def get_crypto_price(
 
         price = entry[vs]
         change = entry.get(f"{vs}_24h_change")
-        line = f"{coin_id.replace('-', ' ').title()}: {price:,.4f} {vs.upper()}" \
-            if price < 1 else f"{coin_id.replace('-', ' ').title()}: {price:,.2f} {vs.upper()}"
+        line = (
+            f"{coin_id.replace('-', ' ').title()}: {price:,.4f} {vs.upper()}"
+            if price < 1
+            else f"{coin_id.replace('-', ' ').title()}: {price:,.2f} {vs.upper()}"
+        )
         if change is not None:
             arrow = "▲" if change >= 0 else "▼"
             line += f" {arrow} {change:+.2f}% (24h)"

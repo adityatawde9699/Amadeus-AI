@@ -86,11 +86,15 @@ def _patch_proactive(response: str | None):
     messaging.send_message = AsyncMock(return_value=True)
     settings = SimpleNamespace(MASTER_TELEGRAM_CHAT_ID="12345")
     container = SimpleNamespace(amadeus_service=lambda: service)
-    return service, messaging, [
-        patch("src.app.services.proactive_service.get_settings", return_value=settings),
-        patch("src.container.global_container", container),
-        patch("src.container.get_messaging_service", return_value=messaging),
-    ]
+    return (
+        service,
+        messaging,
+        [
+            patch("src.app.services.proactive_service.get_settings", return_value=settings),
+            patch("src.container.global_container", container),
+            patch("src.container.get_messaging_service", return_value=messaging),
+        ],
+    )
 
 
 @pytest.mark.asyncio
@@ -194,9 +198,7 @@ async def test_search_codebase_ends_option_parsing():
     tool = next(t for t in build_agent_tools() if t.name == "search_codebase")
     proc = MagicMock(returncode=1)
     proc.communicate = AsyncMock(return_value=(b"", b""))
-    with patch(
-        "asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)
-    ) as spawn:
+    with patch("asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)) as spawn:
         await tool.function(query="-f /etc/passwd")
     args = spawn.await_args.args
     assert args[args.index("--") + 1] == "-f /etc/passwd"
