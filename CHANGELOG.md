@@ -25,6 +25,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - a taint gate that requires approval for state-changing tools after external content.
   - It had been documented before but was missing from the code.
 - **Secret scanning:** gitleaks in pre-commit and CI; CI now runs on `master`.
+- **Dependency CVEs cleared:**
+  - Vulnerable locked packages were upgraded: starlette 1.10, cryptography, pillow, mcp, torch, transformers, urllib3, virtualenv and others.
+  - `python-jose` was removed. The slowapi rate-limit key now verifies the JWT instead of trusting unverified claims.
+  - pip-audit now covers the whole lockfile.
 
 ### Changed
 - **Single HTTP client:** `httpx` replaces `aiohttp`. Removed the unused `requests`, `psycopg`, `pytesseract`, `duckduckgo-search` (`ddgs` stays) and `openai` dependencies.
@@ -44,6 +48,19 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - workspace RAG: recall@k and MRR, comparing hybrid, BM25 and dense retrieval;
   - agent tool-selection on the real graph and local model.
   - A CI floor keeps held-out routing accuracy at 80% or higher.
+  - Baselines:
+    - Routing: 88.7% held-out accuracy (n=62).
+    - RAG, hybrid retrieval: R@1 72%, MRR 0.808 (BM25 alone 64% / 0.756, dense alone 60% / 0.750).
+    - Agent on Llama-3.2-1B Q4 (22 tasks, first tool plus argument checks):
+
+      | Configuration | Pass rate |
+      |---|---|
+      | Expert, grammar-constrained | 68% |
+      | Expert, free | 55% |
+      | Generalist, grammar-constrained | 27% |
+      | Generalist, free | 27% |
+
+      Routing to an expert matters more than the grammar, and the 1B model is too weak to pick from all 70 tools.
 - **Multi-worker state:**
   - `SHARED_STATE_BACKEND=redis` puts HITL confirmations (`RedisConfirmationCallback`) and the pre-auth rate limit in Redis.
   - `CHECKPOINT_BACKEND=postgres` uses Postgres LangGraph checkpoints (new `[scale]` extra; Docker: `--build-arg UV_SYNC_EXTRAS="--extra scale"`).
@@ -54,6 +71,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Workspace RAG was a silent no-op in a default install and the Docker image.** It required sentence-transformers and now uses the ONNX MiniLM embedder.
 - **Semantic routing in the image failed to load.** `tokenizers` arrived only via the `[ml-fallback]` extra and is now a core dependency.
 - **Docker image cleanup:** the leftover 90 MB `model_fp32.onnx.data` was removed (image 1.35 GB → 1.06 GB), and the artifact toolchain is pinned.
+- **Migrations failed on an empty PostgreSQL database.** `goal_steps` re-created the `scheduledtaskstatusdb` enum. Downgrades now drop their enum types, so `downgrade base` then `upgrade head` round-trips. CI runs that round trip.
+- **`get_async_database_url` corrupted an already-async SQLite URL** into `sqlite+aiosqlite+aiosqlite://`. This broke `alembic` on SQLite.
+- **MCP server `env` blocks are now passed to the server process.** `${VAR}` is expanded from the daemon environment, and an unset variable is skipped with a warning.
+- **The Docker sandbox couldn't read its script when the host uid wasn't 1000**, for example on CI runners.
 
 ### Internal
 - **`agent_loop.py` split into mixins** under `src/app/services/agent_graph/` (`state`, `actions`, `outcomes`, `orchestration`, `expert`). It went from about 1,300 lines to about 320.
