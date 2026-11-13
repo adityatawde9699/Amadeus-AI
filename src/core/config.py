@@ -231,10 +231,12 @@ class Settings(BaseSettings):
     SLM_THREADS: int = 2
     SLM_CTX_SIZE: int = 4096
     SLM_QUANTIZE_KV_4BIT: bool = True  # 4-bit KV-cache quantization (cuts KV RAM ~75%)
-    # llama.cpp GPU offload: 0 keeps inference on CPU, -1 offloads all layers.
-    # Positive values offload that many layers. This requires a CUDA-enabled
-    # llama-cpp-python build; CPU builds remain supported.
-    SLM_N_GPU_LAYERS: int = 0
+    # llama.cpp GPU offload. "auto" offloads every layer when the installed
+    # llama-cpp-python build has a GPU backend (CUDA, Metal, Vulkan, ROCm) and
+    # stays on CPU otherwise. 0 forces CPU, -1 forces all layers, N offloads N
+    # layers (for models larger than VRAM). A failed GPU load falls back to CPU.
+    # GPU builds: scripts/install_gpu_backend.sh, wiki/GPU-Acceleration.md.
+    SLM_N_GPU_LAYERS: int | Literal["auto"] = "auto"
     SLM_MAIN_GPU: int = 0
 
     # =========================================================================

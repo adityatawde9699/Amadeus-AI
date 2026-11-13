@@ -34,6 +34,41 @@ logger = logging.getLogger(__name__)
 # We only reference the ones needed for 4-bit KV-cache quantization.
 GGML_TYPE_F16 = 1  # 16-bit float  (default KV cache type)
 GGML_TYPE_Q4_0 = 2  # 4-bit quantization  (symmetric, fastest)
+
+# Backends llama.cpp can be compiled with, as named in llama_print_system_info().
+_GPU_BACKENDS: tuple[str, ...] = ("CUDA", "Metal", "Vulkan", "ROCm", "HIP", "SYCL", "OpenCL")
+
+
+def detect_gpu_backend() -> str | None:
+    """Return the GPU backend compiled into llama-cpp-python, or None for CPU-only.
+
+    "CUDA", "Metal", "Vulkan", "HIP" (ROCm) …, or "GPU" when offload is supported
+    but the backend name is not recognised. Never raises.
+    """
+    try:
+        import llama_cpp
+
+        if not bool(llama_cpp.llama_supports_gpu_offload()):
+            return None
+        info = llama_cpp.llama_print_system_info()
+    except Exception:
+        return None
+    text = info.decode("utf-8", "replace") if isinstance(info, bytes) else str(info)
+    for name in _GPU_BACKENDS:
+        if f"{name} :" in text or f"{name}:" in text:
+            return name
+    return "GPU"
+
+
+def resolve_gpu_layers(requested: int | str) -> int:
+    """Resolve SLM_N_GPU_LAYERS: "auto" → all layers (-1) on a GPU build, else 0."""
+    if isinstance(requested, str):
+        if requested.strip().lower() != "auto":
+            return int(requested)
+        return -1 if detect_gpu_backend() else 0
+    return int(requested)
+
+
 GGML_TYPE_Q4_1 = 3  # 4-bit quantization  (asymmetric, slightly better quality)
 GGML_TYPE_Q8_0 = 8  # 8-bit quantization  (good quality / size tradeoff)
 
@@ -120,15 +155,19 @@ class LlamaCppAdapter(ILLMService):
         threads: int = 2,
         context_length: int = 2048,
         quantize_kv_4bit: bool = False,
-        n_gpu_layers: int = 0,
+        n_gpu_layers: int | str = 0,
         main_gpu: int = 0,
     ) -> None:
         self.model_path = model_path
         self.threads = threads
         self.context_length = context_length
         self.quantize_kv_4bit = quantize_kv_4bit
-        self.n_gpu_layers = n_gpu_layers
+        # "auto" is resolved on first load (it imports llama_cpp to probe the build).
+        self.requested_gpu_layers = n_gpu_layers
+        self.n_gpu_layers: int = n_gpu_layers if isinstance(n_gpu_layers, int) else 0
         self.main_gpu = main_gpu
+        # Set after load: the backend actually used ("CUDA", "Metal", …) or None (CPU).
+        self.gpu_backend: str | None = None
         self._llm: Any | None = None
         self._lock = asyncio.Lock()  # guards lazy model initialisation only
         # A llama.cpp context is NOT thread-safe: concurrent create_chat_completion
@@ -140,12 +179,12 @@ class LlamaCppAdapter(ILLMService):
         self._failed: bool = False
         logger.info(
             "LlamaCppAdapter configured with model: %s "
-            "(threads=%d, ctx=%d, kv_4bit=%s, gpu_layers=%d, main_gpu=%d)",
+            "(threads=%d, ctx=%d, kv_4bit=%s, gpu_layers=%s, main_gpu=%d)",
             self.model_path,
             self.threads,
             self.context_length,
             self.quantize_kv_4bit,
-            self.n_gpu_layers,
+            self.requested_gpu_layers,
             self.main_gpu,
         )
 
@@ -163,6 +202,8 @@ class LlamaCppAdapter(ILLMService):
                 from llama_cpp import Llama
 
                 logger.info("Initializing LlamaCpp (this may take a moment)...")
+                self.n_gpu_layers = resolve_gpu_layers(self.requested_gpu_layers)
+                backend = detect_gpu_backend() if self.n_gpu_layers != 0 else None
 
                 # Build constructor kwargs — only include params that exist in
                 # the installed llama_cpp version to avoid TypeError on older builds.
@@ -203,15 +244,17 @@ class LlamaCppAdapter(ILLMService):
                             )
                         if supports_gpu:
                             logger.info(
-                                "llama.cpp GPU offload enabled (%d layers, main_gpu=%d).",
-                                self.n_gpu_layers,
+                                "llama.cpp GPU offload enabled: backend=%s, layers=%s, main_gpu=%d.",
+                                backend or "GPU",
+                                "all" if self.n_gpu_layers < 0 else self.n_gpu_layers,
                                 self.main_gpu,
                             )
                         else:
                             logger.warning(
                                 "GPU offload requested (%d layers), but the installed "
                                 "llama-cpp-python build does not report GPU support. "
-                                "Install a CUDA-enabled build or set SLM_N_GPU_LAYERS=0.",
+                                "Run scripts/install_gpu_backend.sh (see wiki GPU-Acceleration) "
+                                "or set SLM_N_GPU_LAYERS=0.",
                                 self.n_gpu_layers,
                             )
 
@@ -253,36 +296,41 @@ class LlamaCppAdapter(ILLMService):
                 except ValueError:
                     logger.debug("Could not inspect Llama signature; using basic kwargs")
 
-                # Load model in a separate thread to avoid blocking event loop
-                retry_fp16 = False
+                # Load model in a separate thread to avoid blocking event loop.
+                # A GPU load can fail for reasons a CPU load would not (VRAM too
+                # small, driver/runtime mismatch); fall back to CPU rather than
+                # leaving the assistant without its local model.
+                gpu_error: Exception | None = None
                 try:
-                    self._llm = await asyncio.to_thread(Llama, **init_kwargs)
-                except ValueError as e:
-                    if self.quantize_kv_4bit and (
-                        "type_k" in init_kwargs or "type_v" in init_kwargs
-                    ):
-                        logger.warning(
-                            "Failed to initialize Llama with 4-bit KV cache (likely model/arch incompatible). "
-                            "Falling back to standard FP16 KV cache. Error: %s",
-                            e,
-                        )
-                        retry_fp16 = True
-                    else:
+                    self._llm = await self._load_with_kv_fallback(Llama, init_kwargs)
+                except Exception as e:
+                    if init_kwargs.get("n_gpu_layers", 0) == 0:
                         raise
+                    gpu_error = e
 
-                if retry_fp16:
-                    # Retry OUTSIDE the except block: the exception's traceback
-                    # holds the half-built Llama (weights already in VRAM). If it
-                    # stays referenced, the retry can't fit on the GPU and fails
-                    # with "Failed to load model from file". Collect it first.
+                if gpu_error is not None:
+                    logger.warning(
+                        "llama.cpp GPU load failed (%s: %s); retrying on CPU. "
+                        "Lower SLM_N_GPU_LAYERS or SLM_CTX_SIZE to fit in VRAM, "
+                        "or set SLM_N_GPU_LAYERS=0 to skip the GPU.",
+                        type(gpu_error).__name__,
+                        gpu_error,
+                    )
                     import gc
 
+                    gpu_error = None  # drop the traceback (it pins VRAM) before retrying
                     gc.collect()
-                    init_kwargs.pop("type_k", None)
-                    init_kwargs.pop("type_v", None)
-                    self._llm = await asyncio.to_thread(Llama, **init_kwargs)
+                    init_kwargs["n_gpu_layers"] = 0
+                    if "flash_attn" in init_kwargs:
+                        init_kwargs["flash_attn"] = bool(self.quantize_kv_4bit)
+                    self.n_gpu_layers = 0
+                    backend = None
+                    self._llm = await self._load_with_kv_fallback(Llama, init_kwargs)
 
-                logger.info("LlamaCpp initialized successfully.")
+                self.gpu_backend = backend if init_kwargs.get("n_gpu_layers", 0) != 0 else None
+                logger.info(
+                    "LlamaCpp initialized successfully (backend=%s).", self.gpu_backend or "CPU"
+                )
 
             except ImportError as exc:
                 raise ConfigurationError(
@@ -295,6 +343,34 @@ class LlamaCppAdapter(ILLMService):
                 raise LLMConnectionError("LlamaCpp", f"Model load failed: {e}") from e
 
         return self._llm
+
+    async def _load_with_kv_fallback(self, llama_cls: Any, init_kwargs: dict[str, Any]) -> Any:
+        """Construct Llama; if the 4-bit KV cache is rejected, retry with FP16."""
+        retry_fp16 = False
+        try:
+            return await asyncio.to_thread(llama_cls, **init_kwargs)
+        except ValueError as e:
+            if self.quantize_kv_4bit and ("type_k" in init_kwargs or "type_v" in init_kwargs):
+                logger.warning(
+                    "Failed to initialize Llama with 4-bit KV cache (likely model/arch incompatible). "
+                    "Falling back to standard FP16 KV cache. Error: %s",
+                    e,
+                )
+                retry_fp16 = True
+            else:
+                raise
+
+        # Retry OUTSIDE the except block: the exception's traceback holds the
+        # half-built Llama (weights already in VRAM). If it stays referenced,
+        # the retry can't fit on the GPU and fails with "Failed to load model
+        # from file". Collect it first.
+        if retry_fp16:
+            import gc
+
+            gc.collect()
+            init_kwargs.pop("type_k", None)
+            init_kwargs.pop("type_v", None)
+        return await asyncio.to_thread(llama_cls, **init_kwargs)
 
     # =========================================================================
     # HEALTH & AVAILABILITY

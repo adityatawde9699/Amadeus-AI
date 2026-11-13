@@ -92,13 +92,23 @@ def _detect_cpu_cores() -> int:
 
 
 def _detect_gpu() -> bool:
-    """Best-effort GPU presence check without importing heavy ML stacks."""
-    import shutil
+    """Whether local inference can actually use a GPU.
 
-    # NVIDIA: nvidia-smi on PATH is a reliable, cheap signal.
-    return bool(shutil.which("nvidia-smi"))
-    # Apple Silicon exposes a GPU but we treat it conservatively as CPU-class
-    # for the local llama.cpp budget; callers can override via CAPABILITY_TIER.
+    A GPU only helps if the installed llama-cpp-python build can offload to it
+    (CUDA, Metal, Vulkan, ROCm), so ask llama.cpp. ``nvidia-smi`` alone is not
+    enough: with a CPU-only build the model still runs on the CPU. Without
+    llama-cpp-python, fall back to the cheap ``nvidia-smi`` signal.
+    """
+    try:
+        import llama_cpp
+    except Exception:
+        import shutil
+
+        return bool(shutil.which("nvidia-smi"))
+    try:
+        return bool(llama_cpp.llama_supports_gpu_offload())
+    except Exception:
+        return False
 
 
 def _tier_from_hardware(ram_gb: float, has_gpu: bool) -> CapabilityTier:
