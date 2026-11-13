@@ -45,7 +45,19 @@ The Dockerfile uses a **3-stage multi-stage build:**
 | `artifacts` | Pinned CPU-only torch/transformers/sklearn toolchain (build-time only) that exports the int8 ONNX MiniLM embedder and trains `Model/category_classifier.npz` |
 | `runtime` | Production image with the venv, source, `config/` and the two router artifacts; non-root user `amadeus`; ~1.1 GB |
 
-> The runtime image ships core deps only (no `torch`/`transformers`/`scikit-learn`); embedding runs via `onnxruntime`. The local GGUF model is **not** baked in — mount it at `/app/Model/` (or use cloud providers). The first build downloads the embedding checkpoint from Hugging Face.
+> The runtime image ships core deps only (no `torch`/`transformers`/`scikit-learn`); embedding runs via `onnxruntime`. The first build downloads the embedding checkpoint from Hugging Face.
+
+#### Local LLM (GGUF) in containers
+
+The GGUF model is not in the image by default. There are three ways to provide it:
+
+| Option | How |
+|---|---|
+| **Download on first start** (compose default) | Compose sets `SLM_MODEL_REPO_ID` / `SLM_MODEL_FILENAME` and `SLM_MODEL_PATH=/app/gguf/<file>`. The file is fetched once into the `gguf` named volume and reused after that. Override the model with those two variables in `.env`. |
+| **Use a model you already have** | Bind-mount its directory instead of the volume, e.g. `./Model:/app/gguf:ro`. |
+| **Bake it into the image** | `docker build --build-arg GGUF_REPO_ID=bartowski/Llama-3.2-3B-Instruct-GGUF --build-arg GGUF_FILENAME=Llama-3.2-3B-Instruct-Q4_K_M.gguf .` (adds the model size to the image). |
+
+With plain `docker run` and no build args, no local model is configured. Pass the same `SLM_MODEL_*` variables, or run cloud-only (`LOCAL_ONLY_MODE=false` plus `GROQ_API_KEY`/`GEMINI_API_KEY`).
 
 ### Entrypoint
 

@@ -80,6 +80,23 @@ RUN /opt/venv/bin/python scripts/export_embedding_onnx.py \
     && rm -f Model/embed/all-MiniLM-L6-v2-onnx/model_fp32.onnx*
 
 # -----------------------------------------------------------------------------
+# STAGE 2b: Optional local LLM (GGUF). Opt-in: it adds the whole model to the
+# image (0.8-2.5 GB). Default is empty and the model is fetched at first start
+# into a volume instead (see docker-compose.yml). To bake one in:
+#   docker build --build-arg GGUF_REPO_ID=bartowski/Llama-3.2-3B-Instruct-GGUF \
+#                --build-arg GGUF_FILENAME=Llama-3.2-3B-Instruct-Q4_K_M.gguf .
+# -----------------------------------------------------------------------------
+FROM builder AS gguf
+
+ARG GGUF_REPO_ID=""
+ARG GGUF_FILENAME=""
+RUN mkdir -p /gguf && if [ -n "$GGUF_REPO_ID" ] && [ -n "$GGUF_FILENAME" ]; then \
+        /opt/venv/bin/python -c "import sys; from huggingface_hub import hf_hub_download; \
+hf_hub_download(repo_id=sys.argv[1], filename=sys.argv[2], local_dir='/gguf')" \
+        "$GGUF_REPO_ID" "$GGUF_FILENAME" && rm -rf /gguf/.cache; \
+    fi
+
+# -----------------------------------------------------------------------------
 # STAGE 3: Production Runtime
 # -----------------------------------------------------------------------------
 FROM python:3.11-slim AS runtime
@@ -108,11 +125,16 @@ COPY config/ ./config/
 # Router artifacts from stage 2.
 COPY --from=artifacts /app/Model/category_classifier.npz ./Model/
 COPY --from=artifacts /app/Model/embed/all-MiniLM-L6-v2-onnx/ ./Model/embed/all-MiniLM-L6-v2-onnx/
+# Baked-in GGUF, if one was requested (empty directory otherwise).
+COPY --from=gguf /gguf/ ./Model/
+ARG GGUF_FILENAME=""
+ENV SLM_MODEL_FILENAME=${GGUF_FILENAME}
 
 # Create non-root user for security. Model/ stays writable: the semantic
-# router builds Model/unified_semantic_cache.npz on first start.
+# router builds Model/unified_semantic_cache.npz on first start. /app/gguf is
+# the mount point for the persistent model volume (docker-compose).
 RUN useradd --create-home --shell /bin/bash amadeus && \
-    mkdir -p /app/data && \
+    mkdir -p /app/data /app/gguf && \
     chown -R amadeus:amadeus /app
 
 USER amadeus

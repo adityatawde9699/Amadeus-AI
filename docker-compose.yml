@@ -26,6 +26,13 @@ services:
       - CHROMA_ENABLED=True
       - QDRANT_HOST=qdrant
       - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY via .env or environment}
+      # Local LLM: downloaded on first start into the "gguf" volume (kept across
+      # recreations). To use a model you already have, bind-mount its directory
+      # at /app/gguf instead (e.g. ./Model:/app/gguf:ro). Unset SLM_MODEL_FILENAME
+      # to run cloud-only (GROQ_API_KEY / GEMINI_API_KEY, LOCAL_ONLY_MODE=false).
+      - SLM_MODEL_REPO_ID=${SLM_MODEL_REPO_ID:-bartowski/Llama-3.2-3B-Instruct-GGUF}
+      - SLM_MODEL_FILENAME=${SLM_MODEL_FILENAME:-Llama-3.2-3B-Instruct-Q4_K_M.gguf}
+      - SLM_MODEL_PATH=/app/gguf/${SLM_MODEL_FILENAME:-Llama-3.2-3B-Instruct-Q4_K_M.gguf}
     ports:
       # Loopback-only: do not expose the API directly on a public interface.
       - "127.0.0.1:8000:8000"
@@ -35,12 +42,14 @@ services:
       - qdrant
     volumes:
       - ./data:/app/data
+      - gguf:/app/gguf
 
   worker:
     build: .
     container_name: amadeus_worker
     restart: always
-    command: ["uv", "run", "arq", "src.infra.queue.worker.WorkerSettings"]
+    # The runtime image has no uv; the venv is on PATH.
+    command: ["arq", "src.infra.queue.worker.WorkerSettings"]
     environment:
       - ENV=production
       - DATABASE_URL=postgresql+asyncpg://amadeus:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/amadeus
@@ -89,6 +98,7 @@ services:
       - "127.0.0.1:16686:16686"
 
 volumes:
+  gguf:
   pgdata:
   redisdata:
   qdrantdata:

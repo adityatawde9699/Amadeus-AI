@@ -178,8 +178,16 @@ class ModelManager:
             logger.debug("SLM_MODEL_FILENAME not set — LlamaCpp disabled.")
             return None
 
+        # An explicit path naming the repo file is also the download target, so
+        # a mounted volume (docker-compose) keeps the model across recreations.
+        dest_dir = self.model_dir
+        if settings.SLM_MODEL_PATH:
+            explicit = Path(settings.SLM_MODEL_PATH)
+            if explicit.name == settings.SLM_MODEL_FILENAME:
+                dest_dir = explicit.parent
+
         # 2. Check if file already lives in Model/
-        local_gguf = self.model_dir / settings.SLM_MODEL_FILENAME
+        local_gguf = dest_dir / settings.SLM_MODEL_FILENAME
         if local_gguf.exists():
             logger.info("GGUF model found locally: %s", local_gguf)
             return local_gguf
@@ -208,13 +216,12 @@ class ModelManager:
         return self._download_gguf(
             repo_id=settings.SLM_MODEL_REPO_ID,
             filename=settings.SLM_MODEL_FILENAME,
-            dest_dir=self.model_dir,
+            dest_dir=dest_dir,
         )
 
     def _download_gguf(self, repo_id: str, filename: str, dest_dir: Path) -> Path | None:
         """Download a single GGUF file from a HuggingFace repo."""
         dest_dir.mkdir(parents=True, exist_ok=True)
-        dest_dir / filename
 
         try:
             from huggingface_hub import hf_hub_download
