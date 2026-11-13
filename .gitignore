@@ -163,8 +163,25 @@ cython_debug/
 # Gitguardian
 .cache_ggshield
 
-# Local models directory
+# Local models directory: GGUF LLMs, the ONNX embedder, the category
+# classifier and the semantic-router cache are all downloaded, built or
+# regenerated locally (the router rebuilds unified_semantic_cache.npz on start).
 Model/
+/models/
+
+# Model weights / artifacts anywhere in the tree
+*.gguf
+*.onnx
+*.onnx.data
+*.safetensors
+*.npz
+*.npy
+*.joblib
+*.pkl
+*.pt
+*.pth
+*.ckpt
+*.h5
 
 
 # Local test checkpoints
