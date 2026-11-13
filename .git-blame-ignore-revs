@@ -2,4 +2,4 @@
 # Enable locally: git config blame.ignoreRevsFile .git-blame-ignore-revs
 
 # style: apply ruff format to src/ and tests/
-4c31f793c77a4a71bccbef70b00b4320e46b8009
+da7a320d9149fa744510700e598d92b7ca0ce712
