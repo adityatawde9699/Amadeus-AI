@@ -44,6 +44,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Docs corrected:** no Ollama or OpenAI adapters exist, the project is not "production-ready", and there are 70 built-in tools.
 
 ### Added
+- **GPU acceleration for everyone, not just hand-built installs** (see `wiki/GPU-Acceleration.md`):
+  - `SLM_N_GPU_LAYERS` defaults to `auto`: every layer goes on the GPU when llama-cpp-python has a GPU backend (CUDA, Metal, Vulkan, ROCm), and the model stays on CPU otherwise. A failed GPU load, for example from too little VRAM, falls back to CPU instead of disabling local inference. Startup logs name the backend.
+  - `scripts/install_gpu_backend.sh` rebuilds the `uv.lock`-pinned llama-cpp-python for this machine. It detects the backend, the GPU architecture and the newest CUDA toolkit, and picks a GCC that `nvcc` accepts. Upstream's prebuilt CUDA wheels stop at 0.3.19 / CUDA 12.4, which can't target RTX 50xx.
+  - Docker: `--build-arg LLAMA_BACKEND=cuda` builds a CUDA 12.8 variant (Debian 12 base, `CUDA_ARCHITECTURES` selectable). `docker-compose.gpu.yml` reserves the GPU. Without a host driver, the image falls back to CPU through CUDA's stub library instead of losing local inference. A new entrypoint (`scripts/docker-entrypoint.sh`) handles this.
+  - The capability tier counts a GPU only when llama.cpp can offload to it.
+  - Measured on an RTX 5050 with Qwen3-4B: a 1k-token prompt plus 64 tokens takes 1.1 s, against 16.8 s on CPU.
 - **Constrained tool selection.** The plan and reflect nodes send a JSON schema (`src/app/services/action_schema.py`):
   - `tool` is limited to the expert's tools plus `FINISH`, and `args` to each tool's real parameter names.
   - llama.cpp compiles the schema into a GBNF grammar, so local output is always a valid action.
@@ -90,6 +96,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - Every step inspects the live schema first, so databases built by `create_all` migrate safely too.
 - **Reminders and Pomodoro crashed on PostgreSQL.** asyncpg rejected the timezone-aware `datetime.now(UTC)` values they wrote. A new `UTCDateTime` column type normalises aware values to naive UTC on bind.
 
+- **Containers took minutes to start and downloaded about 1 GB they couldn't use.** Both memory services resolved the sentence-transformers embed checkpoint at startup, which runs `snapshot_download` of every ONNX variant, even though the image doesn't install sentence-transformers. They now skip that step unless sentence-transformers is installed. The CPU image became healthy in 8 s; before, it wasn't up after 180 s.
 - **`QueueManager.get_job_result` always failed.** It called `ArqRedis.get_job`, which doesn't exist. It now uses `arq.jobs.Job`. Found by mypy.
 - **"unmute" muted the volume.** The volume argument parser matched `"mute"` first.
 - **One-line meta-narration from the model reached the user unchanged.** The response sanitizer returned the original text when stripping the meta prefix emptied it.

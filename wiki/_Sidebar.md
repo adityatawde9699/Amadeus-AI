@@ -13,6 +13,7 @@
 **Getting Started**
 - [[Quick-Start]]
 - [[Configuration-Reference]]
+- [[GPU-Acceleration]]
 
 **Architecture**
 - [[Architecture]]

@@ -1,0 +1,31 @@
+# =============================================================================
+# NVIDIA GPU override for docker-compose.yml
+#
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
+#
+# Requires an NVIDIA driver and the NVIDIA Container Toolkit on the host
+# (https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/). Builds
+# the CUDA image variant and gives the API container the GPU. Local inference
+# then offloads to the GPU automatically (SLM_N_GPU_LAYERS=auto). Set
+# CUDA_ARCHITECTURES (e.g. 120 for RTX 50xx, 89 for RTX 40xx, 86 for RTX 30xx)
+# to build only for your card; the build is much faster.
+#
+# The worker runs no local model, so it keeps the CPU image.
+# =============================================================================
+services:
+  amadeus:
+    build:
+      context: .
+      args:
+        LLAMA_BACKEND: cuda
+        CUDA_ARCHITECTURES: ${CUDA_ARCHITECTURES:-75;80;86;89;90;120}
+    image: amadeus-ai:cuda
+    environment:
+      - SLM_N_GPU_LAYERS=${SLM_N_GPU_LAYERS:-auto}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

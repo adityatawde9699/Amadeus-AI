@@ -24,6 +24,7 @@ Configure **at least one**. Priority order: LlamaCpp → Groq → Gemini.
 |---|---|---|---|
 | `SLM_MODEL_PATH` | LlamaCpp (local GGUF) | ✅ Unlimited | Absolute path to `.gguf` file (takes priority) |
 | `SLM_MODEL_REPO_ID` / `SLM_MODEL_FILENAME` | LlamaCpp (auto-download) | ✅ Unlimited | HuggingFace repo + filename; fetched into `Model/` when `SLM_MODEL_PATH` is unset |
+| `SLM_N_GPU_LAYERS` / `SLM_MAIN_GPU` | LlamaCpp GPU offload | — | `auto` (default) uses the GPU when llama-cpp-python has a GPU backend; `0` CPU, `-1` all layers, `N` partial. See [[GPU-Acceleration]] |
 | `GROQ_API_KEY` | Groq — `llama-3.3-70b-versatile` | ✅ 14,400 req/day | Free tier (`GROQ_MODEL` overrides) |
 | `GEMINI_API_KEY` | Gemini — `gemini-3-flash-preview` | ✅ 1,500 req/day | Free tier (`GEMINI_MODEL` overrides) |
 

@@ -74,6 +74,11 @@ jobs:
       - name: Format check (ruff)
         run: uv run ruff format --check src/ tests/
 
+      - name: Shell scripts (syntax + shellcheck)
+        run: |
+          bash -n scripts/install_gpu_backend.sh
+          shellcheck -S warning scripts/install_gpu_backend.sh
+
       # Blocking. pyproject pins platform=linux / python 3.11 so local runs match.
       - name: Type check (mypy)
         run: uv run mypy src/ --ignore-missing-imports
@@ -202,6 +207,12 @@ jobs:
           tags: amadeus-ai:test
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # The CUDA variant (LLAMA_BACKEND=cuda) compiles llama.cpp's CUDA kernels,
+      # which takes too long for every push. Lint its build path instead; the
+      # full build is exercised locally (see wiki/GPU-Acceleration.md).
+      - name: Check CUDA Dockerfile variant
+        run: docker build --check --build-arg LLAMA_BACKEND=cuda .
 
   # ---------------------------------------------------------------------------
   # Deploy: Railway — every push to master (the only branch) deploys prod.

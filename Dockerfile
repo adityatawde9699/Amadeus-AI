@@ -18,14 +18,35 @@
 #   embeds via onnxruntime and routes via the pre-trained numpy SVM, keeping it
 #   within the 4GB / <300MB RSS budget. Do NOT add `--extra ml-fallback` here.
 #
+# GPU (NVIDIA CUDA) VARIANT:
+#   docker build --build-arg LLAMA_BACKEND=cuda -t amadeus-ai:cuda .
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
+# Debian 12 base with NVIDIA's CUDA 12.8 packages; compiles llama.cpp's
+# CUDA backend. Needs the NVIDIA Container Toolkit on the host and a GPU at run
+# time (--gpus all). CUDA_ARCHITECTURES picks the GPU generations to compile
+# for; fewer is a faster build (e.g. "120" for RTX 50xx only). See
+# wiki/GPU-Acceleration.md.
+#
 # Operators SHOULD additionally pin the base image by digest
 # (FROM python:3.11-slim@sha256:...) after verifying it for their registry.
 # =============================================================================
 
+# llama.cpp backend: "cpu" (default) or "cuda". Declared before the first FROM
+# so it can select the base image below.
+ARG LLAMA_BACKEND=cpu
+
+# Base image per backend. NVIDIA's apt repo for Debian 13 (the current
+# python:3.11-slim) only carries CUDA 13 (driver >= 580), and Debian 13 rejects
+# the SHA-1 key binding on its Debian 12 repo. The CUDA variant therefore stays
+# on Debian 12 (bookworm) with CUDA 12.8 (driver >= 570), the first release that
+# targets Blackwell. Only the selected base is pulled.
+FROM python:3.11-slim AS base-cpu
+FROM python:3.11-slim-bookworm AS base-cuda
+
 # -----------------------------------------------------------------------------
 # STAGE 1: Builder
 # -----------------------------------------------------------------------------
-FROM python:3.11-slim AS builder
+FROM base-${LLAMA_BACKEND} AS builder
 
 WORKDIR /app
 
@@ -35,6 +56,31 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir uv
+
+# The default CUDA architecture list spans Turing (RTX 20xx, T4) to Blackwell
+# (RTX 50xx).
+ARG LLAMA_BACKEND
+ARG CUDA_VERSION=12-8
+ARG CUDA_ARCHITECTURES="75;80;86;89;90;120"
+RUN if [ "$LLAMA_BACKEND" = "cuda" ]; then \
+        apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+        && curl -fsSL -o /tmp/cuda-keyring.deb \
+           https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/cuda-keyring_1.1-1_all.deb \
+        && dpkg -i /tmp/cuda-keyring.deb && rm /tmp/cuda-keyring.deb \
+        && apt-get update && apt-get install -y --no-install-recommends \
+           cuda-nvcc-${CUDA_VERSION} cuda-cudart-dev-${CUDA_VERSION} \
+           cuda-driver-dev-${CUDA_VERSION} libcublas-dev-${CUDA_VERSION} \
+        && rm -rf /var/lib/apt/lists/*; \
+    elif [ "$LLAMA_BACKEND" != "cpu" ]; then \
+        echo "Unsupported LLAMA_BACKEND=$LLAMA_BACKEND (use cpu or cuda)" >&2; exit 1; \
+    fi \
+    # CUDA's driver stub, used by docker-entrypoint.sh only when the host has no
+    # NVIDIA driver (the image then runs on CPU instead of failing). Empty for cpu.
+    && mkdir -p /opt/cuda-stub \
+    && if [ "$LLAMA_BACKEND" = "cuda" ]; then \
+        cp "/usr/local/cuda-$(echo "$CUDA_VERSION" | tr - .)/targets/x86_64-linux/lib/stubs/libcuda.so" \
+           /opt/cuda-stub/libcuda.so.1; \
+    fi
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -48,7 +94,15 @@ COPY pyproject.toml uv.lock README.md ./
 # Optional extras from the lockfile, e.g. --build-arg UV_SYNC_EXTRAS="--extra scale"
 # for the Postgres checkpointer (CHECKPOINT_BACKEND=postgres). Empty = core only.
 ARG UV_SYNC_EXTRAS=""
-RUN uv sync --frozen --no-dev --no-install-project ${UV_SYNC_EXTRAS}
+# llama-cpp-python is source-only on PyPI, so this step compiles it. For the
+# CUDA variant the same build gets the CUDA flags (slow: tens of minutes per
+# architecture on a small builder).
+RUN if [ "$LLAMA_BACKEND" = "cuda" ]; then \
+        CUDA_HOME="/usr/local/cuda-$(echo "$CUDA_VERSION" | tr - .)"; \
+        export PATH="$CUDA_HOME/bin:$PATH" CUDACXX="$CUDA_HOME/bin/nvcc" \
+               CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES}"; \
+    fi; \
+    CMAKE_BUILD_PARALLEL_LEVEL="$(nproc)" uv sync --frozen --no-dev --no-install-project ${UV_SYNC_EXTRAS}
 
 # -----------------------------------------------------------------------------
 # STAGE 2: Router artifacts (build-time only — nothing here reaches runtime
@@ -99,13 +153,29 @@ hf_hub_download(repo_id=sys.argv[1], filename=sys.argv[2], local_dir='/gguf')" \
 # -----------------------------------------------------------------------------
 # STAGE 3: Production Runtime
 # -----------------------------------------------------------------------------
-FROM python:3.11-slim AS runtime
+FROM base-${LLAMA_BACKEND} AS runtime
 
 WORKDIR /app
 
-# Runtime system dependencies (onnxruntime needs libgomp1).
+# Runtime system dependencies (onnxruntime needs libgomp1). The CUDA variant
+# adds only the CUDA runtime + cuBLAS libraries; the driver (libcuda) comes from
+# the host through the NVIDIA Container Toolkit.
+ARG LLAMA_BACKEND
+ARG CUDA_VERSION=12-8
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
+    && if [ "$LLAMA_BACKEND" = "cuda" ]; then \
+        apt-get install -y --no-install-recommends curl ca-certificates \
+        && curl -fsSL -o /tmp/cuda-keyring.deb \
+           https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/cuda-keyring_1.1-1_all.deb \
+        && dpkg -i /tmp/cuda-keyring.deb && rm /tmp/cuda-keyring.deb \
+        && apt-get update && apt-get install -y --no-install-recommends \
+           cuda-cudart-${CUDA_VERSION} libcublas-${CUDA_VERSION} \
+        && echo "/usr/local/cuda-$(echo "$CUDA_VERSION" | tr - .)/targets/x86_64-linux/lib" \
+           > /etc/ld.so.conf.d/zz-amadeus-cuda.conf \
+        && ldconfig \
+        && apt-get purge -y curl && apt-get autoremove -y; \
+    fi \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the locked virtual environment from the builder.
@@ -121,6 +191,10 @@ COPY .env.example ./
 COPY alembic/ ./alembic/
 # MCP server definitions (src/runtime/host.py reads config/mcp_servers.yaml).
 COPY config/ ./config/
+
+# CUDA driver stub (cuda variant only) + entrypoint that falls back to it.
+COPY --from=builder /opt/cuda-stub/ /opt/cuda-stub/
+COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 # Router artifacts from stage 2.
 COPY --from=artifacts /app/Model/category_classifier.npz ./Model/
@@ -146,6 +220,8 @@ ENV PYTHONUNBUFFERED=1 \
     DEBUG=false \
     API_HOST=0.0.0.0 \
     API_PORT=8000 \
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
     DATABASE_URL=postgresql://postgres:postgres@postgres:5432/amadeus
 
 # Health check using the /health endpoint.
@@ -154,6 +230,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 
 EXPOSE 8000
 
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["uvicorn", "src.transports.fastapi_transport:app", \
      "--host", "0.0.0.0", "--port", "8000", \
      "--workers", "1", "--log-level", "info"]

@@ -60,6 +60,8 @@ LOCAL_ONLY_MODE=true
 
 Qwen3-4B is the default. It scored 100% on the agent tool-selection eval and needs about 5 GB RAM. On smaller machines use Llama-3.2-3B (86%, about 4 GB) or Llama-3.2-1B (68%, about 1.5 GB). The full table is in `.env.example` and `evals/results/agent-models.md`. To use a file you already have, set `SLM_MODEL_PATH=/absolute/path/model.gguf` instead.
 
+**GPU:** a plain install runs on CPU, except on macOS, where Metal is used. With an NVIDIA, AMD or Vulkan GPU, run `scripts/install_gpu_backend.sh` once. Amadeus then offloads to the GPU automatically, which is about 15× faster. See [[GPU-Acceleration]].
+
 ---
 
 ## Build the Workspace Search Index *(optional)*

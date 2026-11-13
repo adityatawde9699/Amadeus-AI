@@ -57,6 +57,8 @@ The GGUF model is not in the image by default. There are three ways to provide i
 | **Use a model you already have** | Bind-mount its directory instead of the volume, e.g. `./Model:/app/gguf:ro`. |
 | **Bake it into the image** | `docker build --build-arg GGUF_REPO_ID=bartowski/Qwen_Qwen3-4B-Instruct-2507-GGUF --build-arg GGUF_FILENAME=Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf .` (adds the model size to the image). |
 
+**NVIDIA GPU:** `docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build` builds the CUDA variant and reserves the GPU. See [[GPU-Acceleration]].
+
 With plain `docker run` and no build args, no local model is configured. Pass the same `SLM_MODEL_*` variables, or run cloud-only (`LOCAL_ONLY_MODE=false` plus `GROQ_API_KEY`/`GEMINI_API_KEY`).
 
 ### Entrypoint
