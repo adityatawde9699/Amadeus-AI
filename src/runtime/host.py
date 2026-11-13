@@ -233,6 +233,7 @@ class RuntimeHost:
                         server["command"],
                         server["name"],
                         read_only_tools=server.get("read_only_tools") or [],
+                        env=server.get("env") or None,
                     )
         except Exception:
             logger.exception("Failed to initialize MCP servers")

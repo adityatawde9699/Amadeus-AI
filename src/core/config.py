@@ -544,7 +544,12 @@ class Settings(BaseSettings):
     def get_async_database_url(self) -> str:
         """Get async-compatible database URL."""
         if self.database_is_sqlite:
-            return self.DATABASE_URL.replace("sqlite:///", "sqlite+aiosqlite:///")
+            # Only rewrite the bare scheme: "sqlite+aiosqlite:///" contains
+            # "sqlite:///" (inside "aiosqlite:///"), and a blind replace turned
+            # an async URL into "sqlite+aiosqlite+aiosqlite:///".
+            if self.DATABASE_URL.startswith("sqlite://"):
+                return "sqlite+aiosqlite://" + self.DATABASE_URL[len("sqlite://"):]
+            return self.DATABASE_URL
         # For PostgreSQL, replace psycopg2 with asyncpg
         if "postgresql" in self.DATABASE_URL.lower():
             async_url = self.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")

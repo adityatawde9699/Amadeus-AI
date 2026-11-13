@@ -18,7 +18,9 @@ import asyncio
 import importlib
 import inspect
 import logging
+import os
 import pkgutil
+import re
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -44,6 +46,33 @@ def _genai_types() -> tuple[Any, Any] | None:
     except ImportError:
         return None
 
+
+
+_ENV_REF = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+
+
+def resolve_mcp_env(env: dict[str, Any] | None, server_name: str = "") -> dict[str, str] | None:
+    """Expand ``${VAR}`` references in an MCP server's ``env`` block.
+
+    Values come from this process's environment. An entry whose reference is
+    unset is dropped (with a warning) rather than passed as an empty or literal
+    ``${VAR}`` string, so the server sees "not configured" instead of a bogus
+    credential. Returns ``None`` when there is nothing to pass.
+    """
+    if not env:
+        return None
+    resolved: dict[str, str] = {}
+    for key, raw in env.items():
+        value = str(raw)
+        missing = [ref for ref in _ENV_REF.findall(value) if ref not in os.environ]
+        if missing:
+            logger.warning(
+                "MCP server '%s': env %s not set (references %s); not passing it",
+                server_name, key, ", ".join(missing),
+            )
+            continue
+        resolved[str(key)] = _ENV_REF.sub(lambda m: os.environ[m.group(1)], value)
+    return resolved or None
 
 class ToolRegistry:
     """
@@ -444,7 +473,11 @@ class ToolRegistry:
     # =========================================================================
 
     async def connect_mcp_server(
-        self, command: str, name: str, read_only_tools: list[str] | None = None
+        self,
+        command: str,
+        name: str,
+        read_only_tools: list[str] | None = None,
+        env: dict[str, str] | None = None,
     ) -> int:
         """
         Connect an MCP server via stdio and register its tools.
@@ -459,6 +492,9 @@ class ToolRegistry:
         Args:
             command: The command to run the MCP server (e.g. "npx @modelcontextprotocol/server-github")
             name: Namespace for the tools (e.g. "github")
+            env: Extra environment for the server process. ``${VAR}`` values are
+                expanded from this process's environment; the MCP SDK merges
+                the result over its safe default environment (PATH, HOME, ...).
 
         Returns:
             Number of tools registered (0 if the connection failed)
@@ -471,7 +507,13 @@ class ToolRegistry:
 
         task = asyncio.create_task(
             self._run_mcp_server(
-                command, name, ready, shutdown, result, set(read_only_tools or [])
+                command,
+                name,
+                ready,
+                shutdown,
+                result,
+                set(read_only_tools or []),
+                resolve_mcp_env(env, name),
             ),
             name=f"mcp-{name}",
         )
@@ -493,6 +535,7 @@ class ToolRegistry:
         shutdown: asyncio.Event,
         result: dict[str, Any],
         read_only_tools: set[str] | None = None,
+        env: dict[str, str] | None = None,
     ) -> None:
         """Own an MCP server's full connection lifecycle inside one task.
 
@@ -514,7 +557,7 @@ class ToolRegistry:
                 logger.error("Empty command for MCP server '%s'", name)
                 return
 
-            server_params = StdioServerParameters(command=parts[0], args=parts[1:])
+            server_params = StdioServerParameters(command=parts[0], args=parts[1:], env=env)
 
             async with AsyncExitStack() as stack:
                 read, write = await stack.enter_async_context(stdio_client(server_params))

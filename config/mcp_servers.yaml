@@ -5,8 +5,9 @@
 # `read_only_tools` only if you have verified it has no side effects; those run
 # without confirmation and are available to READ_ONLY sessions.
 #
-# NOTE: `env` is not yet passed to the server process (see tool_registry.py
-# `_run_mcp_server`); export the variables in the daemon's environment instead.
+# `env` is merged over the MCP SDK's minimal default environment (PATH, HOME,
+# ...). `${VAR}` is expanded from the daemon's environment; an entry whose
+# variable is unset is skipped with a warning.
 mcp_servers:
   - name: filesystem
     # Scoped to the agent workspace (relative to the project root / CWD), never
