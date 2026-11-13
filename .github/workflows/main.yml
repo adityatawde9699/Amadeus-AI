@@ -74,11 +74,9 @@ jobs:
       - name: Format check (ruff)
         run: uv run ruff format --check src/ tests/
 
-      # TEMPORARILY NON-BLOCKING (2026-11-12): mypy reports ~95 errors, mostly
-      # pre-existing. Burn them down, then remove continue-on-error.
+      # Blocking. pyproject pins platform=linux / python 3.11 so local runs match.
       - name: Type check (mypy)
         run: uv run mypy src/ --ignore-missing-imports
-        continue-on-error: true
 
       - name: Security scan (bandit)
         # Whole of src/ (tools/ included: it is the riskiest code). -ll and
@@ -157,16 +155,15 @@ jobs:
           SKIP_CONFIG_VALIDATION: "true"
           ENV: development
 
-      # Coverage gate is a RATCHET at the measured baseline (47% on 2026-11-12;
-      # the former 80% gate was never met — CI didn't run on master). Raise it
-      # as coverage grows; never lower it.
+      # Coverage gate is a RATCHET just under the measured total (59% on
+      # 2026-11-13, up from 47%). Raise it as coverage grows; never lower it.
       - name: Run tests with coverage
         run: |
           uv run pytest tests/ \
             --cov=src \
             --cov-report=xml \
             --cov-report=term-missing \
-            --cov-fail-under=45 \
+            --cov-fail-under=57 \
             -v
         env:
           # tests/conftest.py pins DATABASE_URL to a throwaway SQLite DB unless

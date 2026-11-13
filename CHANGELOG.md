@@ -89,10 +89,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - Every step inspects the live schema first, so databases built by `create_all` migrate safely too.
 - **Reminders and Pomodoro crashed on PostgreSQL.** asyncpg rejected the timezone-aware `datetime.now(UTC)` values they wrote. A new `UTCDateTime` column type normalises aware values to naive UTC on bind.
 
+- **`QueueManager.get_job_result` always failed.** It called `ArqRedis.get_job`, which doesn't exist. It now uses `arq.jobs.Job`. Found by mypy.
+- **"unmute" muted the volume.** The volume argument parser matched `"mute"` first.
+- **One-line meta-narration from the model reached the user unchanged.** The response sanitizer returned the original text when stripping the meta prefix emptied it.
+- **Docker: the compose `worker` ran `uv run arq …`,** but the runtime image has no `uv`. It now runs `arq` from the venv.
+- **Docker: the image had no local LLM.** The GGUF is gitignored and `.dockerignore`d. Compose now sets `SLM_MODEL_REPO_ID`/`SLM_MODEL_FILENAME`/`SLM_MODEL_PATH` and downloads the model on first start into a persistent `gguf` volume. A missing `SLM_MODEL_PATH` now downloads to its own directory instead of `Model/`. Optional `--build-arg GGUF_REPO_ID=… GGUF_FILENAME=…` bakes the model into the image.
+
 ### Internal
 - **`agent_loop.py` split into mixins** under `src/app/services/agent_graph/` (`state`, `actions`, `outcomes`, `orchestration`, `expert`). It went from about 1,300 lines to about 320.
   - Method bodies are byte-for-byte unchanged (verified via AST comparison).
   - `agent_loop` still exports `AmadeusGraph`, `AgentResult` and `QueueFullError`.
+- **mypy is clean and blocking in CI** (93 errors fixed). `platform = "linux"` makes local runs match CI.
+- **CI installs CPU-only torch.** `[tool.uv.sources]` points torch at the PyTorch CPU index on Linux/Windows, which removed 45 `nvidia-*` packages and `triton` from the lock.
+- **Coverage is up from 47% to 59%** with new tests for the argument extractor, response composer, workspace RAG indexer, Groq and Gemini adapters, the tool registry and GGUF resolution. The CI gate rises from 45% to 57%.
+- `evals/agent_eval.py --configs` runs a subset of configurations.
 
 ---
 

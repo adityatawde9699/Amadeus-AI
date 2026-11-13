@@ -133,6 +133,9 @@ sandbox-docker = [
 ml-fallback = [
     "sentence-transformers>=5.4.1",
     "scikit-learn>=1.4.0",
+    # Declared directly so [tool.uv.sources] can route it to the CPU-only
+    # wheel index (no ~3 GB of nvidia-* CUDA packages; inference here is CPU).
+    "torch>=2.4.0",
 ]
 
 dev = [
@@ -158,6 +161,7 @@ dev = [
 
     # Type Stubs
     "types-psutil>=5.9.0",
+    "types-PyYAML>=6.0",
 ]
 
 test = [
@@ -253,7 +257,7 @@ exclude_lines = [
     "if TYPE_CHECKING:",
 ]
 show_missing = true
-fail_under = 45  # ratchet: measured baseline 47% (2026-11-12); raise, never lower
+fail_under = 57  # ratchet: measured 59% (2026-11-13); raise, never lower
 
 [tool.black]
 line-length = 100
@@ -426,6 +430,9 @@ lines-after-imports = 2
 
 [tool.mypy]
 python_version = "3.11"
+# Check as CI does (Linux) on every OS, so Windows-/Linux-only APIs (winreg,
+# SIGUSR1, psutil sensors) give the same result locally and in CI.
+platform = "linux"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
@@ -439,7 +446,6 @@ strict_equality = true
 strict_concatenate = true
 exclude = [
     "Amadeus/",  # Exclude legacy code
-    "amadeus_venv/",
 ]
 
 [[tool.mypy.overrides]]
@@ -469,3 +475,12 @@ dev = [
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
 ]
+
+# CPU-only PyTorch on Linux/Windows (macOS wheels on PyPI are already CPU/MPS).
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform != 'darwin'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
