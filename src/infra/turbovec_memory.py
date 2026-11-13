@@ -134,13 +134,16 @@ class TurbovecMemoryService:
 
     async def _setup_embedding_model(self) -> None:
         model_name = self._settings.EMBED_MODEL_NAME
-        try:
-            from src.infra.model_manager import ModelManager
+        from src.infra.model_manager import ModelManager, sentence_transformers_available
 
-            mm = ModelManager(self._settings)
-            load_path, local_dir = mm.resolve_embed_model()
-        except Exception:
-            load_path, _local_dir = model_name, None
+        # Resolving can download the full checkpoint; pointless without
+        # sentence-transformers to load it (default install / Docker image).
+        load_path: str = model_name
+        if sentence_transformers_available():
+            try:
+                load_path, _local_dir = ModelManager(self._settings).resolve_embed_model()
+            except Exception:
+                load_path = model_name
 
         try:
             from sentence_transformers import SentenceTransformer

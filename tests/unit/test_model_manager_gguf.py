@@ -64,3 +64,37 @@ def test_disabled_paths(tmp_path):
     assert _mm(tmp_path, SLM_MODEL_REPO_ID=None)[0].resolve_gguf_model() is None
     mm, calls = _mm(tmp_path, MODEL_DOWNLOAD_ENABLED=False)
     assert mm.resolve_gguf_model() is None and calls == []
+
+
+def test_memory_skips_embed_download_without_sentence_transformers(monkeypatch):
+    """The Docker image has no sentence-transformers: resolving (which downloads
+    the full checkpoint) must not run when it could never be loaded."""
+    import asyncio
+
+    from src.infra import model_manager, turbovec_memory
+    from src.infra.memory_service import QdrantMemoryService
+
+    calls = []
+    monkeypatch.setattr(model_manager, "sentence_transformers_available", lambda: False)
+    monkeypatch.setattr(
+        model_manager.ModelManager, "resolve_embed_model", lambda self: calls.append(1)
+    )
+    monkeypatch.setitem(__import__("sys").modules, "sentence_transformers", None)
+    settings = SimpleNamespace(
+        EMBED_MODEL_NAME="sentence-transformers/all-MiniLM-L6-v2",
+        GEMINI_API_KEY=None,
+        MEMORY_EMBED_MODEL="x",
+    )
+
+    svc = QdrantMemoryService.__new__(QdrantMemoryService)
+    svc._settings = settings
+    svc._enabled = True
+    svc._setup_embedding_model()
+
+    tv = turbovec_memory.TurbovecMemoryService.__new__(turbovec_memory.TurbovecMemoryService)
+    tv._settings = settings
+    tv._enabled = True
+    asyncio.run(tv._setup_embedding_model())
+
+    assert calls == []
+    assert tv._enabled is False  # no local model and no Gemini key

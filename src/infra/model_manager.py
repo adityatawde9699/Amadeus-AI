@@ -34,6 +34,18 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def sentence_transformers_available() -> bool:
+    """Whether the optional sentence-transformers fallback ([ml-fallback]) is installed.
+
+    Callers that would only load the checkpoint with SentenceTransformer check
+    this first, so a default install (and the Docker image, which ships the ONNX
+    embedder instead) never downloads a checkpoint it cannot use.
+    """
+    import importlib.util
+
+    return importlib.util.find_spec("sentence_transformers") is not None
+
+
 def _safe_dir_name(model_id: str) -> str:
     """Convert 'org/model-name' to a filesystem-safe directory name."""
     return re.sub(r"[^a-zA-Z0-9_.\-]", "_", model_id)
