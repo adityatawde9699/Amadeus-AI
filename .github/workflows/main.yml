@@ -2,10 +2,10 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [master, main, develop]
+    branches: [master]
     tags: ['v*']
   pull_request:
-    branches: [master, main, develop]
+    branches: [master]
   workflow_dispatch: # Allow manual triggers
 
 permissions:
@@ -149,10 +149,8 @@ jobs:
           SKIP_CONFIG_VALIDATION: "true"
           ENV: development
 
-      # Non-blocking until the model/migration drift is reconciled (no
-      # migration for scheduled_tasks; timestamptz vs DateTime; NOT NULL).
+      # Blocking: the ORM models and the migration chain must agree.
       - name: Check models match migrations
-        continue-on-error: true
         run: uv run alembic check
         env:
           DATABASE_URL: postgresql+asyncpg://amadeus:amadeus_test_pass@localhost:5432/amadeus_test
@@ -209,30 +207,40 @@ jobs:
           cache-to: type=gha,mode=max
 
   # ---------------------------------------------------------------------------
-  # Deploy: Railway (Static environment mapping)
+  # Deploy: Railway — every push to master (the only branch) deploys prod.
+  # Skipped, not failed, until the RAILWAY_TOKEN secret is configured.
   # ---------------------------------------------------------------------------
   deploy:
     name: Deploy to Railway
     needs: [test, docker]
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
     steps:
+      - name: Skip without RAILWAY_TOKEN
+        if: env.RAILWAY_TOKEN == ''
+        run: echo "::notice::RAILWAY_TOKEN secret not set; skipping deploy."
       - uses: actions/checkout@v4
+        if: env.RAILWAY_TOKEN != ''
       - name: Deploy
-        uses: bervProject/railway-deploy@main
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        if: env.RAILWAY_TOKEN != ''
+        # Pinned by commit (0.1.2-beta) — a branch ref would run whatever
+        # upstream pushes, with RAILWAY_TOKEN in scope.
+        uses: bervProject/railway-deploy@28e06ba62ca4186e60db75554ee73dda1e4e5450
         with:
-          service: ${{ github.ref == 'refs/heads/main' && 'amadeus-api-prod' || 'amadeus-api-staging' }}
+          service: amadeus-api-prod
 
   # ---------------------------------------------------------------------------
-  # Release: Auto-tagging on Push to Main
+  # Release: on push to master, once per pyproject version. Bump `version` in
+  # pyproject.toml to cut a release; pushes with an already-tagged version
+  # do nothing (previously this would have rewritten the existing release).
   # ---------------------------------------------------------------------------
   release:
     name: Create Release
     needs: [test, docker]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -243,8 +251,15 @@ jobs:
         run: |
           VERSION=$(grep -m 1 'version = ' pyproject.toml | cut -d '"' -f 2)
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            echo "EXISTS=true" >> $GITHUB_OUTPUT
+            echo "::notice::v$VERSION is already tagged; no release created."
+          else
+            echo "EXISTS=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Create GitHub Release
+        if: steps.get_version.outputs.EXISTS == 'false'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.get_version.outputs.VERSION }}
