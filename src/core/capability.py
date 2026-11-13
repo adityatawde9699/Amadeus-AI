@@ -91,24 +91,50 @@ def _detect_cpu_cores() -> int:
         return 2
 
 
+# llama.cpp backend libraries shipped inside llama_cpp/lib/ by GPU builds.
+_GPU_BACKEND_LIBS: tuple[str, ...] = ("cuda", "metal", "vulkan", "hip", "sycl", "opencl")
+
+
+def _llama_gpu_backend_libs() -> set[str] | None:
+    """GPU backends compiled into the installed llama-cpp-python, or None if absent.
+
+    Reads the file names in ``llama_cpp/lib`` instead of importing llama_cpp:
+    loading the native library at config time is slow, and a build compiled for
+    a newer CPU dies with SIGILL rather than raising.
+    """
+    import importlib.util
+    from pathlib import Path
+
+    try:
+        spec = importlib.util.find_spec("llama_cpp")
+    except (ImportError, ValueError):
+        return None
+    if spec is None or not spec.origin:
+        return None
+    lib_dir = Path(spec.origin).parent / "lib"
+    names = [p.name.lower() for p in lib_dir.glob("*ggml-*")] if lib_dir.is_dir() else []
+    return {b for b in _GPU_BACKEND_LIBS if any(f"ggml-{b}" in n for n in names)}
+
+
 def _detect_gpu() -> bool:
     """Whether local inference can actually use a GPU.
 
-    A GPU only helps if the installed llama-cpp-python build can offload to it
-    (CUDA, Metal, Vulkan, ROCm), so ask llama.cpp. ``nvidia-smi`` alone is not
-    enough: with a CPU-only build the model still runs on the CPU. Without
-    llama-cpp-python, fall back to the cheap ``nvidia-smi`` signal.
+    A GPU only helps if the installed llama-cpp-python build can offload to it,
+    so ``nvidia-smi`` alone is not enough (a CPU-only build still runs on CPU).
+    CUDA additionally needs a visible NVIDIA GPU. Without llama-cpp-python,
+    fall back to the cheap ``nvidia-smi`` signal.
     """
-    try:
-        import llama_cpp
-    except Exception:
-        import shutil
+    import shutil
+    import sys
 
+    backends = _llama_gpu_backend_libs()
+    if backends is None:
         return bool(shutil.which("nvidia-smi"))
-    try:
-        return bool(llama_cpp.llama_supports_gpu_offload())
-    except Exception:
-        return False
+    if "cuda" in backends and shutil.which("nvidia-smi"):
+        return True
+    if "metal" in backends and sys.platform == "darwin":
+        return True
+    return bool(backends - {"cuda", "metal"})
 
 
 def _tier_from_hardware(ram_gb: float, has_gpu: bool) -> CapabilityTier:

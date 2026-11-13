@@ -97,6 +97,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Reminders and Pomodoro crashed on PostgreSQL.** asyncpg rejected the timezone-aware `datetime.now(UTC)` values they wrote. A new `UTCDateTime` column type normalises aware values to naive UTC on bind.
 
 - **Containers took minutes to start and downloaded about 1 GB they couldn't use.** Both memory services resolved the sentence-transformers embed checkpoint at startup, which runs `snapshot_download` of every ONNX variant, even though the image doesn't install sentence-transformers. They now skip that step unless sentence-transformers is installed. The CPU image became healthy in 8 s; before, it wasn't up after 180 s.
+- **llama-cpp-python builds were tied to the build machine's CPU.** llama.cpp defaults to `GGML_NATIVE=ON`, so a cached CI build, or a Docker image built on a newer CPU, died with SIGILL on older hosts. CI and Docker now build with `GGML_NATIVE=OFF`, an AVX2 baseline. The capability probe reads `llama_cpp/lib` instead of loading the native library.
 - **`QueueManager.get_job_result` always failed.** It called `ArqRedis.get_job`, which doesn't exist. It now uses `arq.jobs.Job`. Found by mypy.
 - **"unmute" muted the volume.** The volume argument parser matched `"mute"` first.
 - **One-line meta-narration from the model reached the user unchanged.** The response sanitizer returned the original text when stripping the meta prefix emptied it.

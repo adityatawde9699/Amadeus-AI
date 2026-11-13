@@ -155,10 +155,55 @@ def test_settings_accept_auto_and_ints(monkeypatch: pytest.MonkeyPatch) -> None:
         assert value == parsed
 
 
-def test_capability_gpu_follows_llama_build() -> None:
-    from src.core.capability import _detect_gpu
+@pytest.mark.parametrize(
+    ("libs", "nvidia_smi", "platform", "expected"),
+    [
+        (["libggml-cpu.so"], True, "linux", False),  # CPU build, NVIDIA GPU present
+        (["libggml-cpu.so", "libggml-cuda.so"], True, "linux", True),
+        (["libggml-cpu.so", "libggml-cuda.so"], False, "linux", False),  # CUDA image, no GPU
+        (["libggml-metal.so"], False, "darwin", True),
+        (["libggml-vulkan.so"], False, "linux", True),
+    ],
+)
+def test_capability_gpu_follows_llama_build(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    libs: list[str],
+    nvidia_smi: bool,
+    platform: str,
+    expected: bool,
+) -> None:
+    """The tier probe reads llama_cpp/lib and never imports (or loads) llama.cpp."""
+    import importlib.util
+    import shutil
+    import sys
+    from types import SimpleNamespace
 
-    for gpu in (True, False):
-        module, _ = _llama_module(gpu, CUDA_INFO)
-        with patch.dict("sys.modules", {"llama_cpp": module}):
-            assert _detect_gpu() is gpu
+    from src.core import capability
+
+    pkg = tmp_path / "llama_cpp"
+    (pkg / "lib").mkdir(parents=True)
+    (pkg / "__init__.py").write_text("raise RuntimeError('must not be imported')\n")
+    for name in libs:
+        (pkg / "lib" / name).write_bytes(b"")
+    monkeypatch.setattr(
+        importlib.util,
+        "find_spec",
+        lambda name: (
+            SimpleNamespace(origin=str(pkg / "__init__.py")) if name == "llama_cpp" else None
+        ),
+    )
+    monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/bin/nvidia-smi" if nvidia_smi else None)
+    monkeypatch.setattr(sys, "platform", platform)
+    assert capability._detect_gpu() is expected
+
+
+def test_capability_without_llama_cpp_uses_nvidia_smi(monkeypatch: pytest.MonkeyPatch) -> None:
+    import importlib.util
+    import shutil
+
+    from src.core import capability
+
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
+    monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/bin/nvidia-smi")
+    assert capability._detect_gpu() is True

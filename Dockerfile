@@ -97,10 +97,13 @@ ARG UV_SYNC_EXTRAS=""
 # llama-cpp-python is source-only on PyPI, so this step compiles it. For the
 # CUDA variant the same build gets the CUDA flags (slow: tens of minutes per
 # architecture on a small builder).
-RUN if [ "$LLAMA_BACKEND" = "cuda" ]; then \
+# GGML_NATIVE=OFF: llama.cpp otherwise compiles for the build machine's CPU
+# and the image crashes (SIGILL) on hosts with an older one.
+RUN export CMAKE_ARGS="-DGGML_NATIVE=OFF"; \
+    if [ "$LLAMA_BACKEND" = "cuda" ]; then \
         CUDA_HOME="/usr/local/cuda-$(echo "$CUDA_VERSION" | tr - .)"; \
         export PATH="$CUDA_HOME/bin:$PATH" CUDACXX="$CUDA_HOME/bin/nvcc" \
-               CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES}"; \
+               CMAKE_ARGS="$CMAKE_ARGS -DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES}"; \
     fi; \
     CMAKE_BUILD_PARALLEL_LEVEL="$(nproc)" uv sync --frozen --no-dev --no-install-project ${UV_SYNC_EXTRAS}
 

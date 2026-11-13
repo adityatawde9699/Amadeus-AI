@@ -55,6 +55,9 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+          # Bump when the llama-cpp-python build flags change: uv's cache does
+          # not key source builds on CMAKE_ARGS.
+          cache-suffix: llama-portable-1
           python-version: "3.11"
 
       - name: Set up Python
@@ -67,6 +70,11 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --all-extras --dev
+        env:
+          # llama-cpp-python is built from source. GGML_NATIVE (the default)
+          # targets the build machine's CPU, and the cached build then dies
+          # with SIGILL on runners with an older CPU.
+          CMAKE_ARGS: -DGGML_NATIVE=OFF
 
       - name: Lint (ruff)
         run: uv run ruff check src/ tests/
@@ -127,6 +135,9 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+          # Bump when the llama-cpp-python build flags change: uv's cache does
+          # not key source builds on CMAKE_ARGS.
+          cache-suffix: llama-portable-1
           python-version: "3.11"
 
       - name: Set up Python
@@ -139,6 +150,11 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --all-extras --dev
+        env:
+          # llama-cpp-python is built from source. GGML_NATIVE (the default)
+          # targets the build machine's CPU, and the cached build then dies
+          # with SIGILL on runners with an older CPU.
+          CMAKE_ARGS: -DGGML_NATIVE=OFF
 
       # Blocking: the migration chain must apply to an empty database and
       # survive a full downgrade/upgrade round trip.
