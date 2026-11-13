@@ -66,6 +66,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
       | Generalist, free | 27% |
 
       Routing to an expert matters more than the grammar, and the 1B model is too weak to pick from all 70 tools.
+- **The default local model is now Qwen3-4B-Instruct-2507 Q4_K_M** (Apache-2.0), replacing Llama-3.2-1B. Defaults changed in `.env.example` and docker-compose. It scored 100% on both expert and generalist tool selection, against 86%/73% for Llama-3.2-3B and 68%/27% for 1B. The cost is RAM: about 4.8 GB, against 3.9 GB and 1.5 GB. Smaller models remain documented for low-RAM hosts. See `evals/results/agent-models.md`.
 - **Multi-worker state:**
   - `SHARED_STATE_BACKEND=redis` puts HITL confirmations (`RedisConfirmationCallback`) and the pre-auth rate limit in Redis.
   - `CHECKPOINT_BACKEND=postgres` uses Postgres LangGraph checkpoints (new `[scale]` extra; Docker: `--build-arg UV_SYNC_EXTRAS="--extra scale"`).

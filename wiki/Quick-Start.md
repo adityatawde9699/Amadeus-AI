@@ -50,17 +50,15 @@ Interactive API docs available at `http://localhost:8000/docs` (requires `DEBUG=
 
 ## Offline / Local-First Mode
 
-Download a GGUF model (e.g., Phi-3 mini) and place it in the `Model/` directory:
+`llama-cpp-python` is a core dependency. With `MODEL_DOWNLOAD_ENABLED=true` (the default), the model named in `.env` is downloaded into `Model/` on first start:
 
-```bash
-pip install llama-cpp-python
-```
-
-Then set in `.env`:
 ```env
-SLM_MODEL_PATH=./Model/phi-3-mini-4k-instruct-q4.gguf
+SLM_MODEL_REPO_ID=bartowski/Qwen_Qwen3-4B-Instruct-2507-GGUF
+SLM_MODEL_FILENAME=Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf
 LOCAL_ONLY_MODE=true
 ```
+
+Qwen3-4B is the default. It scored 100% on the agent tool-selection eval and needs about 5 GB RAM. On smaller machines use Llama-3.2-3B (86%, about 4 GB) or Llama-3.2-1B (68%, about 1.5 GB). The full table is in `.env.example` and `evals/results/agent-models.md`. To use a file you already have, set `SLM_MODEL_PATH=/absolute/path/model.gguf` instead.
 
 ---
 

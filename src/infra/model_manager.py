@@ -16,8 +16,8 @@ Controlled entirely via .env:
   EMBED_MODEL_LOCAL_DIR=                     # auto: MODEL_DIR/embed/<safe_name>
 
   SLM_MODEL_PATH=/abs/path/to/model.gguf    # takes full priority if given
-  SLM_MODEL_REPO_ID=bartowski/Llama-3.2-1B-Instruct-GGUF
-  SLM_MODEL_FILENAME=Llama-3.2-1B-Instruct-Q4_K_M.gguf
+  SLM_MODEL_REPO_ID=bartowski/Qwen_Qwen3-4B-Instruct-2507-GGUF
+  SLM_MODEL_FILENAME=Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf
 """
 
 from __future__ import annotations

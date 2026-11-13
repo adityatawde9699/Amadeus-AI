@@ -262,8 +262,8 @@ class Settings(BaseSettings):
 
     # GGUF LLM model — used when SLM_MODEL_PATH is not given
     # Repo and filename on HuggingFace, e.g.:
-    #   SLM_MODEL_REPO_ID=bartowski/Llama-3.2-1B-Instruct-GGUF
-    #   SLM_MODEL_FILENAME=Llama-3.2-1B-Instruct-Q4_K_M.gguf
+    #   SLM_MODEL_REPO_ID=bartowski/Qwen_Qwen3-4B-Instruct-2507-GGUF
+    #   SLM_MODEL_FILENAME=Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf
     SLM_MODEL_REPO_ID: str | None = None
     SLM_MODEL_FILENAME: str | None = None  # exact filename inside the repo
 

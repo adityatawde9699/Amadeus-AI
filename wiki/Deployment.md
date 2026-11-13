@@ -53,9 +53,9 @@ The GGUF model is not in the image by default. There are three ways to provide i
 
 | Option | How |
 |---|---|
-| **Download on first start** (compose default) | Compose sets `SLM_MODEL_REPO_ID` / `SLM_MODEL_FILENAME` and `SLM_MODEL_PATH=/app/gguf/<file>`. The file is fetched once into the `gguf` named volume and reused after that. Override the model with those two variables in `.env`. |
+| **Download on first start** (compose default) | Compose sets `SLM_MODEL_REPO_ID` / `SLM_MODEL_FILENAME` and `SLM_MODEL_PATH=/app/gguf/<file>`. The file is fetched once into the `gguf` named volume and reused after that. Override the model with those two variables in `.env`. The default, Qwen3-4B, needs about 5 GB RAM; on smaller hosts use Llama-3.2-3B (~4 GB) or 1B (~1.5 GB). See `.env.example`. |
 | **Use a model you already have** | Bind-mount its directory instead of the volume, e.g. `./Model:/app/gguf:ro`. |
-| **Bake it into the image** | `docker build --build-arg GGUF_REPO_ID=bartowski/Llama-3.2-3B-Instruct-GGUF --build-arg GGUF_FILENAME=Llama-3.2-3B-Instruct-Q4_K_M.gguf .` (adds the model size to the image). |
+| **Bake it into the image** | `docker build --build-arg GGUF_REPO_ID=bartowski/Qwen_Qwen3-4B-Instruct-2507-GGUF --build-arg GGUF_FILENAME=Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf .` (adds the model size to the image). |
 
 With plain `docker run` and no build args, no local model is configured. Pass the same `SLM_MODEL_*` variables, or run cloud-only (`LOCAL_ONLY_MODE=false` plus `GROQ_API_KEY`/`GEMINI_API_KEY`).
 

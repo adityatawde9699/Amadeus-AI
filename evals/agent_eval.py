@@ -34,7 +34,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 DATASET = Path(__file__).parent / "datasets" / "agent_tasks.yaml"
-DEFAULT_MODEL = ROOT / "Model" / "Llama-3.2-1B-Instruct-Q4_K_M.gguf"
+DEFAULT_MODEL = ROOT / "Model" / "Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
 
 
 @dataclass
@@ -103,7 +103,7 @@ async def _run_case(registry: Any, llm_generate: Any, case: Case, expert: str) -
             "pass": ok, "reason": why}
 
 
-async def run(model: Path, limit: int | None = None) -> dict:
+async def run(model: Path, limit: int | None = None, only: list[str] | None = None) -> dict:
     from src.container import _build_tool_registry
     from src.infra.llm.llama_cpp_adapter import LlamaCppAdapter
 
@@ -133,6 +133,11 @@ async def run(model: Path, limit: int | None = None) -> dict:
         "expert+grammar": (grammar, None), "expert+free": (free, None),
         "generalist+grammar": (grammar, "generalist"), "generalist+free": (free, "generalist"),
     }
+    if only:
+        unknown = set(only) - set(configs)
+        if unknown:
+            raise ValueError(f"unknown configs {sorted(unknown)}; choose from {sorted(configs)}")
+        configs = {k: v for k, v in configs.items() if k in only}
     report: dict[str, Any] = {"model": model.name, "n": len(cases), "configs": {}}
     for name, (fn, expert_override) in configs.items():
         start = time.monotonic()
@@ -171,6 +176,10 @@ def main() -> int:
     parser.add_argument("--limit", type=int)
     parser.add_argument("--json", type=Path)
     parser.add_argument("--markdown", type=Path)
+    parser.add_argument(
+        "--configs",
+        help="comma-separated subset, e.g. expert+grammar,generalist+grammar (default: all)",
+    )
     args = parser.parse_args()
     if not args.model.exists():
         print(f"model not found: {args.model}", file=sys.stderr)
@@ -181,7 +190,8 @@ def main() -> int:
     import logging
 
     logging.disable(logging.WARNING)
-    report = asyncio.run(run(args.model, args.limit))
+    only = [c.strip() for c in args.configs.split(",")] if args.configs else None
+    report = asyncio.run(run(args.model, args.limit, only))
     text = render(report)
     print(text)
     for target, payload in ((args.markdown, text), (args.json, json.dumps(report, indent=2))):

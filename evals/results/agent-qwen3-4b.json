@@ -1,0 +1,478 @@
+{
+  "model": "Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+  "n": 22,
+  "configs": {
+    "expert+grammar": {
+      "pass_rate": 1.0,
+      "seconds": 911.6,
+      "results": [
+        {
+          "task": "what is 17 times 23",
+          "expert": "math_expert",
+          "tool": "calculate",
+          "args": {
+            "expression": "17 * 23"
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "convert 100 fahrenheit to celsius",
+          "expert": "math_expert",
+          "tool": "convert_temperature",
+          "args": {
+            "value": 100,
+            "from_unit": "F",
+            "to_unit": "C'}, "
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "how many kilometers is 26 miles",
+          "expert": "math_expert",
+          "tool": "convert_length",
+          "args": {
+            "value": 26,
+            "from_unit": "mi",
+            "to_unit": "km"
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "weather in Mumbai right now",
+          "expert": "research_expert",
+          "tool": "get_weather",
+          "args": {
+            "location": "Mumbai'}, "
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "who was Ada Lovelace",
+          "expert": "research_expert",
+          "tool": "wikipedia_search",
+          "args": {
+            "query": "Ada Lovelace",
+            "sentences": 3
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "search the web for the best budget mechanical keyboards",
+          "expert": "research_expert",
+          "tool": "web_search",
+          "args": {
+            "query": "best budget mechanical keyboards 2024 review"
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "what's the bitcoin price",
+          "expert": "finance_expert",
+          "tool": "get_crypto_price",
+          "args": {
+            "coin": "bitcoin",
+            "vs_currency": "usd'}, "
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "how is AAPL stock doing today",
+          "expert": "finance_expert",
+          "tool": "get_stock_price",
+          "args": {
+            "symbol": "AAPL'}, "
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "give me the latest technology headlines",
+          "expert": "news_expert",
+          "tool": "get_news",
+          "args": {
+            "category": "technology",
+            "country": "us",
+            "count": 5
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "add a task to renew my passport",
+          "expert": "task_expert",
+          "tool": "add_task",
+          "args": {
+            "task_content": "renew passport",
+            "content": "Renew passport before expiration date."
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "show my pending tasks",
+          "expert": "task_expert",
+          "tool": "list_tasks",
+          "args": {
+            "status_filter": "pending'}, "
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "start a pomodoro session",
+          "expert": "task_expert",
+          "tool": "start_pomodoro",
+          "args": {
+            "task": "",
+            "duration": 25
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "how much memory is my system using",
+          "expert": "monitor_expert",
+          "tool": "get_memory_usage",
+          "args": {},
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "what's the cpu usage",
+          "expert": "monitor_expert",
+          "tool": "get_cpu_usage",
+          "args": {},
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "ping google.com",
+          "expert": "monitor_expert",
+          "tool": "ping_host",
+          "args": {
+            "host": "google.com",
+            "count": 4
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "list the files in the docs directory",
+          "expert": "filesystem_expert",
+          "tool": "fs_list_directory",
+          "args": {
+            "path": "docs"
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "read the file notes/todo.md",
+          "expert": "filesystem_expert",
+          "tool": "fs_read_file",
+          "args": {
+            "path": "notes/todo.md"
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "take a screenshot",
+          "expert": "os_expert",
+          "tool": "take_screenshot",
+          "args": {
+            "filename": "screenshot'}, "
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "open firefox",
+          "expert": "os_expert",
+          "tool": "open_program",
+          "args": {
+            "app_name": "firefox"
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "find where the login handler is defined in the codebase",
+          "expert": "developer_expert",
+          "tool": "search_codebase",
+          "args": {
+            "query": "login handler",
+            "file_pattern": "py"
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "what time is it",
+          "expert": "generalist",
+          "tool": "get_datetime_info",
+          "args": {
+            "query": "time'}, "
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "remember that my favourite colour is teal",
+          "expert": "memory_expert",
+          "tool": "store_core_memory",
+          "args": {
+            "fact": "my favourite colour is teal'}, "
+          },
+          "pass": true,
+          "reason": "ok"
+        }
+      ]
+    },
+    "generalist+grammar": {
+      "pass_rate": 1.0,
+      "seconds": 3898.8,
+      "results": [
+        {
+          "task": "what is 17 times 23",
+          "expert": "generalist",
+          "tool": "calculate",
+          "args": {
+            "expression": "17 * 23'}, "
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "convert 100 fahrenheit to celsius",
+          "expert": "generalist",
+          "tool": "convert_temperature",
+          "args": {
+            "value": "100",
+            "from_unit": "F",
+            "to_unit": "C'}, "
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "how many kilometers is 26 miles",
+          "expert": "generalist",
+          "tool": "convert_length",
+          "args": {
+            "value": "26",
+            "from_unit": "mi",
+            "to_unit": "km'}, "
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "weather in Mumbai right now",
+          "expert": "generalist",
+          "tool": "get_weather",
+          "args": {
+            "location": "Mumbai"
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "who was Ada Lovelace",
+          "expert": "generalist",
+          "tool": "wikipedia_search",
+          "args": {
+            "query": "Ada Lovelace",
+            "sentences": 3
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "search the web for the best budget mechanical keyboards",
+          "expert": "generalist",
+          "tool": "web_search",
+          "args": {
+            "query": "best budget mechanical keyboards 2024 reviews price range under 200 usd",
+            "sentences": 5
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "what's the bitcoin price",
+          "expert": "generalist",
+          "tool": "get_crypto_price",
+          "args": {
+            "coin": "bitcoin",
+            "vs_currency": "usd"
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "how is AAPL stock doing today",
+          "expert": "generalist",
+          "tool": "get_stock_price",
+          "args": {
+            "symbol": "AAPL'}, "
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "give me the latest technology headlines",
+          "expert": "generalist",
+          "tool": "get_news",
+          "args": {
+            "category": "technology",
+            "count": 5,
+            "country": "in"
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "add a task to renew my passport",
+          "expert": "generalist",
+          "tool": "add_task",
+          "args": {
+            "task_content": "Renew passport"
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "show my pending tasks",
+          "expert": "generalist",
+          "tool": "list_tasks",
+          "args": {
+            "status_filter": "pending"
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "start a pomodoro session",
+          "expert": "generalist",
+          "tool": "start_pomodoro",
+          "args": {
+            "task": "focus work"
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "how much memory is my system using",
+          "expert": "generalist",
+          "tool": "get_memory_usage",
+          "args": {
+            "": "}, "
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "what's the cpu usage",
+          "expert": "generalist",
+          "tool": "get_cpu_usage",
+          "args": {
+            "": ""
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "ping google.com",
+          "expert": "generalist",
+          "tool": "ping_host",
+          "args": {
+            "host": "google.com",
+            "count": 4
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "list the files in the docs directory",
+          "expert": "generalist",
+          "tool": "fs_list_directory",
+          "args": {
+            "path": "docs"
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "read the file notes/todo.md",
+          "expert": "generalist",
+          "tool": "fs_read_file",
+          "args": {
+            "path": "notes/todo.md",
+            "intent": "Read the contents of the todo.md file located in the notes directory."
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "take a screenshot",
+          "expert": "generalist",
+          "tool": "take_screenshot",
+          "args": {
+            "filename": "screenshot"
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "open firefox",
+          "expert": "generalist",
+          "tool": "launch_app",
+          "args": {
+            "app_name": "firefox'}, "
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "find where the login handler is defined in the codebase",
+          "expert": "generalist",
+          "tool": "search_workspace",
+          "args": {
+            "query": "login handler",
+            "top_k": 5
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "what time is it",
+          "expert": "generalist",
+          "tool": "get_datetime_info",
+          "args": {
+            "query": "time'}, "
+          },
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "task": "remember that my favourite colour is teal",
+          "expert": "generalist",
+          "tool": "store_core_memory",
+          "args": {
+            "fact": "my favourite colour is teal'}, "
+          },
+          "pass": true,
+          "reason": "ok"
+        }
+      ]
+    }
+  }
+}
