@@ -25,6 +25,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - a taint gate that requires approval for state-changing tools after external content.
   - It had been documented before but was missing from the code.
 - **Secret scanning:** gitleaks in pre-commit and CI; CI now runs on `master`.
+- **`master` is the only branch:**
+  - CI triggers on `master` only.
+  - Deploy (prod) runs on pushes to `master` and is skipped while `RAILWAY_TOKEN` is unset.
+  - A release is cut once per new `pyproject` version, instead of rewriting an existing release.
+  - The Railway action is pinned by commit SHA.
 - **Dependency CVEs cleared:**
   - Vulnerable locked packages were upgraded: starlette 1.10, cryptography, pillow, mcp, torch, transformers, urllib3, virtualenv and others.
   - `python-jose` was removed. The slowapi rate-limit key now verifies the JWT instead of trusting unverified claims.
@@ -75,6 +80,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **`get_async_database_url` corrupted an already-async SQLite URL** into `sqlite+aiosqlite+aiosqlite://`. This broke `alembic` on SQLite.
 - **MCP server `env` blocks are now passed to the server process.** `${VAR}` is expanded from the daemon environment, and an unset variable is skipped with a warning.
 - **The Docker sandbox couldn't read its script when the host uid wasn't 1000**, for example on CI runners.
+- **Schema drift reconciled** (migration `f2a3b4c5d6e7`; `alembic check` now fails CI on drift):
+  - `scheduled_tasks` gets a migration; it is created only if missing.
+  - Older `timestamptz` columns become naive UTC via `AT TIME ZONE 'UTC'`, preserving the stored instants.
+  - NULLs are backfilled before NOT NULL is applied.
+  - `ix_tasks_status` is added.
+  - Duplicate unique constraints are dropped only where a unique index already enforces them.
+  - Every step inspects the live schema first, so databases built by `create_all` migrate safely too.
+- **Reminders and Pomodoro crashed on PostgreSQL.** asyncpg rejected the timezone-aware `datetime.now(UTC)` values they wrote. A new `UTCDateTime` column type normalises aware values to naive UTC on bind.
 
 ### Internal
 - **`agent_loop.py` split into mixins** under `src/app/services/agent_graph/` (`state`, `actions`, `outcomes`, `orchestration`, `expert`). It went from about 1,300 lines to about 320.

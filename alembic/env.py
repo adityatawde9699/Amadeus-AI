@@ -38,6 +38,15 @@ settings = get_settings()
 config.set_main_option("sqlalchemy.url", settings.get_async_database_url())
 
 
+def render_item(type_: str, obj: object, autogen_context: object) -> str | bool:
+    """Render the ORM's UTCDateTime as plain sa.DateTime() in new migrations."""
+    from src.infra.persistence.database import UTCDateTime
+
+    if type_ == "type" and isinstance(obj, UTCDateTime):
+        return "sa.DateTime()"
+    return False
+
+
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode.
 
@@ -56,6 +65,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        render_item=render_item,
     )
 
     with context.begin_transaction():
@@ -71,7 +81,9 @@ def do_run_migrations(connection: Connection) -> None:
         connection.execute(sa.text("SELECT pg_advisory_lock(42925)"))
 
     try:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(
+            connection=connection, target_metadata=target_metadata, render_item=render_item
+        )
         with context.begin_transaction():
             context.run_migrations()
     finally:
@@ -80,7 +92,6 @@ def do_run_migrations(connection: Connection) -> None:
                 connection.execute(sa.text("SELECT pg_advisory_unlock(42925)"))
             except Exception:
                 pass
-
 
 
 async def run_async_migrations() -> None:

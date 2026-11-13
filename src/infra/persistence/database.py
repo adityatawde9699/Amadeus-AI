@@ -16,9 +16,10 @@ Usage:
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import event
+from sqlalchemy import DateTime, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -28,6 +29,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool, StaticPool
+from sqlalchemy.types import TypeDecorator
 
 from src.core.config import get_settings
 
@@ -35,8 +37,29 @@ from src.core.config import get_settings
 logger = logging.getLogger(__name__)
 
 
+class UTCDateTime(TypeDecorator[datetime]):
+    """Naive-UTC ``DateTime`` that also accepts timezone-aware values.
+
+    Columns are ``TIMESTAMP WITHOUT TIME ZONE`` holding UTC. Code writes both
+    ``datetime.utcnow()`` (naive) and ``datetime.now(UTC)`` (aware); asyncpg
+    rejects aware values for a naive column ("can't subtract offset-naive and
+    offset-aware datetimes"). Aware values are converted to UTC and stripped
+    on the way in, for inserts and query comparisons alike. Reads stay naive.
+    """
+
+    impl = DateTime
+    cache_ok = True
+
+    def process_bind_param(self, value: datetime | None, dialect: Any) -> datetime | None:
+        if value is not None and value.tzinfo is not None:
+            return value.astimezone(UTC).replace(tzinfo=None)
+        return value
+
+
 class Base(DeclarativeBase):
     """Base class for all ORM models."""
+
+    type_annotation_map = {datetime: UTCDateTime}
 
 
 # Global engine and session factory (initialized lazily)
