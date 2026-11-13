@@ -35,6 +35,7 @@ from src.core.domain.agent_profiles import (
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
+    from langchain_core.runnables import RunnableConfig
     from langgraph.graph.state import CompiledStateGraph
 
     from src.app.services.tool_registry import ToolRegistry
@@ -115,7 +116,7 @@ class AmadeusGraph(OrchestrationNodes, ExpertNodes):
 
     def _build_graph(self) -> CompiledStateGraph:
         """Build and compile the MoE LangGraph StateGraph."""
-        builder = StateGraph(AmadeusState)  # type: ignore
+        builder = StateGraph(AmadeusState)
 
         # Register nodes
         builder.add_node("orchestrator_node", self._orchestrator_node)
@@ -247,7 +248,7 @@ class AmadeusGraph(OrchestrationNodes, ExpertNodes):
             "untrusted_context": False,
         }
 
-        config = {"configurable": {"thread_id": thread_id}}
+        config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
 
         try:
             final_state = await self._graph.ainvoke(initial_state, config=config)
@@ -268,7 +269,7 @@ class AmadeusGraph(OrchestrationNodes, ExpertNodes):
         returns ``approved``, and execution continues (and may pause again on a
         further risky step).
         """
-        config = {"configurable": {"thread_id": hitl_request_id}}
+        config: RunnableConfig = {"configurable": {"thread_id": hitl_request_id}}
         try:
             final_state = await self._graph.ainvoke(Command(resume=approved), config=config)
             return await self._result_from_state(final_state, hitl_request_id, None)

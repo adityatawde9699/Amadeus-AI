@@ -91,7 +91,7 @@ class _RedisCounterBackend:
 
             client = aioredis.from_url(self._redis_url, decode_responses=True)
             # Verify connectivity
-            await client.ping()  # type: ignore[misc]
+            await client.ping()
             self._client = client
             logger.info("LLMRouter connected to Redis for shared quota tracking")
         except Exception as e:
@@ -457,7 +457,7 @@ class LLMRouter:
         if llama is not None and hasattr(llama, "_get_llm"):
             try:
                 logger.info("LLMRouter: warming up LlamaCpp model (eager load)...")
-                await llama._get_llm()  # type: ignore[attr-defined]
+                await llama._get_llm()
                 logger.info("LLMRouter: LlamaCpp warmup complete — model is hot.")
             except Exception as exc:
                 logger.warning(

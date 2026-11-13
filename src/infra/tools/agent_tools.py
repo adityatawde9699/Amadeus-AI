@@ -6,6 +6,7 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from src.core.config import get_settings
@@ -192,12 +193,14 @@ def build_agent_tools(
                 return f"Goal #{goal_id} not found."
 
             if goal_status == GoalStatus.COMPLETED:
-                goal = await goal_repository.mark_complete(goal_id)
+                updated = await goal_repository.mark_complete(goal_id)
             else:
                 goal.status = goal_status
-                goal = await goal_repository.update(goal)
+                updated = await goal_repository.update(goal)
+            if updated is None:  # deleted between the read and the write
+                return f"Goal #{goal_id} not found."
 
-            return f"Successfully updated goal #{goal.id} to {goal.status.value}"
+            return f"Successfully updated goal #{updated.id} to {updated.status.value}"
         except Exception as e:
             logger.exception("Failed to update goal: %s", e)
             return f"Error: {e}"
@@ -228,7 +231,7 @@ def build_agent_tools(
             logger.exception("Failed to list active goals: %s", e)
             return f"Error: {e}"
 
-    def _resolve_plugin_path(plugins_dir, plugin_name: str):
+    def _resolve_plugin_path(plugins_dir: Path, plugin_name: str) -> Path | None:
         """Resolve *plugin_name* strictly inside *plugins_dir*.
 
         Phase 3.2 containment: reject names that traverse outside the plugins

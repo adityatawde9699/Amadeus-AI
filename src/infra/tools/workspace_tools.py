@@ -18,9 +18,14 @@ Registration:
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from src.core.config import get_settings
 from src.infra.tools.base import Tool, ToolCategory, tool
+
+
+if TYPE_CHECKING:
+    from src.infra.workspace_indexer import WorkspaceIndexer
 
 
 logger = logging.getLogger(__name__)
@@ -29,10 +34,10 @@ logger = logging.getLogger(__name__)
 # Singleton indexer — loaded once, reused on every search call
 # ---------------------------------------------------------------------------
 
-_indexer = None
+_indexer: WorkspaceIndexer | None = None
 
 
-def _get_indexer():
+def _get_indexer() -> WorkspaceIndexer | None:
     """Lazy-load and return the shared WorkspaceIndexer instance."""
     global _indexer
     if _indexer is None:

@@ -61,8 +61,8 @@ class TurbovecMemoryService:
         self._persist_dir = Path(self._settings.MEMORY_PERSIST_DIR)
         self._index_path = self._persist_dir / "turbovec_memory.tvim"
         self._db_path = self._persist_dir / "turbovec_payloads.sqlite"
-        self._index = None
-        self._db = None
+        self._index: Any = None  # turbovec.IdMapIndex (untyped extension)
+        self._db: aiosqlite.Connection | None = None
 
     async def initialize(self) -> None:
         if not self._enabled:
@@ -179,8 +179,11 @@ class TurbovecMemoryService:
             try:
                 loop = asyncio.get_running_loop()
 
-                def _local_embed():
-                    return self._local_embed_model.encode(text, show_progress_bar=False).tolist()
+                def _local_embed() -> list[float]:
+                    values: list[float] = self._local_embed_model.encode(
+                        text, show_progress_bar=False
+                    ).tolist()
+                    return values
 
                 return await loop.run_in_executor(None, _local_embed)
             except Exception as exc:
@@ -190,7 +193,7 @@ class TurbovecMemoryService:
         if not self._embed_model:
             return None
 
-        def _sync_embed():
+        def _sync_embed() -> list[float] | None:
             from google.genai import types
 
             result = self._genai_client.models.embed_content(
@@ -248,7 +251,7 @@ class TurbovecMemoryService:
                         "SELECT id FROM memory_payloads WHERE subtype=? AND session_id=?",
                         ("identity", session_id),
                     ) as cursor:
-                        rows = await cursor.fetchall()
+                        rows = list(await cursor.fetchall())
                         if rows:
                             ids_to_check = [r[0] for r in rows]
                             # Let turbovec find similarities
@@ -300,7 +303,10 @@ class TurbovecMemoryService:
                         )
                         await self._db.commit()
                         async with self._db.execute("SELECT last_insert_rowid()") as cursor2:
-                            db_id = (await cursor2.fetchone())[0]
+                            id_row = await cursor2.fetchone()
+                        if id_row is None:
+                            raise RuntimeError("SQLite returned no last_insert_rowid()")
+                        db_id = id_row[0]
 
                 # Add to Turbovec
                 vec_arr = np.array([embedding], dtype=np.float32)
@@ -427,7 +433,7 @@ class TurbovecMemoryService:
             async with self._db.execute(
                 "SELECT id FROM memory_payloads WHERE session_id=?", (session_id,)
             ) as cursor:
-                rows = await cursor.fetchall()
+                rows = list(await cursor.fetchall())
                 if not rows:
                     return 0
 
@@ -459,7 +465,7 @@ class TurbovecMemoryService:
             async with self._db.execute(
                 "SELECT id FROM memory_payloads WHERE text=?", (text,)
             ) as cursor:
-                rows = await cursor.fetchall()
+                rows = list(await cursor.fetchall())
                 if not rows:
                     return 0
 
@@ -493,7 +499,7 @@ class TurbovecMemoryService:
                 "SELECT id, timestamp FROM memory_payloads WHERE session_id=? AND subtype != 'identity'",
                 (session_id,),
             ) as cursor:
-                rows = await cursor.fetchall()
+                rows = list(await cursor.fetchall())
 
             to_delete = []
             for db_id, timestamp_str in rows:

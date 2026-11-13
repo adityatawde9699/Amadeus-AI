@@ -8,7 +8,8 @@ import logging
 from typing import Any
 
 from arq import create_pool
-from arq.connections import RedisSettings
+from arq.connections import ArqRedis, RedisSettings
+from arq.jobs import Job
 
 from src.core.config import get_settings
 from src.core.domain.context import RequestContext
@@ -25,7 +26,7 @@ class QueueManager:
     def __init__(self, redis_url: str | None = None) -> None:
         self._settings = get_settings()
         self._redis_url = redis_url or self._settings.REDIS_URL
-        self._pool = None
+        self._pool: ArqRedis | None = None
         self._available = False
 
     @property
@@ -69,8 +70,7 @@ class QueueManager:
         Returns:
             The job ID.
         """
-        if self._pool is None:
-            await self.initialize(required=True)
+        pool = await self._require_pool()
 
         # Serialize RequestContext for the job
         context_dict = {
@@ -84,17 +84,23 @@ class QueueManager:
             "trace_id": context.trace_id,
         }
 
-        job = await self._pool.enqueue_job("execute_tool_job", tool_name, args, context_dict)
+        job = await pool.enqueue_job("execute_tool_job", tool_name, args, context_dict)
+        if job is None:  # arq returns None when a job with this id already exists
+            raise RuntimeError(f"background job for tool '{tool_name}' was not enqueued")
         logger.info("Enqueued background job %s for tool '%s'", job.job_id, tool_name)
         return job.job_id
 
     async def get_job_result(self, job_id: str) -> Any:
         """Get the result of a background job."""
+        # ArqRedis has no get_job(); a Job handle is built from the id + pool.
+        return await Job(job_id, await self._require_pool()).result()
+
+    async def _require_pool(self) -> ArqRedis:
         if self._pool is None:
             await self.initialize(required=True)
-
-        job = self._pool.get_job(job_id)
-        return await job.result()
+        if self._pool is None:
+            raise RuntimeError("background job queue (Redis) is unavailable")
+        return self._pool
 
     async def close(self) -> None:
         """Close the Redis pool."""

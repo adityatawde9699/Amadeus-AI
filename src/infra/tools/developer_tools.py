@@ -16,9 +16,13 @@ Usage:
 
 import logging
 import shlex
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.infra.tools.base import Tool, ToolCapability, ToolCategory, tool
+
+
+if TYPE_CHECKING:
+    from src.infra.sandbox.executor import DockerSandboxExecutor
 
 
 logger = logging.getLogger(__name__)
@@ -29,10 +33,10 @@ class SandboxUnavailableError(RuntimeError):
 
 
 # Lazy-initialized sandbox executor (created on first tool call, not at import time)
-_sandbox = None
+_sandbox: "DockerSandboxExecutor | None" = None
 
 
-def _get_sandbox():
+def _get_sandbox() -> "DockerSandboxExecutor":
     """Return the hardened Docker sandbox, or raise SandboxUnavailableError.
 
     Fail closed: only ``SANDBOX_MODE=docker`` with a reachable Docker daemon

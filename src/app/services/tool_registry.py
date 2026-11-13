@@ -23,7 +23,7 @@ import pkgutil
 import re
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from src.core.domain.models import ToolDefinition
 from src.infra.tools.base import Tool, ToolCapability, ToolCategory
@@ -45,6 +45,11 @@ def _genai_types() -> tuple[Any, Any] | None:
         return FunctionDeclaration, GenAITool
     except ImportError:
         return None
+
+
+class ToolSummary(TypedDict):
+    total: int
+    categories: dict[str, list[str]]
 
 
 _ENV_REF = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
@@ -268,7 +273,7 @@ class ToolRegistry:
                 except Exception as e:
                     logger.warning("Failed to create FunctionDeclaration for %s: %s", t.name, e)
                     # Fallback to raw dict if wrapper fails
-                    declarations.append(d)  # type: ignore[arg-type]
+                    declarations.append(d)
 
             # Return as a list of Tool objects (or FunctionDeclarations which might be auto-wrapped)
             # generate_content(tools=[...]) accepts a list of Tools.
@@ -444,7 +449,7 @@ class ToolRegistry:
     # SUMMARY
     # =========================================================================
 
-    def get_summary(self) -> dict:
+    def get_summary(self) -> ToolSummary:
         """Get a summary of registered tools."""
         categories: dict[str, list[str]] = {}
         for tool in self._tools.values():

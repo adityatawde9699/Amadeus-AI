@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select, update
 
@@ -20,6 +20,7 @@ from src.infra.persistence.orm_models import ScheduledTaskORM, ScheduledTaskStat
 
 
 if TYPE_CHECKING:
+    from sqlalchemy.engine import CursorResult
     from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -116,9 +117,9 @@ class ScheduledTaskRepository:
 
     async def requeue_stuck_running(self) -> int:
         """Reset RUNNING rows to PENDING (e.g. after a crash mid-dispatch)."""
-        result = await self._session.execute(
+        result: CursorResult[Any] = await self._session.execute(  # type: ignore[assignment]
             update(ScheduledTaskORM)
             .where(ScheduledTaskORM.status == ScheduledTaskStatusDB.RUNNING)
             .values(status=ScheduledTaskStatusDB.PENDING)
-        )
+        )  # an UPDATE returns a CursorResult; execute() is typed as plain Result
         return int(result.rowcount or 0)

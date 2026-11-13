@@ -93,6 +93,8 @@ User request:
 
 Respond with JSON only:
 {json_template}"""
+        if self.llm_generate is None:
+            return []
         try:
             response = await self.llm_generate(prompt, structured=True)
             parsed = self._parse_json_response(response)

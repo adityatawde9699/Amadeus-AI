@@ -87,7 +87,7 @@ class OnnxEmbedder:
         import numpy as np
 
         single = isinstance(sentences, str)
-        texts = [sentences] if single else list(sentences)
+        texts: list[str] = [sentences] if isinstance(sentences, str) else list(sentences)
         if not texts:
             return np.zeros((0, 0), dtype=np.float32)
 

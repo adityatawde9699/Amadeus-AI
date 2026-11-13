@@ -1,16 +1,15 @@
 import logging
-from collections.abc import Callable
 
 from fastapi import Request, Response
 from opentelemetry import trace
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
 
 logger = logging.getLogger(__name__)
 
 
 class TracingMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         tracer = trace.get_tracer(__name__)
 
         with tracer.start_as_current_span(

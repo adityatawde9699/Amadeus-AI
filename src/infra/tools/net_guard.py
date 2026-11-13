@@ -41,11 +41,14 @@ DEFAULT_TIMEOUT = 15.0
 DEFAULT_DNS_TIMEOUT = 5.0  # cap on a single name-resolution (fail closed on stall)
 
 
+_IPAddress = ipaddress.IPv4Address | ipaddress.IPv6Address
+
+
 class UrlNotAllowedError(ValueError):
     """Raised when a URL is rejected by the SSRF egress policy."""
 
 
-def _ip_is_public(ip: ipaddress._BaseAddress) -> bool:
+def _ip_is_public(ip: _IPAddress) -> bool:
     """True only for globally-routable unicast addresses."""
     # ``is_global`` is the strictest single check, but be explicit for clarity
     # and to cover stdlib versions where mapped/reserved handling varies.
@@ -65,7 +68,7 @@ def _ip_is_public(ip: ipaddress._BaseAddress) -> bool:
     return bool(getattr(ip, "is_global", True))
 
 
-def _resolve_addresses(host: str) -> list[ipaddress._BaseAddress]:
+def _resolve_addresses(host: str) -> list[_IPAddress]:
     """Resolve *host* to every A/AAAA record. Raises on failure (fail closed)."""
     # A bare IP literal needs no DNS lookup.
     try:
@@ -74,7 +77,7 @@ def _resolve_addresses(host: str) -> list[ipaddress._BaseAddress]:
         pass
 
     infos = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
-    addrs: list[ipaddress._BaseAddress] = []
+    addrs: list[_IPAddress] = []
     for info in infos:
         sockaddr = info[4]
         addrs.append(ipaddress.ip_address(sockaddr[0]))
@@ -94,7 +97,7 @@ def _validate_scheme_host(url: str) -> str:
     return host
 
 
-def _check_addresses(host: str, addresses: list[ipaddress._BaseAddress]) -> None:
+def _check_addresses(host: str, addresses: list[_IPAddress]) -> None:
     for ip in addresses:
         if not _ip_is_public(ip):
             raise UrlNotAllowedError(f"Refusing to fetch non-public address {ip} for host {host!r}")

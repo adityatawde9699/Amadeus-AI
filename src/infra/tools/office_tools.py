@@ -7,6 +7,7 @@ using the pywin32 (win32com.client) API on Windows.
 
 import logging
 import os
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -22,9 +23,11 @@ win32com: Any = None
 
 # Try to import win32com, but handle gracefully if not on Windows or not installed
 try:
-    import pythoncom as _pythoncom  # type: ignore[import-not-found]
-    import win32com as _win32com  # type: ignore[import-not-found]
-    import win32com.client  # type: ignore[import-not-found]  # ensure submodule is loaded
+    # Optional, Windows-only. `unused-ignore` keeps mypy quiet both where the
+    # pywin32 stubs are installed and where they are not.
+    import pythoncom as _pythoncom  # type: ignore[import-not-found, unused-ignore]
+    import win32com as _win32com  # type: ignore[import-not-found, unused-ignore]
+    import win32com.client as _win32com_client  # type: ignore[import-not-found, unused-ignore]  # noqa: F401  (loads the submodule)
 
     pythoncom = _pythoncom
     win32com = _win32com
@@ -38,7 +41,7 @@ from contextlib import contextmanager
 
 
 @contextmanager
-def _com_thread():
+def _com_thread() -> Iterator[None]:
     """Ensure COM is initialised on the current thread.
 
     When office tools run inside ``run_in_executor`` (asyncio thread pool),

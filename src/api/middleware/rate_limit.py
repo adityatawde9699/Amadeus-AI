@@ -31,7 +31,10 @@ from src.core.config import get_settings
 
 
 if TYPE_CHECKING:
+    from starlette.middleware.base import RequestResponseEndpoint
     from starlette.requests import Request
+    from starlette.responses import Response
+    from starlette.types import ASGIApp
 
 
 logger = logging.getLogger(__name__)
@@ -57,7 +60,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     # the table is swept immediately regardless of the time-based sweep.
     _MAX_TRACKED_IPS = 10_000
 
-    def __init__(self, app) -> None:
+    def __init__(self, app: ASGIApp) -> None:
         super().__init__(app)
         # ip -> deque[timestamp] of recent hits within the window.
         self._hits: dict[str, deque[float]] = defaultdict(deque)
@@ -110,7 +113,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     def _is_protected(path: str) -> bool:
         return any(path.endswith(suffix) for suffix in _PROTECTED_SUFFIXES)
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         settings = get_settings()
         if not getattr(settings, "RATE_LIMIT_ENABLED", True) or not self._is_protected(
             request.url.path

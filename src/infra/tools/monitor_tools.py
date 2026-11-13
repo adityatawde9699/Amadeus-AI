@@ -219,7 +219,7 @@ def get_gpu_stats() -> str:
     try:
         # Try NVIDIA GPU via GPUtil
         try:
-            import GPUtil  # type: ignore[import-not-found]
+            import GPUtil
 
             gpus = GPUtil.getGPUs()
             if gpus:
@@ -248,7 +248,7 @@ def get_gpu_stats() -> str:
 def get_temperature_sensors() -> str:
     """Get temperature sensor readings."""
     try:
-        temps = psutil.sensors_temperatures()  # type: ignore[attr-defined]
+        temps = psutil.sensors_temperatures()
 
         if not temps:
             return "No temperature sensors found (common on Windows)"

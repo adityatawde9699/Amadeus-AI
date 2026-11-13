@@ -568,7 +568,7 @@ class WorkspaceIndexer:
         Gracefully skips if rank_bm25 is not installed.
         """
         try:
-            from rank_bm25 import BM25Okapi  # type: ignore[import-untyped]
+            from rank_bm25 import BM25Okapi
 
             corpus = [_bm25_tokenize(t) for t in chunk_texts]
             self._bm25 = BM25Okapi(corpus)
@@ -656,9 +656,10 @@ class WorkspaceIndexer:
     def _read_pdf(path: Path) -> str:
         """Extract text from a PDF (requires pdfminer.six — optional)."""
         try:
-            from pdfminer.high_level import extract_text  # type: ignore[import-untyped]
+            from pdfminer.high_level import extract_text
 
-            return extract_text(str(path))
+            text: str = extract_text(str(path))
+            return text
         except ImportError:
             logger.debug(
                 "WorkspaceIndexer: pdfminer not installed — skipping PDF '%s'. "

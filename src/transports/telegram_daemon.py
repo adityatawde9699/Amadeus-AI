@@ -108,7 +108,7 @@ def _write_pid_file(settings: Settings) -> Path | None:
     Returns the path on success, None if the write fails (non-fatal).
     """
     try:
-        pid_path = Path(settings.DATA_DIR) / "amadeus-daemon.pid"
+        pid_path = Path(settings.DATA_DIR or settings.BASE_DIR / "data") / "amadeus-daemon.pid"
         pid_path.parent.mkdir(parents=True, exist_ok=True)
         pid_path.write_text(str(os.getpid()), encoding="utf-8")
         logger.debug("PID file written: %s", pid_path)
@@ -156,7 +156,7 @@ async def _run(settings: Settings, stop_event: asyncio.Event | None = None) -> N
     # SIGUSR1 → reload Telegram polling only (useful after token rotation)
     with contextlib.suppress(AttributeError, NotImplementedError):
         # SIGUSR1 is not available on Windows
-        loop.add_signal_handler(signal.SIGUSR1, reload_polling_event.set)  # type: ignore[attr-defined]
+        loop.add_signal_handler(signal.SIGUSR1, reload_polling_event.set)
 
     # --- startup with retries ------------------------------------------------
     for attempt in range(1, max_retries + 1):

@@ -12,7 +12,7 @@ class EventBus:
     Asynchronous pub-sub EventBus for internal system events.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._subscribers: dict[str, list[Callable[[dict[str, Any]], Any]]] = {}
 
     def on(
@@ -63,7 +63,7 @@ class EventBus:
         if not handlers:
             return
 
-        async def _run_handler(h: Callable, p: dict):
+        async def _run_handler(h: Callable[..., Any], p: dict[str, Any]) -> None:
             try:
                 if asyncio.iscoroutinefunction(h):
                     await h(p)

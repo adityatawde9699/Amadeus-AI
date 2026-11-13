@@ -113,7 +113,9 @@ class ActionHelpers(GraphBase):
         json_match = re.search(r"\{[^{}]*\}", cleaned, re.DOTALL)
         if json_match:
             try:
-                return json.loads(json_match.group())
+                found = json.loads(json_match.group())
+                if isinstance(found, dict):
+                    return found
             except json.JSONDecodeError:
                 pass
 

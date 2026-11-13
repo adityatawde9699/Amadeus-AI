@@ -78,10 +78,12 @@ class CircuitBreaker:
             await self._record_failure()
             raise
 
-        # Success - reset
-        if self.state != CircuitState.CLOSED:
+        # Success - reset. _is_closed() re-reads state: another task may have
+        # changed it while func() was awaited (a direct comparison is narrowed
+        # by the checks above and mypy would call it unreachable).
+        if not self._is_closed():
             async with self._lock:
-                if self.state != CircuitState.CLOSED:
+                if not self._is_closed():
                     self.state = CircuitState.CLOSED
                     self.failure_count = 0
                     self._half_open_probe_in_progress = False
@@ -90,6 +92,9 @@ class CircuitBreaker:
                         await self.event_bus.emit("circuit.closed", {"circuit": self.name})
 
         return result
+
+    def _is_closed(self) -> bool:
+        return self.state == CircuitState.CLOSED
 
     async def _record_failure(self) -> None:
         async with self._lock:

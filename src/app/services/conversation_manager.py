@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Protocol
 
 # Re-export the single canonical model — no local dataclass.
 from src.core.domain.models import ConversationMessage
@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-class IConversationRepository:
+class IConversationRepository(Protocol):
     """Structural protocol — any object implementing these methods is accepted."""
 
     async def add_message(

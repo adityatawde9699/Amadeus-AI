@@ -7,6 +7,7 @@ These tools interface with the OS-level controls (Windows-first, cross-platform 
 import logging
 import platform
 import subprocess
+import sys
 from typing import Any
 
 from src.infra.tools.base import Tool, ToolCategory, tool
@@ -51,7 +52,7 @@ def take_screenshot(filename: str | None = None, **kwargs: Any) -> str:
     save_path = save_dir / base_name
 
     try:
-        import PIL.ImageGrab  # type: ignore[import-not-found]
+        import PIL.ImageGrab
 
         img = PIL.ImageGrab.grab()
         img.save(str(save_path))
@@ -61,8 +62,9 @@ def take_screenshot(filename: str | None = None, **kwargs: Any) -> str:
     except Exception as e:
         logger.warning("PIL screenshot failed: %s", e)
 
-    # Fallback: Windows snipping tool
-    if platform.system() == "Windows":
+    # Fallback: Windows snipping tool. sys.platform (not platform.system())
+    # so mypy skips this Windows-only ctypes block when checking for Linux.
+    if sys.platform == "win32":
         try:
             import ctypes
             import ctypes.wintypes

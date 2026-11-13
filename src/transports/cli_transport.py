@@ -13,7 +13,7 @@ from src.runtime.core import AmadeusRuntime
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 
-async def main():
+async def main() -> None:
     if len(sys.argv) < 2:
         print("Usage: python -m src.transports.cli_transport <message>")
         sys.exit(1)

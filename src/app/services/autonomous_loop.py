@@ -25,7 +25,7 @@ class AutonomousObservationLoop:
     async def start(self) -> None:
         """Start the background observation loop."""
         self._running = True
-        self._task: asyncio.Task | None = None  # type: ignore[type-arg]
+        self._task: asyncio.Task | None = None
         logger.info("Starting Autonomous Observation Loop (interval: %sm)", self.interval_minutes)
         # DR-01: Store task reference so exceptions are never silently swallowed.
         self._task = asyncio.create_task(self._loop())
@@ -38,7 +38,7 @@ class AutonomousObservationLoop:
         if hasattr(self, "_task") and self._task and not self._task.done():
             self._task.cancel()
 
-    def _on_task_done(self, task: asyncio.Task) -> None:  # type: ignore[type-arg]
+    def _on_task_done(self, task: asyncio.Task) -> None:
         """DR-01: Log any unhandled exception from the background loop task."""
         try:
             exc = task.exception()

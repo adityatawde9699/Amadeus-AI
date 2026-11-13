@@ -184,7 +184,7 @@ Guidelines:
             _model = self._model_name
 
             # Retry loop for 503 (High Demand) — runs entirely in the thread
-            def _call_with_retry() -> object:
+            def _call_with_retry() -> Any:
                 last_exc: Exception | None = None
                 for attempt in range(2):
                     try:
@@ -207,7 +207,7 @@ Guidelines:
             # Run synchronous SDK call in a thread — never blocks the event loop
             response = await asyncio.to_thread(_call_with_retry)
 
-            if not response.text:  # type: ignore[union-attr]
+            if not response.text:
                 # Gemini sometimes returns an empty body when the structured JSON
                 # suffix triggers a safety filter or quota edge-case.  Retry once
                 # with the bare prompt before giving up.
@@ -224,15 +224,15 @@ Guidelines:
                     contents=bare_prompt,
                     config=config,
                 )
-                if not retry_response.text:  # type: ignore[union-attr]
+                if not retry_response.text:
                     raise LLMResponseError("Empty response from Gemini")
                 response = retry_response
 
             # Store in cache (expire after 24h)
             if self._redis and cache_key:
-                await self._redis.setex(cache_key, 86400, response.text)  # type: ignore[union-attr]
+                await self._redis.setex(cache_key, 86400, response.text)
 
-            return str(response.text)  # type: ignore[union-attr]
+            return str(response.text)
 
         except (LLMResponseError, LLMRateLimitError, LLMConnectionError):
             raise

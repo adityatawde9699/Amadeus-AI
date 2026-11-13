@@ -31,6 +31,8 @@ from src.transports.telegram_transport import TelegramTransport
 
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable
+
     from src.app.services.autonomous_loop import AutonomousObservationLoop
 
 logger = logging.getLogger(__name__)
@@ -139,7 +141,7 @@ class RuntimeHost:
         """Tear everything down symmetrically. Safe to call if start() partially ran."""
         logger.info("Stopping RuntimeHost...")
 
-        async def _attempt(label: str, coro) -> None:  # type: ignore[type-arg]
+        async def _attempt(label: str, coro: Awaitable[object]) -> None:
             """Run a shutdown step; log and swallow any exception so other steps still run."""
             try:
                 await coro

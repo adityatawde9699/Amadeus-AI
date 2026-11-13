@@ -168,7 +168,7 @@ class QdrantMemoryService:
                     # Verify dimension matches — recreate if mismatched (e.g. switched embedder)
                     try:
                         info = await self._client.get_collection(collection_name)
-                        existing_dim = info.config.params.vectors.size  # type: ignore[union-attr]
+                        existing_dim = info.config.params.vectors.size
                         if existing_dim != embed_dim:
                             logger.warning(
                                 "Qdrant collection dimension mismatch (%d vs %d). "
@@ -281,7 +281,8 @@ class QdrantMemoryService:
 
                 def _local_embed() -> list[float]:
                     vec = self._local_embed_model.encode(text, show_progress_bar=False)
-                    return vec.tolist()
+                    values: list[float] = vec.tolist()
+                    return values
 
                 return await loop.run_in_executor(None, _local_embed)
             except Exception as exc:

@@ -75,7 +75,7 @@ def build_web_research_tools(search_router: Any = None) -> list[Tool]:
 
             result = await router.search(query.strip())
             if result and result != "Search results unavailable at this time.":
-                return result
+                return str(result)
             return f"🔍 No results found for: {query}"
         except Exception as exc:
             logger.exception("web_search tool failed: %s", exc)

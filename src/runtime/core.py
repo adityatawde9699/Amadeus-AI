@@ -1,7 +1,7 @@
 import asyncio
 import contextlib
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.core.config import Settings
 from src.core.domain.context import RequestContext
@@ -9,6 +9,13 @@ from src.infra.resilience.watchdog import DependencyWatchdog
 from src.runtime.cognitive.core import CognitiveCore
 from src.runtime.events import EventBus
 from src.runtime.scheduler import TaskScheduler
+
+
+if TYPE_CHECKING:
+    from src.app.services.amadeus_service import AmadeusService
+    from src.app.services.tool_registry import ToolRegistry
+    from src.infra.llm.router import LLMRouter
+    from src.infra.turbovec_memory import TurbovecMemoryService
 
 
 logger = logging.getLogger(__name__)
@@ -28,9 +35,9 @@ class AmadeusRuntime:
         # Execution journal around the agent graph (see runtime/cognitive/core.py)
         self.cognitive_core = CognitiveCore(self.event_bus, persistence_enabled=True)
 
-        self.memory = None
-        self.tools = None
-        self.llm = None
+        self.memory: TurbovecMemoryService | None = None
+        self.tools: ToolRegistry | None = None
+        self.llm: LLMRouter | None = None
 
         self.watchdog = DependencyWatchdog(config)
         self._watchdog_task: asyncio.Task | None = None
@@ -40,7 +47,7 @@ class AmadeusRuntime:
         self._watchers: list[Any] = []
 
         # We will lazy-initialize AmadeusService or hold it here
-        self.amadeus_service = None
+        self.amadeus_service: AmadeusService | None = None
 
         # Track active tasks for graceful shutdown
         self._active_tasks: set[asyncio.Task] = set()
@@ -84,7 +91,7 @@ class AmadeusRuntime:
             from src.container import get_goal_executor
 
             self.goal_executor = get_goal_executor()
-            resumed = await self.goal_executor.resume_incomplete()  # type: ignore[attr-defined]
+            resumed = await self.goal_executor.resume_incomplete()
             if resumed:
                 logger.info("Resumed %d incomplete goal(s) on startup", resumed)
         except Exception:

@@ -13,12 +13,16 @@ import re
 import urllib.parse
 import webbrowser
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
 from src.core.config import get_settings
 from src.infra.tools.base import Tool, ToolCategory, tool
+
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 logger = logging.getLogger(__name__)
@@ -440,7 +444,7 @@ def calculate(expression: str) -> str:
     expr = re.sub(r"(?<=\d)\s*x\s*(?=\d)", "*", expression)
     expr = expr.replace("÷", "/").replace("×", "*").replace("−", "-").replace("^", "**")
 
-    functions = {
+    functions: dict[str, Callable[..., float | int]] = {
         "sqrt": math.sqrt,
         "abs": abs,
         "round": round,
@@ -455,7 +459,7 @@ def calculate(expression: str) -> str:
         "floor": math.floor,
     }
     constants = {"pi": math.pi, "e": math.e}
-    binary_ops = {
+    binary_ops: dict[type[ast.operator], Callable[[Any, Any], Any]] = {
         ast.Add: operator.add,
         ast.Sub: operator.sub,
         ast.Mult: operator.mul,
@@ -463,7 +467,7 @@ def calculate(expression: str) -> str:
         ast.Pow: operator.pow,
         ast.Mod: operator.mod,
     }
-    unary_ops = {
+    unary_ops: dict[type[ast.unaryop], Callable[[Any], Any]] = {
         ast.UAdd: operator.pos,
         ast.USub: operator.neg,
     }
@@ -502,7 +506,7 @@ def calculate(expression: str) -> str:
                 return _safe_pow(left, right)
             return _check(binary_ops[type(node.op)](left, right))
         if isinstance(node, ast.UnaryOp) and type(node.op) in unary_ops:
-            return unary_ops[type(node.op)](_eval_node(node.operand))
+            return _check(unary_ops[type(node.op)](_eval_node(node.operand)))
         if isinstance(node, ast.Name) and node.id in constants:
             return constants[node.id]
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):

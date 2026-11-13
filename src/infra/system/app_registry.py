@@ -81,7 +81,7 @@ class AppRegistry:
 
     def _scan_windows(self) -> dict[str, str]:
         """Use the standard library winreg to find registered App Paths."""
-        import winreg as _winreg  # type: ignore[import]  # Windows-only
+        import winreg as _winreg  # Windows-only
 
         winreg: Any = _winreg
 

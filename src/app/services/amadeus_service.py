@@ -31,7 +31,7 @@ from src.app.services.messaging_service import MessagingService
 from src.app.services.response_composer import ResponseComposer
 from src.app.services.semantic_router import UnifiedSemanticRouter
 from src.app.services.tool_dispatcher import ToolDispatcher
-from src.app.services.tool_registry import ToolRegistry
+from src.app.services.tool_registry import ToolRegistry, ToolSummary
 from src.core.config import Settings, get_settings
 from src.infra.queue.manager import QueueManager
 from src.infra.tools.base import ToolExecutor
@@ -707,7 +707,7 @@ class AmadeusService:
     # Utility methods
     # ------------------------------------------------------------------
 
-    def get_tool_summary(self) -> dict[str, object]:
+    def get_tool_summary(self) -> ToolSummary:
         return self.tool_registry.get_summary()
 
     async def clear_conversation(self, session_id: str) -> None:
@@ -785,16 +785,17 @@ class AmadeusService:
                     structured=structured,
                     json_schema=json_schema,
                 )
-                return response
+                return str(response)
 
             loop = asyncio.get_running_loop()
-            if self.client is None or self.settings.LOCAL_ONLY_MODE:
+            client = self.client  # bound once: narrowing does not reach the lambda
+            if client is None or self.settings.LOCAL_ONLY_MODE:
                 raise ValueError("Gemini client unavailable and no LLMRouter configured.")
 
             # Simple fallback for Gemini if router is missing
             response = await loop.run_in_executor(
                 None,
-                lambda: self.client.models.generate_content(
+                lambda: client.models.generate_content(
                     model=self.model_name,
                     contents=prompt
                     + (

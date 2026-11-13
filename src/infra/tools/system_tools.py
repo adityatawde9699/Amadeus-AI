@@ -32,7 +32,7 @@ app_registry = AppRegistry()
 # =============================================================================
 
 
-def _assert_in_allowed_dirs(path):
+def _assert_in_allowed_dirs(path: Path) -> str | None:
     """Return an error string if *path* is outside SEARCH_ALLOWED_DIRS, else None.
 
     CQ-01 / CQ-02: Prevents copy_file / move_file / create_folder from writing

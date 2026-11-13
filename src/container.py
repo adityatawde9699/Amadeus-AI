@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from dependency_injector import containers, providers
 
@@ -23,6 +23,8 @@ from src.infra.queue.manager import QueueManager
 if TYPE_CHECKING:
     import redis.asyncio
 
+    from src.app.services.goal_executor import GoalExecutor
+    from src.app.services.notification_policy import OutputDeliveryPolicy
     from src.core.interfaces.repositories import IGoalRepository, ITaskRepository
     from src.infra.cache.cache_service import CacheService
     from src.infra.llm.router import LLMRouter
@@ -41,7 +43,7 @@ def _build_redis_client() -> redis.asyncio.Redis | None:
 
     settings = get_settings()
     try:
-        client = redis.from_url(settings.REDIS_URL, decode_responses=False)
+        client: redis.Redis = redis.from_url(settings.REDIS_URL, decode_responses=False)
         logger.info("Redis cache client configured via container")
         return client
     except Exception as e:
@@ -286,7 +288,7 @@ def _build_tool_registry() -> ToolRegistry:
 
             # Durable long-horizon goal execution (Phase 2).
             async def _execute_goal(goal_id: int) -> str:
-                return await get_goal_executor().start_goal(goal_id)  # type: ignore[attr-defined]
+                return await get_goal_executor().start_goal(goal_id)
 
             for tool in build_agent_tools(
                 memory_service=memory_service,
@@ -459,7 +461,7 @@ def _build_research_orchestrator(search_router: object, storage_service: object)
 
     if router is not None:
 
-        async def llm_generate(  # type: ignore[misc]
+        async def llm_generate(
             prompt: str, complexity: str = "high", structured: bool = False
         ) -> str:
             text, _ = await router.generate(prompt, complexity=complexity, structured=structured)
@@ -605,8 +607,8 @@ def get_workspace_manager() -> object:
     return global_container.workspace_manager()
 
 
-def get_output_policy() -> object:
-    return global_container.output_policy()
+def get_output_policy() -> OutputDeliveryPolicy:
+    return cast("OutputDeliveryPolicy", global_container.output_policy())
 
 
 def get_research_orchestrator() -> object:
@@ -625,10 +627,10 @@ def get_messaging_service() -> MessagingService:
     return global_container.messaging_service()
 
 
-_goal_executor: object | None = None
+_goal_executor: GoalExecutor | None = None
 
 
-def get_goal_executor() -> object:
+def get_goal_executor() -> GoalExecutor:
     """Lazily build the singleton :class:`GoalExecutor` (Phase 2).
 
     Wired to the live agent graph: each goal step is dispatched through
