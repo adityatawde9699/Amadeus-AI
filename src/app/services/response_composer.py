@@ -343,6 +343,12 @@ class ResponseComposer:
         cleaned = _COT_SANITIZE_RE.sub("", text)
         cleaned = _NUMBERED_META_RE.sub("", cleaned)
         cleaned = cleaned.strip()
+        if not cleaned:
+            # The line-level patterns consume a whole line, so a one-line reply
+            # like "The user wants X. Paris is ..." vanished entirely and the
+            # original (meta-text included) was returned. Fall through to the
+            # sentence-level filter on the original instead.
+            cleaned = text.strip()
 
         # Strip mid-text meta-narration sentences that survived the above.
         # These are sentences like "The user's request requires me to..." or

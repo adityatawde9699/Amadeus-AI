@@ -460,10 +460,11 @@ class ArgumentExtractor:
 
     @staticmethod
     def _parse_volume_args(lower: str) -> dict[str, Any]:
-        if "mute" in lower:
-            return {"level": -1}
+        # "unmute" first: it contains "mute", so the reverse order made unmute mute.
         if "unmute" in lower:
             return {"level": -2}
+        if "mute" in lower:
+            return {"level": -1}
         match = re.search(r"(\d+)\s*%?", lower)
         if match:
             return {"level": int(match.group(1))}
