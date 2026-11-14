@@ -20,6 +20,7 @@ Usage:
 import asyncio
 import inspect
 import logging
+import re
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -319,6 +320,35 @@ def tool(
 # =============================================================================
 
 
+class ToolFailure(str):
+    """A tool result that is a failure message. Return ``ToolFailure("why")``
+    from a tool to report a failure without raising."""
+
+    __slots__ = ()
+
+
+# How tools phrase a failure when they return text instead of raising. Matched
+# only at the very start of the output, so fetched or generated content that
+# merely contains these words is not affected.
+_FAILURE_PREFIX = re.compile(
+    r"^(?:🚫|❌|⚠️?\s*error|error\b|access denied|"
+    r"[\w ]{1,40}- access denied|"
+    r"(?:code execution|screenshot|execution) (?:unavailable|failed)|"
+    r"[\w ]{1,40} (?:is not enabled|is not configured|is disabled)\b|"
+    r"[\w ]{1,40} requires \w+\. install\b)",
+    re.IGNORECASE,
+)
+
+
+def reported_failure(result: Any) -> bool:
+    """True when a tool's return value is a failure message, not a result."""
+    if isinstance(result, ToolFailure):
+        return True
+    if not isinstance(result, str):
+        return False
+    return bool(_FAILURE_PREFIX.match(result.lstrip()[:160]))
+
+
 class ToolExecutor:
     """
     Handles safe execution of tools with error handling and retries.
@@ -555,6 +585,29 @@ class ToolExecutor:
 
                 # Calculate execution time
                 execution_time_ms = (datetime.now() - start_time).total_seconds() * 1000
+
+                # Tools report most failures as text ("Access denied: ...",
+                # "❌ ...") rather than raising. Treat those as failures so
+                # callers, the cache and metrics do not see a refused or
+                # broken call as a success. No retry: the outcome is final.
+                if reported_failure(result):
+                    message = str(result).strip()
+                    self.execution_history.append(
+                        {
+                            "tool": tool.name,
+                            "args": args,
+                            "success": False,
+                            "error": message,
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                    )
+                    return ToolExecutionResult(
+                        tool_name=tool.name,
+                        success=False,
+                        result=result,
+                        error_message=message,
+                        execution_time_ms=execution_time_ms,
+                    )
 
                 # Log successful execution
                 self.execution_history.append(
