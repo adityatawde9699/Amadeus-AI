@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import re
 import time
+import zlib
 from pathlib import Path
 
 import numpy as np
@@ -19,7 +20,7 @@ from src.infra.workspace_indexer import CHUNK_CHARS, SearchResult, WorkspaceInde
 
 
 class FakeEmbedder:
-    dim = 64
+    dim = 256
 
     def __init__(self) -> None:
         self.calls: list[int] = []  # number of texts per encode() of a list
@@ -27,7 +28,9 @@ class FakeEmbedder:
     def _vec(self, text: str) -> np.ndarray:
         v = np.zeros(self.dim, dtype=np.float32)
         for tok in re.findall(r"[a-z0-9]+", text.lower()):
-            v[hash(tok) % self.dim] += 1.0
+            # zlib.crc32, not hash(): str hashes are randomised per process,
+            # which made token collisions (and this test) non-deterministic.
+            v[zlib.crc32(tok.encode()) % self.dim] += 1.0
         n = np.linalg.norm(v)
         return v / n if n else v
 
