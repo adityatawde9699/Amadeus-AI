@@ -59,6 +59,12 @@ class ArgumentExtractor:
     # Public API
     # ------------------------------------------------------------------
 
+    def extract_slots(self, tool_name: str, user_input: str) -> dict[str, Any] | None:
+        """Arguments filled by rules alone, or None when that needs the LLM."""
+        from src.app.services.slot_extractor import extract_slots
+
+        return extract_slots(tool_name, user_input.strip(), self._registry)
+
     async def extract(self, tool_name: str, user_input: str) -> dict[str, Any]:
         """
         Return a dict of arguments for *tool_name* derived from *user_input*.
@@ -83,7 +89,12 @@ class ArgumentExtractor:
             logger.info("Natural language coding request detected, using LLM to generate code")
             return await self._generate_code_with_llm(text)
 
-        # ── 2. LLM extraction (when schema available + multi-word) ────
+        # ── 2. Deterministic slots: no LLM call when rules can fill them ──
+        slots = self.extract_slots(tool_name, text)
+        if slots is not None:
+            return slots
+
+        # ── 3. LLM extraction (when schema available + multi-word) ────
         if self._llm_router and len(text.split()) > 2:
             tool = self._registry.get(tool_name)
             if tool and getattr(tool, "parameters", None):
@@ -91,7 +102,7 @@ class ArgumentExtractor:
                 if result:
                     return result
 
-        # ── 3. Regex fast-paths ───────────────────────────────────────
+        # ── 4. Legacy regex fast-paths ────────────────────────────────
         return self._fast_path(tool_name, text, lower)
 
     # ------------------------------------------------------------------

@@ -57,13 +57,13 @@ def _make_service(debug: bool = False) -> "AmadeusService":
         patch("src.app.services.amadeus_service.ArgumentExtractor"),
         patch("src.app.services.amadeus_service.ToolDispatcher"),
         patch("src.app.services.amadeus_service.ResponseComposer"),
-        patch("src.app.services.amadeus_service.UnifiedSemanticRouter") as mock_router,
+        patch("src.app.services.amadeus_service.IntentRouter") as mock_router,
         patch("src.app.services.agent_loop.AmadeusGraph"),
     ):
         mock_mem.return_value.is_enabled = False
         mock_mem.return_value.store = AsyncMock()
         mock_router.return_value.is_ready = False
-        mock_router.return_value.build_index = MagicMock()
+        mock_router.return_value.build = MagicMock()
 
         mock_settings = MagicMock()
         mock_settings.GEMINI_API_KEY = None

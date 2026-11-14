@@ -127,7 +127,6 @@ sandbox-docker = [
 # NOT installed in the production runtime image (CLAUDE.md §3 — keeps the daemon
 # within the 4GB / <300MB RSS budget; the daemon uses onnxruntime instead).
 # Install only to:
-#   * (re)train the Stage-1 category SVM (scikit-learn), or
 #   * run a fresh checkout before `scripts/export_embedding_onnx.py` has produced
 #     the ONNX embedder (sentence-transformers fallback).
 ml-fallback = [

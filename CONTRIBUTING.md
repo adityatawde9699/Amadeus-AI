@@ -99,8 +99,9 @@ src/
 ├── app/          # Use-cases, services, agent loop
 │   └── services/
 │       ├── agent_loop.py         ← LangGraph cognitive core state machine
-│       ├── amadeus_service.py    ← main AI service + SemanticToolRouter integration
-│       └── semantic_router.py   ← zero-training tool router (all-mpnet-base-v2)
+│       ├── amadeus_service.py    ← main AI service
+│       ├── intent_router.py      ← LLM-free intent/category/tool router
+│       └── slot_extractor.py     ← rule-based tool arguments
 ├── core/         # Domain models, exceptions, interfaces (no external deps)
 │   ├── domain/
 │   ├── interfaces/

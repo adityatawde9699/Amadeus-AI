@@ -1,20 +1,20 @@
 {
   "heldout": {
-    "n": 62,
-    "accuracy": 0.8870967741935484,
-    "macro_f1": 0.8772486772486772,
-    "profile_accuracy": 0.8870967741935484,
+    "n": 70,
+    "accuracy": 0.9571428571428572,
+    "macro_f1": 0.9503968253968254,
+    "profile_accuracy": 0.9571428571428572,
     "per_class": {
       "app_control": {
-        "precision": 0.6,
-        "recall": 0.75,
-        "f1": 0.6666666666666665,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
         "support": 4
       },
       "calculation": {
         "precision": 1.0,
-        "recall": 0.75,
-        "f1": 0.8571428571428571,
+        "recall": 1.0,
+        "f1": 1.0,
         "support": 4
       },
       "communication": {
@@ -24,10 +24,16 @@
         "support": 4
       },
       "content_generation": {
+        "precision": 0.8,
+        "recall": 1.0,
+        "f1": 0.888888888888889,
+        "support": 4
+      },
+      "conversational": {
         "precision": 1.0,
         "recall": 1.0,
         "f1": 1.0,
-        "support": 4
+        "support": 8
       },
       "datetime": {
         "precision": 1.0,
@@ -36,9 +42,9 @@
         "support": 4
       },
       "developer": {
-        "precision": 0.8,
+        "precision": 1.0,
         "recall": 1.0,
-        "f1": 0.888888888888889,
+        "f1": 1.0,
         "support": 4
       },
       "file_system": {
@@ -54,15 +60,15 @@
         "support": 4
       },
       "monitoring": {
-        "precision": 0.8,
+        "precision": 1.0,
         "recall": 1.0,
-        "f1": 0.888888888888889,
+        "f1": 1.0,
         "support": 4
       },
       "news": {
         "precision": 1.0,
-        "recall": 0.5,
-        "f1": 0.6666666666666666,
+        "recall": 1.0,
+        "f1": 1.0,
         "support": 4
       },
       "os_control": {
@@ -72,9 +78,9 @@
         "support": 4
       },
       "productivity": {
-        "precision": 1.0,
+        "precision": 0.6666666666666666,
         "recall": 0.5,
-        "f1": 0.6666666666666666,
+        "f1": 0.5714285714285715,
         "support": 4
       },
       "task_manager": {
@@ -84,41 +90,25 @@
         "support": 6
       },
       "weather": {
-        "precision": 0.8,
+        "precision": 1.0,
         "recall": 1.0,
-        "f1": 0.888888888888889,
+        "f1": 1.0,
         "support": 4
       },
       "web_research": {
-        "precision": 0.8,
+        "precision": 1.0,
         "recall": 1.0,
-        "f1": 0.888888888888889,
+        "f1": 1.0,
         "support": 4
       }
     },
     "confusions": [
       [
-        "app_control -> developer",
+        "os_control -> productivity",
         1
       ],
       [
-        "os_control -> monitoring",
-        1
-      ],
-      [
-        "news -> weather",
-        1
-      ],
-      [
-        "news -> web_research",
-        1
-      ],
-      [
-        "calculation -> app_control",
-        1
-      ],
-      [
-        "productivity -> app_control",
+        "productivity -> content_generation",
         1
       ],
       [
@@ -126,37 +116,17 @@
         1
       ]
     ],
-    "top2_accuracy": 0.9193548387096774,
+    "top2_accuracy": 0.9857142857142858,
     "errors": [
-      {
-        "query": "could you bring up visual studio code",
-        "gold": "app_control",
-        "pred": "developer"
-      },
       {
         "query": "put the laptop to sleep",
         "gold": "os_control",
-        "pred": "monitoring"
+        "pred": "productivity"
       },
       {
-        "query": "what's new in technology this week",
-        "gold": "news",
-        "pred": "weather"
-      },
-      {
-        "query": "latest updates on the elections",
-        "gold": "news",
-        "pred": "web_research"
-      },
-      {
-        "query": "divide 9000 between 4 people",
-        "gold": "calculation",
-        "pred": "app_control"
-      },
-      {
-        "query": "open the budget xlsx and read the totals",
+        "query": "put together a word doc summarizing the quarterly results",
         "gold": "productivity",
-        "pred": "app_control"
+        "pred": "content_generation"
       },
       {
         "query": "draft the meeting minutes as a docx file",
@@ -165,138 +135,1138 @@
       }
     ]
   },
+  "e2e": {
+    "n": 75,
+    "tool_cases": 61,
+    "outcomes": {
+      "direct_ok": 51,
+      "llm_ok": 21,
+      "direct_bad": 1,
+      "llm_bad": 2
+    },
+    "correct": 0.96,
+    "llm_free_rate": 0.8360655737704918,
+    "direct_precision": 0.9807692307692307,
+    "wrong_dispatches": 1,
+    "latency_ms_p50": 1.07,
+    "latency_ms_p95": 1.65,
+    "failures": [
+      {
+        "query": "can you reach wikipedia.org",
+        "outcome": "direct_bad",
+        "kind": "tool",
+        "target": "wikipedia_search",
+        "args": {
+          "query": "reach wikipedia.org"
+        },
+        "reason": "direct",
+        "confidence": 0.991,
+        "tool_margin": 0.944
+      },
+      {
+        "query": "where is the database session created in the repo",
+        "outcome": "llm_bad",
+        "kind": "expert",
+        "target": "filesystem_expert",
+        "args": null,
+        "reason": "tool unsure",
+        "confidence": 0.371,
+        "tool_margin": 0.02
+      },
+      {
+        "query": "keep in mind that I'm vegetarian",
+        "outcome": "llm_bad",
+        "kind": "conversational",
+        "target": null,
+        "args": null,
+        "reason": "chat intent",
+        "confidence": 0.651,
+        "tool_margin": 0.0
+      }
+    ],
+    "needs_llm": [
+      {
+        "query": "what's NVDA trading at",
+        "outcome": "llm_ok",
+        "kind": "expert",
+        "target": "finance_expert",
+        "args": null,
+        "reason": "tool unsure",
+        "confidence": 0.891,
+        "tool_margin": 0.058
+      },
+      {
+        "query": "how long has this machine been running",
+        "outcome": "llm_ok",
+        "kind": "expert",
+        "target": "monitor_expert",
+        "args": null,
+        "reason": "tool unsure",
+        "confidence": 0.832,
+        "tool_margin": 0.064
+      },
+      {
+        "query": "kill the zoom app",
+        "outcome": "llm_ok",
+        "kind": "expert",
+        "target": "os_expert",
+        "args": null,
+        "reason": "category unsure",
+        "confidence": 0.559,
+        "tool_margin": 0.12
+      },
+      {
+        "query": "new task: book the dentist",
+        "outcome": "llm_ok",
+        "kind": "expert",
+        "target": "task_expert",
+        "args": null,
+        "reason": "direct",
+        "confidence": 0.953,
+        "tool_margin": 0.341
+      },
+      {
+        "query": "remind me to call the vet in 45 minutes",
+        "outcome": "llm_ok",
+        "kind": "expert",
+        "target": "task_expert",
+        "args": null,
+        "reason": "tool unsure",
+        "confidence": 0.916,
+        "tool_margin": 0.143
+      },
+      {
+        "query": "look up how to descale a kettle",
+        "outcome": "llm_ok",
+        "kind": "expert",
+        "target": "research_expert",
+        "args": null,
+        "reason": "category unsure",
+        "confidence": 0.225,
+        "tool_margin": 0.101
+      },
+      {
+        "query": "tell me about the Mughal empire",
+        "outcome": "llm_ok",
+        "kind": "expert",
+        "target": "research_expert",
+        "args": null,
+        "reason": "tool unsure",
+        "confidence": 0.434,
+        "tool_margin": 0.092
+      },
+      {
+        "query": "check the weather in Goa and then add a task to pack an umbrella",
+        "outcome": "llm_ok",
+        "kind": "expert",
+        "target": "research_expert",
+        "args": null,
+        "reason": "multi-step",
+        "confidence": 0.753,
+        "tool_margin": 1.0
+      },
+      {
+        "query": "write a python script that sorts a csv and run it",
+        "outcome": "llm_ok",
+        "kind": "expert",
+        "target": "developer_expert",
+        "args": null,
+        "reason": "category unsure",
+        "confidence": 0.193,
+        "tool_margin": 0.799
+      },
+      {
+        "query": "move the report into the archive folder and then email it to Sam",
+        "outcome": "llm_ok",
+        "kind": "expert",
+        "target": "filesystem_expert",
+        "args": null,
+        "reason": "multi-step",
+        "confidence": 0.75,
+        "tool_margin": 0.029
+      }
+    ],
+    "rows": [
+      {
+        "query": "what's 144 divided by 12",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "calculate",
+        "args": {
+          "expression": "144 / 12"
+        },
+        "reason": "direct",
+        "confidence": 0.968,
+        "tool_margin": 0.959
+      },
+      {
+        "query": "how much is 15 percent of 240",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "calculate",
+        "args": {
+          "expression": "(15 / 100) * 240"
+        },
+        "reason": "direct",
+        "confidence": 0.935,
+        "tool_margin": 0.906
+      },
+      {
+        "query": "9 plus 16",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "calculate",
+        "args": {
+          "expression": "9 + 16"
+        },
+        "reason": "direct",
+        "confidence": 0.964,
+        "tool_margin": 0.986
+      },
+      {
+        "query": "change 68 fahrenheit into celsius",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "convert_temperature",
+        "args": {
+          "value": 68.0,
+          "from_unit": "F",
+          "to_unit": "C"
+        },
+        "reason": "direct",
+        "confidence": 0.886,
+        "tool_margin": 0.985
+      },
+      {
+        "query": "how many centimeters are in 6 feet",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "convert_length",
+        "args": {
+          "value": 6.0,
+          "from_unit": "ft",
+          "to_unit": "cm"
+        },
+        "reason": "direct",
+        "confidence": 0.973,
+        "tool_margin": 0.941
+      },
+      {
+        "query": "convert 12 km to miles",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "convert_length",
+        "args": {
+          "value": 12.0,
+          "from_unit": "km",
+          "to_unit": "mi"
+        },
+        "reason": "direct",
+        "confidence": 0.973,
+        "tool_margin": 0.959
+      },
+      {
+        "query": "how much is 75 dollars in rupees",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "convert_currency",
+        "args": {
+          "amount": 75.0,
+          "from_currency": "USD",
+          "to_currency": "INR"
+        },
+        "reason": "direct",
+        "confidence": 0.754,
+        "tool_margin": 0.741
+      },
+      {
+        "query": "what's the weather like in Chennai",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "get_weather",
+        "args": {
+          "location": "Chennai"
+        },
+        "reason": "direct",
+        "confidence": 0.946,
+        "tool_margin": 1.0
+      },
+      {
+        "query": "will it rain in Seattle tomorrow",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "get_weather",
+        "args": {
+          "location": "Seattle"
+        },
+        "reason": "direct",
+        "confidence": 0.981,
+        "tool_margin": 1.0
+      },
+      {
+        "query": "forecast for Tokyo",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "get_weather",
+        "args": {
+          "location": "Tokyo"
+        },
+        "reason": "direct",
+        "confidence": 0.846,
+        "tool_margin": 1.0
+      },
+      {
+        "query": "what's today's date",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "get_datetime_info",
+        "args": {
+          "query": "date"
+        },
+        "reason": "direct",
+        "confidence": 0.985,
+        "tool_margin": 0.995
+      },
+      {
+        "query": "do you know what time it is",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "get_datetime_info",
+        "args": {
+          "query": "time"
+        },
+        "reason": "direct",
+        "confidence": 0.872,
+        "tool_margin": 0.983
+      },
+      {
+        "query": "which day of the week is it",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "get_datetime_info",
+        "args": {
+          "query": "day"
+        },
+        "reason": "direct",
+        "confidence": 0.934,
+        "tool_margin": 0.989
+      },
+      {
+        "query": "I could use a joke",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "tell_joke",
+        "args": {},
+        "reason": "direct",
+        "confidence": 0.512,
+        "tool_margin": 0.979
+      },
+      {
+        "query": "how's ethereum doing",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "get_crypto_price",
+        "args": {
+          "coin": "ethereum"
+        },
+        "reason": "direct",
+        "confidence": 0.605,
+        "tool_margin": 0.73
+      },
+      {
+        "query": "current price of dogecoin",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "get_crypto_price",
+        "args": {
+          "coin": "dogecoin"
+        },
+        "reason": "direct",
+        "confidence": 0.973,
+        "tool_margin": 0.884
+      },
+      {
+        "query": "what's NVDA trading at",
+        "outcome": "llm_ok",
+        "kind": "expert",
+        "target": "finance_expert",
+        "args": null,
+        "reason": "tool unsure",
+        "confidence": 0.891,
+        "tool_margin": 0.058
+      },
+      {
+        "query": "check the tesla share price",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "get_stock_price",
+        "args": {
+          "symbol": "TSLA"
+        },
+        "reason": "direct",
+        "confidence": 0.969,
+        "tool_margin": 0.602
+      },
+      {
+        "query": "any big sports news today",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "get_news",
+        "args": {
+          "category": "sports",
+          "country": "in",
+          "count": 5
+        },
+        "reason": "direct",
+        "confidence": 0.97,
+        "tool_margin": 1.0
+      },
+      {
+        "query": "show me the top headlines",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "get_news",
+        "args": {
+          "category": "general",
+          "country": "in",
+          "count": 5
+        },
+        "reason": "direct",
+        "confidence": 0.888,
+        "tool_margin": 1.0
+      },
+      {
+        "query": "how loaded is the cpu right now",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "get_cpu_usage",
+        "args": {},
+        "reason": "direct",
+        "confidence": 0.974,
+        "tool_margin": 0.781
+      },
+      {
+        "query": "am I running out of ram",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "get_memory_usage",
+        "args": {},
+        "reason": "direct",
+        "confidence": 0.893,
+        "tool_margin": 0.86
+      },
+      {
+        "query": "how much free space is on my disk",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "get_disk_usage",
+        "args": {},
+        "reason": "direct",
+        "confidence": 0.941,
+        "tool_margin": 0.873
+      },
+      {
+        "query": "what's my battery percentage",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "get_battery_info",
+        "args": {},
+        "reason": "direct",
+        "confidence": 0.75,
+        "tool_margin": 0.953
+      },
+      {
+        "query": "how long has this machine been running",
+        "outcome": "llm_ok",
+        "kind": "expert",
+        "target": "monitor_expert",
+        "args": null,
+        "reason": "tool unsure",
+        "confidence": 0.832,
+        "tool_margin": 0.064
+      },
+      {
+        "query": "what is my ip",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "get_network_info",
+        "args": {},
+        "reason": "direct",
+        "confidence": 0.445,
+        "tool_margin": 0.323
+      },
+      {
+        "query": "show the processes eating the most memory",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "get_running_processes",
+        "args": {},
+        "reason": "direct",
+        "confidence": 0.45,
+        "tool_margin": 0.253
+      },
+      {
+        "query": "is the gpu being used",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "get_gpu_stats",
+        "args": {},
+        "reason": "direct",
+        "confidence": 0.884,
+        "tool_margin": 0.94
+      },
+      {
+        "query": "ping 1.1.1.1",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "ping_host",
+        "args": {
+          "host": "1.1.1.1"
+        },
+        "reason": "direct",
+        "confidence": 0.493,
+        "tool_margin": 0.778
+      },
+      {
+        "query": "can you reach wikipedia.org",
+        "outcome": "direct_bad",
+        "kind": "tool",
+        "target": "wikipedia_search",
+        "args": {
+          "query": "reach wikipedia.org"
+        },
+        "reason": "direct",
+        "confidence": 0.991,
+        "tool_margin": 0.944
+      },
+      {
+        "query": "take a screen capture",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "take_screenshot",
+        "args": {},
+        "reason": "direct",
+        "confidence": 0.919,
+        "tool_margin": 0.992
+      },
+      {
+        "query": "which windows do I have open",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "list_open_apps",
+        "args": {},
+        "reason": "direct",
+        "confidence": 0.856,
+        "tool_margin": 0.947
+      },
+      {
+        "query": "launch the terminal",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "open_program",
+        "args": {
+          "app_name": "terminal"
+        },
+        "reason": "direct",
+        "confidence": 0.788,
+        "tool_margin": 0.652
+      },
+      {
+        "query": "could you open slack",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "open_program",
+        "args": {
+          "app_name": "slack"
+        },
+        "reason": "direct",
+        "confidence": 0.262,
+        "tool_margin": 0.83
+      },
+      {
+        "query": "close firefox",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "terminate_program",
+        "args": {
+          "process_name": "firefox"
+        },
+        "reason": "direct",
+        "confidence": 0.948,
+        "tool_margin": 0.921
+      },
+      {
+        "query": "kill the zoom app",
+        "outcome": "llm_ok",
+        "kind": "expert",
+        "target": "os_expert",
+        "args": null,
+        "reason": "category unsure",
+        "confidence": 0.559,
+        "tool_margin": 0.12
+      },
+      {
+        "query": "show me what's inside the tests folder",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "fs_list_directory",
+        "args": {
+          "path": "tests"
+        },
+        "reason": "direct",
+        "confidence": 0.909,
+        "tool_margin": 0.447
+      },
+      {
+        "query": "print the contents of pyproject.toml",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "fs_read_file",
+        "args": {
+          "path": "pyproject.toml"
+        },
+        "reason": "direct",
+        "confidence": 0.569,
+        "tool_margin": 0.829
+      },
+      {
+        "query": "read src/main.py",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "fs_read_file",
+        "args": {
+          "path": "src/main.py"
+        },
+        "reason": "direct",
+        "confidence": 0.927,
+        "tool_margin": 0.885
+      },
+      {
+        "query": "locate the file invoice_march.pdf",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "search_file",
+        "args": {
+          "file_name": "invoice_march.pdf"
+        },
+        "reason": "direct",
+        "confidence": 0.962,
+        "tool_margin": 0.698
+      },
+      {
+        "query": "search the code for the rate limiter",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "search_codebase",
+        "args": {
+          "query": "rate limiter"
+        },
+        "reason": "direct",
+        "confidence": 0.528,
+        "tool_margin": 0.668
+      },
+      {
+        "query": "where is the database session created in the repo",
+        "outcome": "llm_bad",
+        "kind": "expert",
+        "target": "filesystem_expert",
+        "args": null,
+        "reason": "tool unsure",
+        "confidence": 0.371,
+        "tool_margin": 0.02
+      },
+      {
+        "query": "add a todo to water the plants",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "add_task",
+        "args": {
+          "task_content": "water the plants"
+        },
+        "reason": "direct",
+        "confidence": 0.814,
+        "tool_margin": 0.271
+      },
+      {
+        "query": "new task: book the dentist",
+        "outcome": "llm_ok",
+        "kind": "expert",
+        "target": "task_expert",
+        "args": null,
+        "reason": "direct",
+        "confidence": 0.953,
+        "tool_margin": 0.341
+      },
+      {
+        "query": "what's left on my task list",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "list_tasks",
+        "args": {
+          "status_filter": "pending"
+        },
+        "reason": "direct",
+        "confidence": 0.808,
+        "tool_margin": 0.847
+      },
+      {
+        "query": "list all of my notes",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "list_notes",
+        "args": {},
+        "reason": "direct",
+        "confidence": 0.91,
+        "tool_margin": 0.947
+      },
+      {
+        "query": "take a note: gate code is 9921",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "create_note",
+        "args": {
+          "content": "gate code is 9921"
+        },
+        "reason": "direct",
+        "confidence": 0.296,
+        "tool_margin": 0.548
+      },
+      {
+        "query": "remind me to call the vet in 45 minutes",
+        "outcome": "llm_ok",
+        "kind": "expert",
+        "target": "task_expert",
+        "args": null,
+        "reason": "tool unsure",
+        "confidence": 0.916,
+        "tool_margin": 0.143
+      },
+      {
+        "query": "which reminders are set",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "list_reminders",
+        "args": {},
+        "reason": "direct",
+        "confidence": 0.957,
+        "tool_margin": 0.559
+      },
+      {
+        "query": "set a timer for 12 minutes",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "set_timer",
+        "args": {
+          "duration_seconds": 720
+        },
+        "reason": "direct",
+        "confidence": 0.703,
+        "tool_margin": 0.943
+      },
+      {
+        "query": "let's start a focus session",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "start_pomodoro",
+        "args": {},
+        "reason": "direct",
+        "confidence": 0.849,
+        "tool_margin": 0.811
+      },
+      {
+        "query": "stop my pomodoro",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "stop_pomodoro",
+        "args": {},
+        "reason": "direct",
+        "confidence": 0.881,
+        "tool_margin": 0.735
+      },
+      {
+        "query": "how long is left in the pomodoro",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "pomodoro_status",
+        "args": {},
+        "reason": "direct",
+        "confidence": 0.961,
+        "tool_margin": 0.771
+      },
+      {
+        "query": "remember that my car is parked on level 3",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "store_core_memory",
+        "args": {
+          "fact": "my car is parked on level 3"
+        },
+        "reason": "direct",
+        "confidence": 0.384,
+        "tool_margin": 0.266
+      },
+      {
+        "query": "keep in mind that I'm vegetarian",
+        "outcome": "llm_bad",
+        "kind": "conversational",
+        "target": null,
+        "args": null,
+        "reason": "chat intent",
+        "confidence": 0.651,
+        "tool_margin": 0.0
+      },
+      {
+        "query": "what goals do I have going",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "list_active_goals",
+        "args": {},
+        "reason": "direct",
+        "confidence": 0.955,
+        "tool_margin": 0.551
+      },
+      {
+        "query": "google the best hiking trails near Pune",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "web_search",
+        "args": {
+          "query": "the best hiking trails near Pune"
+        },
+        "reason": "direct",
+        "confidence": 0.559,
+        "tool_margin": 0.906
+      },
+      {
+        "query": "look up how to descale a kettle",
+        "outcome": "llm_ok",
+        "kind": "expert",
+        "target": "research_expert",
+        "args": null,
+        "reason": "category unsure",
+        "confidence": 0.225,
+        "tool_margin": 0.101
+      },
+      {
+        "query": "who was Nikola Tesla",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "wikipedia_search",
+        "args": {
+          "query": "Nikola Tesla"
+        },
+        "reason": "direct",
+        "confidence": 0.906,
+        "tool_margin": 0.857
+      },
+      {
+        "query": "tell me about the Mughal empire",
+        "outcome": "llm_ok",
+        "kind": "expert",
+        "target": "research_expert",
+        "args": null,
+        "reason": "tool unsure",
+        "confidence": 0.434,
+        "tool_margin": 0.092
+      },
+      {
+        "query": "summarise https://example.org/article",
+        "outcome": "direct_ok",
+        "kind": "tool",
+        "target": "fetch_webpage_content",
+        "args": {
+          "url": "https://example.org/article"
+        },
+        "reason": "url",
+        "confidence": 1.0,
+        "tool_margin": 1.0
+      },
+      {
+        "query": "check the weather in Goa and then add a task to pack an umbrella",
+        "outcome": "llm_ok",
+        "kind": "expert",
+        "target": "research_expert",
+        "args": null,
+        "reason": "multi-step",
+        "confidence": 0.753,
+        "tool_margin": 1.0
+      },
+      {
+        "query": "write a python script that sorts a csv and run it",
+        "outcome": "llm_ok",
+        "kind": "expert",
+        "target": "developer_expert",
+        "args": null,
+        "reason": "category unsure",
+        "confidence": 0.193,
+        "tool_margin": 0.799
+      },
+      {
+        "query": "move the report into the archive folder and then email it to Sam",
+        "outcome": "llm_ok",
+        "kind": "expert",
+        "target": "filesystem_expert",
+        "args": null,
+        "reason": "multi-step",
+        "confidence": 0.75,
+        "tool_margin": 0.029
+      },
+      {
+        "query": "hey, how's your day going",
+        "outcome": "llm_ok",
+        "kind": "conversational",
+        "target": null,
+        "args": null,
+        "reason": "chat intent",
+        "confidence": 0.598,
+        "tool_margin": 0.0
+      },
+      {
+        "query": "thanks a lot, that helped",
+        "outcome": "llm_ok",
+        "kind": "conversational",
+        "target": null,
+        "args": null,
+        "reason": "chat intent",
+        "confidence": 0.79,
+        "tool_margin": 0.0
+      },
+      {
+        "query": "what do you think about remote work",
+        "outcome": "llm_ok",
+        "kind": "conversational",
+        "target": null,
+        "args": null,
+        "reason": "chat intent",
+        "confidence": 0.306,
+        "tool_margin": 0.0
+      },
+      {
+        "query": "I'm feeling a bit stressed",
+        "outcome": "llm_ok",
+        "kind": "conversational",
+        "target": null,
+        "args": null,
+        "reason": "chat intent",
+        "confidence": 0.907,
+        "tool_margin": 0.0
+      },
+      {
+        "query": "who built you",
+        "outcome": "llm_ok",
+        "kind": "conversational",
+        "target": null,
+        "args": null,
+        "reason": "chat intent",
+        "confidence": 0.895,
+        "tool_margin": 0.0
+      },
+      {
+        "query": "good night",
+        "outcome": "llm_ok",
+        "kind": "conversational",
+        "target": null,
+        "args": null,
+        "reason": "chat intent",
+        "confidence": 0.675,
+        "tool_margin": 0.0
+      },
+      {
+        "query": "that's hilarious",
+        "outcome": "llm_ok",
+        "kind": "conversational",
+        "target": null,
+        "args": null,
+        "reason": "chat intent",
+        "confidence": 0.673,
+        "tool_margin": 0.0
+      },
+      {
+        "query": "can you help me with something",
+        "outcome": "llm_ok",
+        "kind": "conversational",
+        "target": null,
+        "args": null,
+        "reason": "chat intent",
+        "confidence": 0.424,
+        "tool_margin": 0.0
+      },
+      {
+        "query": "write a short poem about the monsoon",
+        "outcome": "llm_ok",
+        "kind": "content_generation",
+        "target": null,
+        "args": null,
+        "reason": "chat intent",
+        "confidence": 0.595,
+        "tool_margin": 0.0
+      },
+      {
+        "query": "draft a cover letter for a marketing job",
+        "outcome": "llm_ok",
+        "kind": "content_generation",
+        "target": null,
+        "args": null,
+        "reason": "chat intent",
+        "confidence": 0.591,
+        "tool_margin": 0.0
+      },
+      {
+        "query": "compose a birthday message for my grandmother",
+        "outcome": "llm_ok",
+        "kind": "conversational",
+        "target": null,
+        "args": null,
+        "reason": "no expert",
+        "confidence": 0.395,
+        "tool_margin": 0.182
+      }
+    ]
+  },
   "cross_validation": {
-    "n": 387,
-    "accuracy": 0.6744186046511628,
-    "macro_f1": 0.6428796609024313,
-    "profile_accuracy": 0.7131782945736435,
+    "n": 936,
+    "accuracy": 0.8568376068376068,
+    "macro_f1": 0.8362533513886499,
+    "profile_accuracy": 0.8942307692307693,
     "per_class": {
       "app_control": {
-        "precision": 0.5614035087719298,
-        "recall": 0.7441860465116279,
-        "f1": 0.6399999999999999,
-        "support": 43
+        "precision": 0.7702702702702703,
+        "recall": 0.76,
+        "f1": 0.7651006711409396,
+        "support": 75
       },
       "calculation": {
-        "precision": 0.7368421052631579,
-        "recall": 0.6666666666666666,
-        "f1": 0.7,
-        "support": 21
+        "precision": 0.9322033898305084,
+        "recall": 0.9482758620689655,
+        "f1": 0.94017094017094,
+        "support": 58
+      },
+      "cloud_escalation": {
+        "precision": 0.9523809523809523,
+        "recall": 0.8333333333333334,
+        "f1": 0.888888888888889,
+        "support": 24
       },
       "communication": {
-        "precision": 0.65,
-        "recall": 0.7647058823529411,
-        "f1": 0.7027027027027027,
+        "precision": 0.8421052631578947,
+        "recall": 0.9411764705882353,
+        "f1": 0.8888888888888888,
         "support": 17
       },
       "content_generation": {
-        "precision": 0.375,
-        "recall": 0.25,
-        "f1": 0.3,
+        "precision": 0.5,
+        "recall": 0.3333333333333333,
+        "f1": 0.4,
         "support": 12
       },
+      "conversational": {
+        "precision": 0.8125,
+        "recall": 0.8125,
+        "f1": 0.8125,
+        "support": 64
+      },
       "datetime": {
-        "precision": 0.625,
-        "recall": 0.47619047619047616,
-        "f1": 0.5405405405405405,
-        "support": 21
+        "precision": 0.8571428571428571,
+        "recall": 0.9130434782608695,
+        "f1": 0.8842105263157894,
+        "support": 46
       },
       "developer": {
-        "precision": 0.6666666666666666,
-        "recall": 0.6666666666666666,
-        "f1": 0.6666666666666666,
-        "support": 24
+        "precision": 0.7297297297297297,
+        "recall": 0.8059701492537313,
+        "f1": 0.7659574468085106,
+        "support": 67
       },
       "file_system": {
-        "precision": 0.71875,
-        "recall": 0.7419354838709677,
-        "f1": 0.7301587301587302,
-        "support": 31
+        "precision": 0.9230769230769231,
+        "recall": 0.9130434782608695,
+        "f1": 0.9180327868852459,
+        "support": 92
       },
       "finance": {
-        "precision": 0.8,
-        "recall": 0.6,
-        "f1": 0.6857142857142857,
-        "support": 20
+        "precision": 0.85,
+        "recall": 0.8717948717948718,
+        "f1": 0.8607594936708861,
+        "support": 39
       },
       "monitoring": {
-        "precision": 0.8387096774193549,
-        "recall": 0.8387096774193549,
-        "f1": 0.8387096774193549,
-        "support": 31
+        "precision": 0.896551724137931,
+        "recall": 0.8666666666666667,
+        "f1": 0.8813559322033899,
+        "support": 90
       },
       "news": {
-        "precision": 0.85,
-        "recall": 0.85,
-        "f1": 0.85,
-        "support": 20
+        "precision": 0.9090909090909091,
+        "recall": 1.0,
+        "f1": 0.9523809523809523,
+        "support": 30
       },
       "os_control": {
-        "precision": 0.7586206896551724,
-        "recall": 0.6470588235294118,
-        "f1": 0.6984126984126984,
-        "support": 34
+        "precision": 0.7419354838709677,
+        "recall": 0.7419354838709677,
+        "f1": 0.7419354838709677,
+        "support": 62
       },
       "productivity": {
-        "precision": 0.2727272727272727,
-        "recall": 0.17647058823529413,
-        "f1": 0.21428571428571427,
-        "support": 17
+        "precision": 0.7804878048780488,
+        "recall": 0.7272727272727273,
+        "f1": 0.7529411764705882,
+        "support": 44
       },
       "task_manager": {
-        "precision": 0.7837837837837838,
-        "recall": 0.7837837837837838,
-        "f1": 0.7837837837837838,
-        "support": 37
+        "precision": 0.9583333333333334,
+        "recall": 0.9426229508196722,
+        "f1": 0.950413223140496,
+        "support": 122
       },
       "weather": {
-        "precision": 0.6875,
-        "recall": 0.6111111111111112,
-        "f1": 0.6470588235294118,
-        "support": 18
+        "precision": 0.9642857142857143,
+        "recall": 0.9642857142857143,
+        "f1": 0.9642857142857143,
+        "support": 28
       },
       "web_research": {
-        "precision": 0.5769230769230769,
-        "recall": 0.7317073170731707,
-        "f1": 0.6451612903225806,
-        "support": 41
+        "precision": 0.8484848484848485,
+        "recall": 0.8484848484848485,
+        "f1": 0.8484848484848486,
+        "support": 66
       }
     },
     "confusions": [
       [
         "os_control -> app_control",
-        9
-      ],
-      [
-        "content_generation -> communication",
-        5
+        14
       ],
       [
         "app_control -> os_control",
+        11
+      ],
+      [
+        "conversational -> datetime",
+        6
+      ],
+      [
+        "file_system -> developer",
+        6
+      ],
+      [
+        "monitoring -> developer",
+        6
+      ],
+      [
+        "datetime -> conversational",
         4
       ],
       [
-        "web_research -> app_control",
+        "developer -> monitoring",
         4
       ],
       [
-        "app_control -> developer",
-        4
-      ],
-      [
-        "monitoring -> web_research",
+        "app_control -> productivity",
         3
       ],
       [
-        "developer -> web_research",
-        3
-      ],
-      [
-        "datetime -> weather",
-        3
-      ],
-      [
-        "task_manager -> app_control",
+        "web_research -> news",
         3
       ],
       [
@@ -304,55 +1274,31 @@
         3
       ],
       [
-        "file_system -> web_research",
+        "conversational -> productivity",
         3
       ],
       [
-        "finance -> calculation",
+        "developer -> file_system",
         3
       ],
       [
-        "datetime -> web_research",
+        "content_generation -> web_research",
         3
       ],
       [
-        "file_system -> productivity",
+        "productivity -> task_manager",
+        3
+      ],
+      [
+        "content_generation -> communication",
         2
       ],
       [
-        "web_research -> datetime",
+        "task_manager -> conversational",
         2
       ],
       [
-        "productivity -> content_generation",
-        2
-      ],
-      [
-        "productivity -> web_research",
-        2
-      ],
-      [
-        "content_generation -> file_system",
-        2
-      ],
-      [
-        "web_research -> news",
-        2
-      ],
-      [
-        "datetime -> app_control",
-        2
-      ],
-      [
-        "developer -> productivity",
-        2
-      ],
-      [
-        "weather -> datetime",
-        2
-      ],
-      [
-        "calculation -> web_research",
+        "web_research -> developer",
         2
       ],
       [
@@ -360,179 +1306,63 @@
         2
       ],
       [
-        "productivity -> app_control",
+        "developer -> web_research",
         2
-      ],
-      [
-        "communication -> content_generation",
-        2
-      ],
-      [
-        "productivity -> developer",
-        2
-      ],
-      [
-        "weather -> web_research",
-        2
-      ],
-      [
-        "file_system -> task_manager",
-        1
-      ],
-      [
-        "os_control -> weather",
-        1
-      ],
-      [
-        "web_research -> task_manager",
-        1
-      ],
-      [
-        "developer -> app_control",
-        1
-      ],
-      [
-        "developer -> monitoring",
-        1
-      ],
-      [
-        "calculation -> file_system",
-        1
-      ],
-      [
-        "datetime -> communication",
-        1
-      ],
-      [
-        "task_manager -> communication",
-        1
-      ],
-      [
-        "communication -> monitoring",
-        1
-      ],
-      [
-        "app_control -> file_system",
-        1
       ],
       [
         "app_control -> task_manager",
-        1
+        2
       ],
       [
-        "file_system -> content_generation",
-        1
+        "os_control -> conversational",
+        2
       ],
       [
-        "os_control -> web_research",
-        1
+        "finance -> conversational",
+        2
+      ],
+      [
+        "developer -> app_control",
+        2
+      ],
+      [
+        "productivity -> conversational",
+        2
+      ],
+      [
+        "file_system -> web_research",
+        2
       ],
       [
         "monitoring -> os_control",
-        1
-      ],
-      [
-        "web_research -> calculation",
-        1
-      ],
-      [
-        "web_research -> productivity",
-        1
-      ],
-      [
-        "news -> monitoring",
-        1
-      ],
-      [
-        "finance -> task_manager",
-        1
-      ],
-      [
-        "weather -> task_manager",
-        1
-      ],
-      [
-        "datetime -> productivity",
-        1
-      ],
-      [
-        "task_manager -> weather",
-        1
-      ],
-      [
-        "task_manager -> datetime",
-        1
-      ],
-      [
-        "communication -> task_manager",
-        1
-      ],
-      [
-        "monitoring -> developer",
-        1
-      ],
-      [
-        "news -> web_research",
-        1
-      ],
-      [
-        "weather -> news",
-        1
-      ],
-      [
-        "calculation -> app_control",
-        1
-      ],
-      [
-        "datetime -> calculation",
-        1
+        2
       ],
       [
         "content_generation -> productivity",
-        1
-      ],
-      [
-        "content_generation -> developer",
-        1
-      ],
-      [
-        "app_control -> productivity",
-        1
-      ],
-      [
-        "file_system -> app_control",
-        1
-      ],
-      [
-        "finance -> app_control",
-        1
-      ],
-      [
-        "developer -> file_system",
-        1
-      ],
-      [
-        "weather -> app_control",
-        1
-      ],
-      [
-        "productivity -> os_control",
-        1
+        2
       ],
       [
         "productivity -> monitoring",
+        2
+      ],
+      [
+        "app_control -> developer",
         1
       ],
       [
-        "os_control -> finance",
+        "conversational -> communication",
         1
       ],
       [
-        "news -> datetime",
+        "cloud_escalation -> developer",
         1
       ],
       [
-        "finance -> os_control",
+        "app_control -> monitoring",
+        1
+      ],
+      [
+        "developer -> os_control",
         1
       ],
       [
@@ -540,23 +1370,115 @@
         1
       ],
       [
-        "finance -> monitoring",
+        "finance -> calculation",
         1
       ],
       [
-        "calculation -> task_manager",
+        "developer -> calculation",
         1
       ],
       [
-        "task_manager -> file_system",
+        "task_manager -> datetime",
         1
       ],
       [
-        "task_manager -> web_research",
+        "monitoring -> finance",
         1
       ],
       [
-        "productivity -> task_manager",
+        "web_research -> file_system",
+        1
+      ],
+      [
+        "web_research -> cloud_escalation",
+        1
+      ],
+      [
+        "finance -> developer",
+        1
+      ],
+      [
+        "communication -> content_generation",
+        1
+      ],
+      [
+        "content_generation -> developer",
+        1
+      ],
+      [
+        "conversational -> finance",
+        1
+      ],
+      [
+        "cloud_escalation -> web_research",
+        1
+      ],
+      [
+        "task_manager -> developer",
+        1
+      ],
+      [
+        "web_research -> finance",
+        1
+      ],
+      [
+        "monitoring -> app_control",
+        1
+      ],
+      [
+        "monitoring -> web_research",
+        1
+      ],
+      [
+        "productivity -> content_generation",
+        1
+      ],
+      [
+        "conversational -> weather",
+        1
+      ],
+      [
+        "cloud_escalation -> calculation",
+        1
+      ],
+      [
+        "task_manager -> content_generation",
+        1
+      ],
+      [
+        "task_manager -> productivity",
+        1
+      ],
+      [
+        "monitoring -> calculation",
+        1
+      ],
+      [
+        "weather -> finance",
+        1
+      ],
+      [
+        "calculation -> developer",
+        1
+      ],
+      [
+        "productivity -> os_control",
+        1
+      ],
+      [
+        "cloud_escalation -> monitoring",
+        1
+      ],
+      [
+        "task_manager -> monitoring",
+        1
+      ],
+      [
+        "web_research -> content_generation",
+        1
+      ],
+      [
+        "web_research -> os_control",
         1
       ]
     ],

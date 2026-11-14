@@ -1,0 +1,84 @@
+# End-to-end routing eval: query -> route -> rule-based arguments, no LLM.
+# Written after the router's training phrases and thresholds were fixed, and
+# never used to tune them. Do not copy these into routing_data.py.
+#
+#   expect: tools that are a correct direct dispatch
+#   args:   substring checks on the extracted arguments ("a|b" = either key)
+#   intent: for requests no tool should handle (conversational, content_generation)
+- {q: "what's 144 divided by 12", expect: [calculate], args: {expression: "144"}}
+- {q: "how much is 15 percent of 240", expect: [calculate], args: {expression: "240"}}
+- {q: "9 plus 16", expect: [calculate], args: {expression: "9"}}
+- {q: "change 68 fahrenheit into celsius", expect: [convert_temperature], args: {value: "68"}}
+- {q: "how many centimeters are in 6 feet", expect: [convert_length], args: {value: "6"}}
+- {q: "convert 12 km to miles", expect: [convert_length], args: {value: "12"}}
+- {q: "how much is 75 dollars in rupees", expect: [convert_currency], args: {amount: "75"}}
+- {q: "what's the weather like in Chennai", expect: [get_weather], args: {location: chennai}}
+- {q: "will it rain in Seattle tomorrow", expect: [get_weather], args: {location: seattle}}
+- {q: "forecast for Tokyo", expect: [get_weather], args: {location: tokyo}}
+- {q: "what's today's date", expect: [get_datetime_info], args: {query: date}}
+- {q: "do you know what time it is", expect: [get_datetime_info], args: {query: time}}
+- {q: "which day of the week is it", expect: [get_datetime_info]}
+- {q: "I could use a joke", expect: [tell_joke]}
+- {q: "how's ethereum doing", expect: [get_crypto_price], args: {coin: eth}}
+- {q: "current price of dogecoin", expect: [get_crypto_price], args: {coin: doge}}
+- {q: "what's NVDA trading at", expect: [get_stock_price], args: {symbol: NVDA}}
+- {q: "check the tesla share price", expect: [get_stock_price], args: {symbol: TSLA}}
+- {q: "any big sports news today", expect: [get_news], args: {category: sports}}
+- {q: "show me the top headlines", expect: [get_news]}
+- {q: "how loaded is the cpu right now", expect: [get_cpu_usage, system_status]}
+- {q: "am I running out of ram", expect: [get_memory_usage]}
+- {q: "how much free space is on my disk", expect: [get_disk_usage]}
+- {q: "what's my battery percentage", expect: [get_battery_info]}
+- {q: "how long has this machine been running", expect: [get_system_uptime]}
+- {q: "what is my ip", expect: [get_network_info]}
+- {q: "show the processes eating the most memory", expect: [get_running_processes]}
+- {q: "is the gpu being used", expect: [get_gpu_stats]}
+- {q: "ping 1.1.1.1", expect: [ping_host], args: {host: "1.1.1.1"}}
+- {q: "can you reach wikipedia.org", expect: [ping_host], args: {host: wikipedia.org}}
+- {q: "take a screen capture", expect: [take_screenshot]}
+- {q: "which windows do I have open", expect: [list_open_apps]}
+- {q: "launch the terminal", expect: [open_program, launch_app], args: {"app_name|program_name": terminal}}
+- {q: "could you open slack", expect: [open_program, launch_app], args: {"app_name|program_name": slack}}
+- {q: "close firefox", expect: [terminate_program, terminate_process], args: {"process_name|app_name": firefox}}
+- {q: "kill the zoom app", expect: [terminate_program, terminate_process], args: {"process_name|app_name": zoom}}
+- {q: "show me what's inside the tests folder", expect: [fs_list_directory], args: {path: tests}}
+- {q: "print the contents of pyproject.toml", expect: [fs_read_file], args: {path: pyproject.toml}}
+- {q: "read src/main.py", expect: [fs_read_file], args: {path: src/main.py}}
+- {q: "locate the file invoice_march.pdf", expect: [search_file, fs_search_files], args: {"file_name|name|query": invoice_march}}
+- {q: "search the code for the rate limiter", expect: [search_codebase, search_workspace], args: {query: "rate limiter"}}
+- {q: "where is the database session created in the repo", expect: [search_codebase, search_workspace]}
+- {q: "add a todo to water the plants", expect: [add_task], args: {"task_content|content": "water the plants"}}
+- {q: "new task: book the dentist", expect: [add_task], args: {"task_content|content": dentist}}
+- {q: "what's left on my task list", expect: [list_tasks, get_task_summary]}
+- {q: "list all of my notes", expect: [list_notes]}
+- {q: "take a note: gate code is 9921", expect: [create_note], args: {content: "9921"}}
+- {q: "remind me to call the vet in 45 minutes", expect: [add_reminder], args: {title: vet}}
+- {q: "which reminders are set", expect: [list_reminders]}
+- {q: "set a timer for 12 minutes", expect: [set_timer], args: {duration_seconds: "720"}}
+- {q: "let's start a focus session", expect: [start_pomodoro]}
+- {q: "stop my pomodoro", expect: [stop_pomodoro]}
+- {q: "how long is left in the pomodoro", expect: [pomodoro_status]}
+- {q: "remember that my car is parked on level 3", expect: [store_core_memory], args: {fact: "level 3"}}
+- {q: "keep in mind that I'm vegetarian", expect: [store_core_memory], args: {fact: vegetarian}}
+- {q: "what goals do I have going", expect: [list_active_goals]}
+- {q: "google the best hiking trails near Pune", expect: [web_search], args: {query: hiking}}
+- {q: "look up how to descale a kettle", expect: [web_search, wikipedia_search], args: {query: kettle}}
+- {q: "who was Nikola Tesla", expect: [wikipedia_search, web_search], args: {query: tesla}}
+- {q: "tell me about the Mughal empire", expect: [wikipedia_search, web_search], args: {query: mughal}}
+- {q: "summarise https://example.org/article", expect: [fetch_webpage_content], args: {url: example.org}}
+# Requests that need several steps or generated arguments: must NOT be a direct dispatch.
+- {q: "check the weather in Goa and then add a task to pack an umbrella", needs_llm: true}
+- {q: "write a python script that sorts a csv and run it", needs_llm: true}
+- {q: "move the report into the archive folder and then email it to Sam", needs_llm: true}
+# Chat: no tool.
+- {q: "hey, how's your day going", intent: conversational}
+- {q: "thanks a lot, that helped", intent: conversational}
+- {q: "what do you think about remote work", intent: conversational}
+- {q: "I'm feeling a bit stressed", intent: conversational}
+- {q: "who built you", intent: conversational}
+- {q: "good night", intent: conversational}
+- {q: "that's hilarious", intent: conversational}
+- {q: "can you help me with something", intent: conversational}
+- {q: "write a short poem about the monsoon", intent: content_generation}
+- {q: "draft a cover letter for a marketing job", intent: content_generation}
+- {q: "compose a birthday message for my grandmother", intent: content_generation}

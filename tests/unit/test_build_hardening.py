@@ -31,8 +31,8 @@ _ROOT = Path(__file__).resolve().parents[2]
 @pytest.mark.parametrize(
     "module",
     [
-        "src.app.services.semantic_router",
-        "src.app.services.category_classifier",
+        "src.app.services.intent_router",
+        "src.app.services.slot_extractor",
         "src.infra.tools.web_research_tools",
     ],
 )

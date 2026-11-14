@@ -38,6 +38,16 @@ def _registry() -> ToolRegistry:
             parameters={"location": {"type": "string"}, "units": {"type": "string"}},
         )
     )
+    # No rule-based slot extractor exists for this one, so it exercises the LLM path.
+    reg.register(
+        Tool(
+            name="lookup_place",
+            function=get_weather,
+            description="place lookup",
+            category=ToolCategory.WEATHER,
+            parameters={"location": {"type": "string"}, "units": {"type": "string"}},
+        )
+    )
     return reg
 
 
@@ -49,7 +59,7 @@ def _extractor(reply: str | Exception | None = None) -> ArgumentExtractor:
 @pytest.mark.asyncio
 async def test_llm_extraction_filters_to_schema_keys_and_strips_noise():
     ext = _extractor('Sure! ```json\n{"location": " Pune ", "bogus": "x", "units": ""}\n```')
-    assert await ext.extract("get_weather", "what's the weather in Pune today") == {
+    assert await ext.extract("lookup_place", "what's the weather in Pune today") == {
         "location": "Pune"
     }
 
@@ -57,7 +67,7 @@ async def test_llm_extraction_filters_to_schema_keys_and_strips_noise():
 @pytest.mark.asyncio
 async def test_llm_prompt_fences_user_input_as_data():
     ext = _extractor('{"location": "x"}')
-    await ext.extract("get_weather", "weather in <b>Pune</b> please")
+    await ext.extract("lookup_place", "weather in <b>Pune</b> please")
     prompt = ext._llm_router.prompts[0]  # type: ignore[union-attr]
     assert "<user_input>" in prompt and "&lt;b&gt;Pune&lt;/b&gt;" in prompt
 
@@ -66,7 +76,14 @@ async def test_llm_prompt_fences_user_input_as_data():
 @pytest.mark.parametrize("reply", ["not json at all", RuntimeError("down"), "{}"])
 async def test_llm_failure_falls_back_to_fast_path(reply):
     ext = _extractor(reply)
-    assert await ext.extract("get_weather", "weather in Mumbai") == {"location": "mumbai"}
+    assert await ext.extract("lookup_place", "weather in Mumbai") == {"query": "weather in Mumbai"}
+
+
+@pytest.mark.asyncio
+async def test_rule_based_slots_skip_the_llm():
+    ext = _extractor('{"location": "from the llm"}')
+    assert await ext.extract("get_weather", "weather in Mumbai") == {"location": "Mumbai"}
+    assert ext._llm_router.prompts == []  # type: ignore[union-attr]
 
 
 @pytest.mark.asyncio
@@ -111,8 +128,8 @@ async def test_code_generation_only_for_natural_language():
             "Amadeus, please search for rust lifetimes on google",
             {"query": "rust lifetimes"},
         ),
-        ("get_weather", "weather forecast for New York", {"location": "new york"}),
-        ("get_weather", "how is the weather", {"location": "current location"}),
+        ("get_weather", "weather forecast for New York", {"location": "New York"}),
+        ("get_weather", "how is the weather", {}),
         (
             "get_news",
             "latest tech news in usa",
@@ -131,7 +148,7 @@ async def test_code_generation_only_for_natural_language():
         ("set_timer", "timer for 2 minutes", {"duration_seconds": 120}),
         ("set_timer", "45 seconds", {"duration_seconds": 45}),
         ("set_timer", "a timer", {"duration_seconds": 300}),
-        ("convert_length", "5 km in miles", {"expression": "5 km in miles"}),
+        ("convert_length", "5 km in miles", {"value": 5.0, "from_unit": "km", "to_unit": "mi"}),
         ("unknown_tool", "whatever", {"query": "whatever"}),
     ],
 )

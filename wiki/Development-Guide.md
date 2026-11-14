@@ -144,7 +144,7 @@ prompts, retrieval or the default model, and compare.
 
 | Eval | Measures | Command |
 |---|---|---|
-| Routing | Stage-1 category classifier on 62 held-out queries (accuracy, macro-F1, top-2, expert-profile accuracy, confusions) plus 5-fold CV on `TRAINING_DATA` | `uv run python -m evals.routing_eval` |
+| Routing | LLM-free intent router: category head on 70 held-out queries, and 75 held-out requests end to end (route + rule-based arguments): share finished with no LLM call, direct-dispatch precision, wrong dispatches, latency; plus 5-fold CV | `uv run python -m evals.routing_eval` |
 | RAG | Workspace retrieval over `wiki/` — recall@1/3/5 and MRR for hybrid vs BM25-only vs dense-only | `uv run python -m evals.rag_eval --model-dir Model` |
 | Agent | First tool + argument correctness of the real graph and registry with the local GGUF model, expert vs generalist, grammar-constrained vs free JSON (tools never execute) | `uv run python -m evals.agent_eval` |
 
@@ -190,7 +190,6 @@ Runs `ruff`, `mypy`, and GitGuardian secret scanning on every commit.
 | Script | Purpose |
 |---|---|
 | `scripts/index_workspace.py` | Build / update the hybrid workspace search index |
-| `scripts/calibrate_semantic_threshold.py` | Find the optimal routing threshold for your tool set |
 | `scripts/initialize_amadeus_identity.py` | Seed identity memories into Qdrant |
 | `scripts/verify_identity_storage.py` | Verify identity memories are correctly stored |
 | `scripts/build_backend_binary.py` | Build a Windows executable via PyInstaller |

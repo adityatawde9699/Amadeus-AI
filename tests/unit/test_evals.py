@@ -49,10 +49,11 @@ def test_rag_dataset_points_at_real_pages():
         assert set(q["relevant"]) <= pages, q
 
 
-def test_routing_heldout_has_no_training_leak():
-    from evals.routing_eval import load_heldout
+def test_routing_datasets_have_no_training_leak():
+    from evals.routing_eval import load_e2e, load_heldout
 
     assert len(load_heldout()) >= 60  # raises on leak / unknown category
+    assert len(load_e2e()) >= 60  # raises on leak
 
 
 def test_routing_metrics():
@@ -68,14 +69,36 @@ def test_routing_metrics():
     assert m["confusions"] == [("news -> weather", 1)]
 
 
-# Floor for the Stage-1 classifier on held-out data (baseline 88.7% when added,
-# evals/results/routing.md). Fails CI if TRAINING_DATA edits regress routing.
-ROUTING_HELDOUT_FLOOR = 0.80
+# Floors for the LLM-free router on held-out data (evals/results/routing.md had
+# 95.7% category accuracy, 94.7% end to end, 83.6% LLM-free when added). They
+# fail CI if routing_data.py, the thresholds or the slot rules regress routing.
+ROUTING_HELDOUT_FLOOR = 0.88
+ROUTING_E2E_FLOOR = 0.88
+ROUTING_LLM_FREE_FLOOR = 0.70
+ROUTING_MAX_WRONG_DISPATCHES = 3
 
 
-def test_routing_quality_floor():
-    pytest.importorskip("sklearn")
-    from evals.routing_eval import heldout_eval, load_heldout
+@pytest.fixture(scope="module")
+def routing_report():
+    from evals.routing_eval import build_router, e2e_eval, heldout_eval, load_e2e, load_heldout
 
-    result = heldout_eval(load_heldout())
-    assert result["accuracy"] >= ROUTING_HELDOUT_FLOOR, result["errors"]
+    try:
+        router, registry = build_router()
+    except Exception as exc:  # no embedding backend in this environment
+        pytest.skip(f"intent router unavailable: {exc}")
+    return {
+        "heldout": heldout_eval(load_heldout(), router),
+        "e2e": e2e_eval(load_e2e(), router, registry),
+    }
+
+
+def test_routing_category_floor(routing_report):
+    h = routing_report["heldout"]
+    assert h["accuracy"] >= ROUTING_HELDOUT_FLOOR, h["errors"]
+
+
+def test_routing_end_to_end_floor(routing_report):
+    e = routing_report["e2e"]
+    assert e["correct"] >= ROUTING_E2E_FLOOR, e["failures"]
+    assert e["llm_free_rate"] >= ROUTING_LLM_FREE_FLOOR, e["needs_llm"]
+    assert e["wrong_dispatches"] <= ROUTING_MAX_WRONG_DISPATCHES, e["failures"]

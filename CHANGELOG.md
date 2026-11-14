@@ -36,6 +36,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - pip-audit now covers the whole lockfile.
 
 ### Changed
+- **Removed the keyword routing overrides, `UnifiedSemanticRouter` and the TF-IDF `CategoryClassifier`.** The overrides misrouted common requests ("what is 15% of 80" went to Wikipedia, "stop the pomodoro" to `terminate_program`). Also gone: `scripts/train_category_classifier.py`, `scripts/calibrate_semantic_threshold.py`, `SEMANTIC_ROUTER_THRESHOLD` and the classifier step in the Docker build. Only the URL rule remains.
+- **`ArgumentExtractor` tries rules before the LLM.** Unit and temperature conversions now pass `value`/`from_unit`/`to_unit`; the old fast path passed one `expression` string the tools don't accept.
 - **Single HTTP client:** `httpx` replaces `aiohttp`. Removed the unused `requests`, `psycopg`, `pytesseract`, `duckduckgo-search` (`ddgs` stays) and `openai` dependencies.
 - **Docker router artifacts:** a new build stage produces the ONNX embedder and `Model/category_classifier.npz` with a CPU-only toolchain. The runtime stays torch-free.
 - **Docker image cleanup:** the image now ships `config/`, and the stale `WHISPER_*` env vars are gone.
@@ -44,6 +46,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Docs corrected:** no Ollama or OpenAI adapters exist, the project is not "production-ready", and there are 70 built-in tools.
 
 ### Added
+- **LLM-free routing** (`intent_router.py`, `slot_extractor.py`; see `wiki/Core-Systems.md`). Most single-tool requests now run with no LLM call:
+  - Two small classifiers over MiniLM embeddings pick the category and the tool in about 1 ms. They train in numpy at startup, so there is no build artifact and no scikit-learn.
+  - Rule-based slot extractors fill tool arguments and return nothing instead of guessing; the LLM takes over only then.
+  - On 75 held-out requests: 96.0% handled correctly, 83.6% of tool requests finished with no LLM call, and 1 wrong direct dispatch. Category accuracy is 95.7% on 70 held-out queries (the old classifier scored 88.7% on 62, and the old pipeline with keyword overrides 65.6% end to end).
+  - `TOOL_RESPONSE_MODE` (`auto`/`llm`/`direct`) controls whether a tool result is rephrased by the LLM.
+  - `evals/routing_eval.py` scores the whole path, and CI enforces floors on accuracy, LLM-free rate and wrong dispatches.
 - **GPU acceleration for everyone, not just hand-built installs** (see `wiki/GPU-Acceleration.md`):
   - `SLM_N_GPU_LAYERS` defaults to `auto`: every layer goes on the GPU when llama-cpp-python has a GPU backend (CUDA, Metal, Vulkan, ROCm), and the model stays on CPU otherwise. A failed GPU load, for example from too little VRAM, falls back to CPU instead of disabling local inference. Startup logs name the backend.
   - `scripts/install_gpu_backend.sh` rebuilds the `uv.lock`-pinned llama-cpp-python for this machine. It detects the backend, the GPU architecture and the newest CUDA toolkit, and picks a GCC that `nvcc` accepts. Upstream's prebuilt CUDA wheels stop at 0.3.19 / CUDA 12.4, which can't target RTX 50xx.

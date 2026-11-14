@@ -160,6 +160,21 @@ class ResponseComposer:
         self._settings = settings
         self._memory_service = memory_service
 
+    def _phrase_tool_results(self) -> bool:
+        """Whether tool results are rephrased by the LLM (TOOL_RESPONSE_MODE)."""
+        mode = getattr(self._settings, "TOOL_RESPONSE_MODE", "llm")
+        if mode != "auto":
+            return bool(mode == "llm")
+        if not getattr(self._settings, "LOCAL_ONLY_MODE", True) and (
+            getattr(self._settings, "GROQ_API_KEY", None)
+            or getattr(self._settings, "GEMINI_API_KEY", None)
+        ):
+            return True
+        try:
+            return bool(self._settings.capability.has_gpu)
+        except Exception:
+            return False
+
     # ------------------------------------------------------------------
     # System / identity prompt
     # ------------------------------------------------------------------
@@ -217,7 +232,14 @@ class ResponseComposer:
         """
         Wrap a raw tool result in a natural, concise sentence for the user.
         Falls back to the raw output if the LLM is unavailable.
+
+        With ``TOOL_RESPONSE_MODE=direct`` (or ``auto`` on CPU-only local
+        inference) the tool's own output is the reply and no LLM is called.
+        An explicit *instruction* (e.g. "summarize this page") always needs
+        the LLM.
         """
+        if instruction is None and not self._phrase_tool_results():
+            return tool_output
 
         # Structured completion prompt: the model sees a clear RESPONSE: target
         # so it fills in the answer rather than echoing the instruction block.

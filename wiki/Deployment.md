@@ -42,8 +42,8 @@ The Dockerfile uses a **3-stage multi-stage build:**
 | Stage | Purpose |
 |---|---|
 | `builder` | Installs locked dependencies (`uv sync --frozen --no-dev`) into `/opt/venv` |
-| `artifacts` | Pinned CPU-only torch/transformers/sklearn toolchain (build-time only) that exports the int8 ONNX MiniLM embedder and trains `Model/category_classifier.npz` |
-| `runtime` | Production image with the venv, source, `config/` and the two router artifacts; non-root user `amadeus`; ~1.1 GB |
+| `artifacts` | Pinned CPU-only torch/transformers/sklearn toolchain (build-time only) that exports the int8 ONNX MiniLM embedder |
+| `runtime` | Production image with the venv, source, `config/` and the ONNX embedder; non-root user `amadeus`; ~1.1 GB |
 
 > The runtime image ships core deps only (no `torch`/`transformers`/`scikit-learn`); embedding runs via `onnxruntime`. The first build downloads the embedding checkpoint from Hugging Face.
 

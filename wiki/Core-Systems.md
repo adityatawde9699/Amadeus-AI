@@ -33,24 +33,28 @@ plan/verify/reflect state machine around a single hard-coded step.)
 
 ---
 
-## Semantic Tool Router
+## Intent Router
 
-**File:** `src/app/services/semantic_router.py`
+**Files:** `src/app/services/intent_router.py`, `routing_data.py`, `slot_extractor.py`
 
-Routes each message to an expert agent profile (not to an individual tool) in two stages:
+Decides how each message is handled **without calling an LLM**, in about 1 ms:
 
-1. **Stage 1 — category classifier** (`src/app/services/category_classifier.py`): TF-IDF + LinearSVC trained on `TRAINING_DATA`, stored as plain numpy arrays in `Model/category_classifier.npz` (no pickle; scikit-learn is needed only to train). Build it with `scripts/train_category_classifier.py`; the Docker image builds it automatically.
-2. **Stage 2 — embeddings**: each profile's description and anchor phrases are embedded with a quantized ONNX `all-MiniLM-L6-v2` (`Model/embed/all-MiniLM-L6-v2-onnx/`, built by `scripts/export_embedding_onnx.py`, run via `onnxruntime`), cached in `Model/unified_semantic_cache.npz`, and matched by cosine similarity (default threshold 0.30, 0.42 once Stage 1 has narrowed the pool).
+1. **Hard rule:** a URL goes to `fetch_webpage_content`. Slash commands are handled earlier by the command router. There are no other keyword overrides.
+2. **Category head:** a softmax classifier over MiniLM sentence embeddings picks a tool category or a chat intent (`conversational`, `content_generation`, `cloud_escalation`).
+3. **Tool head:** a second classifier picks the tool inside the winning category. When the runner-up category is close, its tools compete too, and the winning tool decides the category.
+4. **Arguments:** `slot_extractor.py` fills the tool's arguments with rules (numbers and units, tickers, paths, hostnames, times, "the rest of the sentence"). It returns nothing instead of guessing.
 
-If the ONNX export is missing the router falls back to sentence-transformers, which is only installed with the `[ml-fallback]` extra.
+| Outcome | When | LLM calls |
+|---|---|---|
+| Direct tool dispatch | Category and tool are both confident, the request is a single step, and rules filled the arguments | 0, or 1 to phrase the reply (`TOOL_RESPONSE_MODE`) |
+| Expert agent | Tool category is clear but the tool or its arguments are not, or the request has several steps | As before |
+| Chat / content | A chat intent wins | 1 |
 
-### Threshold Calibration
+Both classifiers are trained in numpy at startup from the phrases in `routing_data.py` plus each registered tool's name and `Trigger:` phrases. Training takes under a second, and the phrase embeddings are cached in `Model/intent_router.npz`. There is no build-time artifact and no scikit-learn. Embeddings come from the quantized ONNX `all-MiniLM-L6-v2` (`scripts/export_embedding_onnx.py`); a fresh checkout falls back to sentence-transformers (`[ml-fallback]` extra).
 
-Use the bundled calibration script to find the optimal threshold for your tool set:
+**Fixing a misroute:** add a phrase to `TOOL_EXAMPLES` or `TRAINING_DATA` in `routing_data.py`, then run `uv run python -m evals.routing_eval`. Thresholds (`CATEGORY_GAP`, `TOOL_MARGIN`) are constants at the top of `intent_router.py`. Results are in `evals/results/routing.md`; CI fails if held-out accuracy, the LLM-free rate or wrong dispatches regress.
 
-```bash
-python scripts/calibrate_semantic_threshold.py
-```
+`TOOL_RESPONSE_MODE` controls the reply for a single tool result: `llm` rephrases it (one call), `direct` returns the tool's own output (no call), and `auto` (default) uses `llm` with a GPU or a cloud provider and `direct` on CPU-only local inference.
 
 ### Hot-Plugging Tools
 

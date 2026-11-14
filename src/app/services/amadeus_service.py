@@ -4,14 +4,14 @@ Amadeus Service - main AI assistant orchestrator.
 This module is intentionally thin. All heavy logic lives in focused sub-services:
 
   ConversationManager  - history storage, in-memory cache, DB sync
-  UnifiedSemanticRouter - embedding-based intent triage
+  IntentRouter          - LLM-free intent, category and tool routing
   ArgumentExtractor    - NLP to tool argument dicts (LLM + regex)
   ToolDispatcher       - tool lookup, execution, timeouts, result caching
   ResponseComposer     - LLM prose generation, system prompt building
 
 Architecture:
   Public API : handle_command()
-  Routing    : _predict_intent() through UnifiedSemanticRouter
+  Routing    : _predict_intent() through IntentRouter
   Processing : _process_command_internal()
   Delegation : _process_with_agent() for multi-step queries
 """
@@ -20,16 +20,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 from typing import TYPE_CHECKING, Any
 
 from opentelemetry import trace
 
 from src.app.services.argument_extractor import ArgumentExtractor
 from src.app.services.conversation_manager import ConversationManager, IConversationRepository
+from src.app.services.intent_router import IntentRouter
 from src.app.services.messaging_service import MessagingService
 from src.app.services.response_composer import ResponseComposer
-from src.app.services.semantic_router import UnifiedSemanticRouter
 from src.app.services.tool_dispatcher import ToolDispatcher
 from src.app.services.tool_registry import ToolRegistry, ToolSummary
 from src.core.config import Settings, get_settings
@@ -132,10 +131,9 @@ class AmadeusService:
         self._load_api_keys()
 
         # ── Semantic Router ───────────────────────────────────────────
-        self._semantic_router = UnifiedSemanticRouter(
+        self._intent_router = IntentRouter(
             registry=self.tool_registry,
-            model_dir=self.settings.BASE_DIR / "Model",
-            threshold=self.settings.SEMANTIC_ROUTER_THRESHOLD,
+            model_dir=self.settings.MODEL_DIR or self.settings.BASE_DIR / "Model",
         )
 
         # ── Sub-services ──────────────────────────────────────────────
@@ -196,12 +194,10 @@ class AmadeusService:
         self.graph.set_checkpointer(self._checkpointer)
         logger.info("LangGraph checkpointer ready: %s", label)
 
-        if not self._semantic_router.is_ready:
+        if not self._intent_router.is_ready:
             loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, self._semantic_router.build_index)
-            logger.info(
-                "SemanticRouter ready=%s after build attempt", self._semantic_router.is_ready
-            )
+            await loop.run_in_executor(None, self._intent_router.build)
+            logger.info("IntentRouter ready=%s after build attempt", self._intent_router.is_ready)
 
     def _make_checkpointer_cm(self) -> tuple[Any, str]:
         """Async context manager for the configured LangGraph checkpointer."""
@@ -295,165 +291,33 @@ class AmadeusService:
     # ------------------------------------------------------------------
 
     async def _predict_intent(self, query: str) -> tuple[str, str | None]:
-        """Return (intent_type, tool_name_or_None) using the semantic router.
+        """Return (intent_type, target) from the LLM-free intent router.
 
-        Override checks fire FIRST so keyword shortcuts (factual queries, sandbox
-        requests) always win regardless of what the semantic router predicted.
-        This prevents the router returning 'calculate' for 'Who is X?' style queries.
+        ``tool`` is only returned when the router is confident about the tool
+        AND its arguments can be filled without an LLM; otherwise the request
+        goes to the category's expert agent, which selects tool and arguments.
         """
-        lower_query = query.lower().strip()
-
-        # ── Priority 0: Identity exclusion (Prevents "Who are you" -> web search) ──
-        _IDENTITY_PHRASES = [
-            "who are you",
-            "what are you",
-            "your name",
-            "who am i talking to",
-            "what's your name",
-            "tell me about yourself",
-            "who made you",
-            "who created you",
-            "your creator",
-        ]
-        if any(p in lower_query for p in _IDENTITY_PHRASES):
-            logger.info("Triage override: Identity query detected, routing to conversational")
-            return "conversational", None
-
-        # ── Priority 0.5: URL Detection (Shared links -> fetch_webpage_content) ──
-        url_match = re.search(r"https?://[^\s]+", lower_query)
-        if url_match:
-            logger.info("Triage override: URL detected, routing to fetch_webpage_content")
-            return "tool", "fetch_webpage_content"
-
-        # ── Priority 1: Factual knowledge override ──────────────────────────
-        _WIKI_PREFIXES = [
-            "who is",
-            "who was",
-            "who are",
-            "who were",
-            "what is",
-            "what was",
-            "what are",
-            "what were",
-            "where is",
-            "where was",
-            "when did",
-            "when was",
-            "tell me about",
-            "who created",
-            "who invented",
-            "who founded",
-            "who wrote",
-        ]
-        _LIVE_PREFIXES = ["who won", "how many", "current score", "what happened"]
-
-        # Exception: Weather should go to get_weather, not wikipedia/web
-        if "weather" in lower_query or "temperature" in lower_query:
-            pass
-        elif "news" in lower_query or "headline" in lower_query:
-            logger.info("Triage override: News query detected, routing to get_news")
-            return "tool", "get_news"
-        elif any(lower_query.startswith(p) for p in _LIVE_PREFIXES):
-            logger.info("Triage override: Live query detected, routing to web_search")
-            return "tool", "web_search"
-        elif any(lower_query.startswith(p) for p in _WIKI_PREFIXES):
-            logger.info("Triage override: Factual query detected, routing to wikipedia_search")
-            return "tool", "wikipedia_search"
-
-        # ── Priority 1.2: Sandbox execution override ──────────────────────────
-        # Strong coding intent → always use execute_python_script.
-        _SANDBOX_TRIGGERS = [
-            "write and run",
-            "write a python",
-            "run python",
-            "execute python",
-            "run a script",
-            "execute a script",
-            "write a script",
-            "write code and run",
-            "compute with python",
-            "calculate using python",
-            "run this code",
-            "execute this code",
-            "create a python",
-            "create a script",
-            "generate python",
-            "generate a script",
-        ]
-        if any(t in lower_query for t in _SANDBOX_TRIGGERS):
-            logger.info(
-                "Triage override: Sandbox execution request detected, routing to execute_python_script"
-            )
-            return "tool", "execute_python_script"
-
-        # ── Priority 1.3: App termination override ────────────────────────────
-        # "close X", "kill X", "stop X", "terminate X" → always terminate_program.
-        # The semantic router sometimes misses these short commands.
-        _TERMINATE_VERBS = ["close ", "kill ", "stop ", "terminate ", "end ", "quit ", "exit "]
-        _OPEN_VERBS = ["open ", "launch ", "start ", "run "]  # Exclude: "start recording" etc.
-        if any(lower_query.startswith(v) for v in _TERMINATE_VERBS):
-            logger.info("Triage override: App close/kill detected, routing to terminate_program")
-            return "tool", "terminate_program"
-        # Also catch mid-sentence patterns: "please close chrome", "can you kill vlc"
-        _TERMINATE_PATTERNS = [
-            "please close ",
-            "please kill ",
-            "please stop ",
-            "please terminate ",
-            "can you close ",
-            "can you kill ",
-            "can you stop ",
-            "force close ",
-            "force quit ",
-            "force kill ",
-            "shut down ",
-            "shutdown ",
-        ]
-        if any(p in lower_query for p in _TERMINATE_PATTERNS):
-            logger.info("Triage override: App close pattern detected, routing to terminate_program")
-            return "tool", "terminate_program"
-
-        # ── Priority 1.4: App open override ────────────────────────────────
-        # Mirror of the terminate override for opening apps.
-        if any(lower_query.startswith(v) for v in _OPEN_VERBS):
-            logger.info("Triage override: App open detected, routing to open_program")
-            return "tool", "open_program"
-
-        # ── Priority 1.5: Content Generation Detection ─────────────────────
-        if self._is_content_generation(lower_query):
-            logger.info(
-                "Triage override: Content generation detected, routing to content_generation"
-            )
-            return "content_generation", None
-
-        # ── Default: semantic router ────────────────────────────────────────
-        if self._semantic_router.is_ready:
-            intent_type, tool_name = self._semantic_router.route(query)
-        else:
-            intent_type, tool_name = "conversational", None
-
-        return intent_type, tool_name
-
-    def _is_content_generation(self, lower_query: str) -> bool:
-        """Return True if the query asks to write/create long-form content."""
-        verbs = ["write", "compose", "create", "draft", "generate", "explain in detail"]
-        nouns = [
-            "essay",
-            "article",
-            "story",
-            "poem",
-            "code",
-            "script",
-            "program",
-            "letter",
-            "email",
-            "report",
-            "summary",
-            "paragraph",
-            "post",
-            "blog",
-        ]
-        return any(v in lower_query for v in verbs) and any(n in lower_query for n in nouns)
+        decision = self._intent_router.route(query)
+        logger.info(
+            "Route: %s:%s (category=%s p=%.2f gap=%.2f margin=%.2f, %s)",
+            decision.kind,
+            decision.target,
+            decision.category,
+            decision.confidence,
+            decision.gap,
+            decision.tool_margin,
+            decision.reason,
+        )
+        if decision.kind == "tool" and decision.target:
+            if self._arg_extractor.extract_slots(decision.target, query) is None:
+                expert = self._intent_router.expert_for(decision.category)
+                if expert:
+                    logger.info("Route: arguments need the LLM, using expert=%s", expert)
+                    return "expert", expert
+                # No expert owns the category and rules cannot fill the tool's
+                # arguments: answering directly is safer than guessing them.
+                return "conversational", None
+        return decision.as_intent()
 
     async def _process_command_internal(
         self,

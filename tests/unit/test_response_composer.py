@@ -105,3 +105,26 @@ async def test_long_form():
 )
 def test_sanitize_llm_output_drops_meta_narration(raw, clean):
     assert ResponseComposer._sanitize_llm_output(raw) == clean
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("mode", "gpu", "llm_calls"),
+    [("direct", True, 0), ("llm", False, 1), ("auto", True, 1), ("auto", False, 0)],
+)
+async def test_tool_response_mode(mode, gpu, llm_calls):
+    router = _Router(reply="Phrased.")
+    settings = SimpleNamespace(
+        TOOL_RESPONSE_MODE=mode,
+        LOCAL_ONLY_MODE=True,
+        GROQ_API_KEY=None,
+        GEMINI_API_KEY=None,
+        capability=SimpleNamespace(has_gpu=gpu),
+    )
+    composer = ResponseComposer(llm_router=router, settings=settings)
+    out = await composer.compose_tool_response("q", "calculate", "391")
+    assert len(router.calls) == llm_calls
+    assert out == ("Phrased." if llm_calls else "391")
+    # an explicit instruction (e.g. summarise a page) always needs the LLM
+    await composer.compose_tool_response("q", "fetch", "page", instruction="Summarize.")
+    assert len(router.calls) == llm_calls + 1

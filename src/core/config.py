@@ -356,7 +356,6 @@ class Settings(BaseSettings):
     MEMORY_PERSIST_DIR: str = "./data/vector_db"
     MEMORY_COLLECTION_NAME: str = "amadeus_memory"
     MEMORY_EMBED_MODEL: str = "models/embedding-001"  # Gemini embedding model
-    SEMANTIC_ROUTER_THRESHOLD: float = Field(default=0.30, ge=0.0, le=1.0)
 
     # =========================================================================
     # DATABASE
@@ -370,6 +369,12 @@ class Settings(BaseSettings):
     # (or replicas) share them; startup fails if Redis is unreachable.
     SHARED_STATE_BACKEND: Literal["memory", "redis"] = "memory"
     HITL_TIMEOUT_SECONDS: int = Field(default=60, ge=5, le=3600)
+    # How a single tool's result is turned into the reply.
+    #   llm    - the LLM rephrases it in the assistant's voice (one extra call).
+    #   direct - the tool's own output is returned as-is (no LLM call).
+    #   auto   - llm when it is cheap (GPU offload, or a cloud provider is
+    #            enabled), direct on CPU-only local inference.
+    TOOL_RESPONSE_MODE: Literal["auto", "llm", "direct"] = "auto"
 
     # LangGraph checkpoints (paused / resumable agent runs). "sqlite" stores
     # them in BASE_DIR/langgraph_checkpoints.sqlite (one host only); "postgres"

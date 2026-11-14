@@ -108,16 +108,16 @@ RUN export CMAKE_ARGS="-DGGML_NATIVE=OFF"; \
     CMAKE_BUILD_PARALLEL_LEVEL="$(nproc)" uv sync --frozen --no-dev --no-install-project ${UV_SYNC_EXTRAS}
 
 # -----------------------------------------------------------------------------
-# STAGE 2: Router artifacts (build-time only — nothing here reaches runtime
-# except the two output directories copied below)
+# STAGE 2: Embedder artifact (build-time only — nothing here reaches runtime
+# except the output directory copied below)
 # -----------------------------------------------------------------------------
-# Model/ is .dockerignored and gitignored, so a fresh image previously started
-# without the ONNX embedder or the category classifier and semantic routing
-# failed to load (the sentence-transformers fallback is not installed either).
-# This stage produces both from source:
+# Model/ is .dockerignored and gitignored, and the sentence-transformers
+# fallback is not installed in the image, so the ONNX embedder used by the
+# intent router and workspace search is produced here from source:
 #   Model/embed/all-MiniLM-L6-v2-onnx/  (scripts/export_embedding_onnx.py;
 #                                        downloads the HF checkpoint)
-#   Model/category_classifier.npz       (scripts/train_category_classifier.py)
+# The intent router needs no artifact: it trains its two small classifiers in
+# numpy at first start and caches the phrase embeddings in Model/.
 # The export toolchain is installed into this stage's copy of the venv only.
 # torch comes from the CPU wheel index to avoid ~3GB of CUDA wheels. The
 # toolchain is pinned (versions verified to export + quantize successfully) so
@@ -128,12 +128,11 @@ RUN uv pip install --python /opt/venv/bin/python \
         --index-url https://download.pytorch.org/whl/cpu "torch==2.15.0+cpu" \
     && uv pip install --python /opt/venv/bin/python \
         "transformers==5.22.2" "onnx==1.23.2" "onnxscript==0.7.2" "ml-dtypes==0.5.4" \
-        "scikit-learn==1.9.1" "numpy>=1.26.0,<2.0.0"
+        "numpy>=1.26.0,<2.0.0"
 
 COPY src/ ./src/
-COPY scripts/export_embedding_onnx.py scripts/train_category_classifier.py ./scripts/
+COPY scripts/export_embedding_onnx.py ./scripts/
 RUN /opt/venv/bin/python scripts/export_embedding_onnx.py \
-    && /opt/venv/bin/python scripts/train_category_classifier.py Model \
     && rm -f Model/embed/all-MiniLM-L6-v2-onnx/model_fp32.onnx*
 
 # -----------------------------------------------------------------------------
@@ -199,8 +198,7 @@ COPY config/ ./config/
 COPY --from=builder /opt/cuda-stub/ /opt/cuda-stub/
 COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
-# Router artifacts from stage 2.
-COPY --from=artifacts /app/Model/category_classifier.npz ./Model/
+# ONNX embedder from stage 2.
 COPY --from=artifacts /app/Model/embed/all-MiniLM-L6-v2-onnx/ ./Model/embed/all-MiniLM-L6-v2-onnx/
 # Baked-in GGUF, if one was requested (empty directory otherwise).
 COPY --from=gguf /gguf/ ./Model/
