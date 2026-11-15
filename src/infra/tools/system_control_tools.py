@@ -5,6 +5,7 @@ These tools interface with the OS-level controls (Windows-first, cross-platform 
 """
 
 import logging
+import os
 import platform
 import subprocess
 import sys
@@ -141,8 +142,17 @@ def take_screenshot(filename: str | None = None, **kwargs: Any) -> str:
             ["xfce4-screenshooter", "-f", "-s", str(save_path)],
             ["gnome-screenshot", "-f", str(save_path)],
             ["scrot", str(save_path)],
-            ["import", "-window", "root", str(save_path)],  # ImageMagick
+            ["import", "-window", "root", str(save_path)],  # ImageMagick (X11 only)
         ]
+        # Wayland compositors do not let X11 tools (or PIL) read the screen;
+        # these talk to the compositor / desktop portal, so try them first.
+        if os.environ.get("WAYLAND_DISPLAY") or os.environ.get("XDG_SESSION_TYPE") == "wayland":
+            candidates = [
+                ["gnome-screenshot", "-f", str(save_path)],
+                ["spectacle", "-b", "-n", "-f", "-o", str(save_path)],  # KDE
+                ["grim", str(save_path)],  # wlroots (Sway, Hyprland)
+                *candidates,
+            ]
         for cmd in candidates:
             try:
                 result = subprocess.run(cmd, check=False, capture_output=True, timeout=15)
@@ -152,9 +162,15 @@ def take_screenshot(filename: str | None = None, **kwargs: Any) -> str:
                 continue
             except Exception as e:
                 logger.warning("Screenshot via %s failed: %s", cmd[0], e)
+        if os.environ.get("WAYLAND_DISPLAY") or os.environ.get("XDG_SESSION_TYPE") == "wayland":
+            return (
+                "Screenshot failed: this is a Wayland session, which blocks X11 screen "
+                "capture. Install gnome-screenshot (GNOME), spectacle (KDE) or grim (Sway/"
+                "Hyprland)."
+            )
         return (
-            "Screenshot failed. Install Pillow (pip install Pillow) or a CLI tool "
-            "(xfce4-screenshooter, gnome-screenshot, scrot)."
+            "Screenshot failed. Install a CLI tool (xfce4-screenshooter, gnome-screenshot, "
+            "scrot), or run Amadeus inside a graphical session."
         )
 
     return "Screenshot requires Pillow: pip install Pillow"

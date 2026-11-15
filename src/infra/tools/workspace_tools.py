@@ -21,7 +21,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from src.core.config import get_settings
-from src.infra.tools.base import Tool, ToolCategory, tool
+from src.infra.tools.base import Tool, ToolCategory, ToolFailure, tool
 
 
 if TYPE_CHECKING:
@@ -105,13 +105,13 @@ async def search_workspace(query: str, top_k: int = 5) -> str:
 
     indexer = _get_indexer()
     if indexer is None:
-        return (
+        return ToolFailure(
             "Workspace index is unavailable. "
             "Please run `python scripts/index_workspace.py` first to build the index."
         )
 
     if not indexer.is_ready:
-        return (
+        return ToolFailure(
             f"Workspace index not built yet ({indexer.chunk_count} chunks loaded). "
             "Run `python scripts/index_workspace.py` to build the index."
         )

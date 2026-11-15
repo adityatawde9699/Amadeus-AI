@@ -107,3 +107,57 @@ async def test_turbovec_delete_by_text(mock_turbovec_service):
         results = await mock_turbovec_service.retrieve("forget")
         assert len(results) == 1
         assert results[0].text == "keep me"
+
+
+class _FakeEmbedder:
+    """Two orthogonal-ish topics in 8 dimensions, so similarities are controlled."""
+
+    def encode(self, text, **_):
+        import numpy as np
+
+        t = text.lower()
+        if "food" in t or "vegetarian" in t:
+            v = [1.0, 0.0, 0.0, 0.0]
+        elif "weather" in t:
+            v = [0.0, 0.0, 1.0, 0.0]
+        else:
+            v = [0.55, 0.0, 0.0, 0.83]  # loosely related: cosine ~0.55 to the food topic
+        return np.array(v + [0.0] * 4, dtype=np.float32)
+
+
+async def _local_service(temp_settings):
+    service = TurbovecMemoryService(settings=temp_settings)
+
+    async def _setup():
+        service._local_embed_model = _FakeEmbedder()
+        service._use_local_embed = True
+        service._embed_dim = 8
+
+    service._setup_embedding_model = _setup
+    await service.initialize()
+    return service
+
+
+@pytest.mark.asyncio
+async def test_identity_facts_match_indirect_questions_but_not_unrelated_ones(temp_settings):
+    with patch("src.infra.turbovec_memory._global_turbovec_index", None):
+        service = await _local_service(temp_settings)
+        await service.store("s", "system", "the user is vegetarian", subtype="identity")
+        await service.store("s", "user", "we talked about food earlier")  # ordinary memory
+        indirect = await service.retrieve("tell me something else", top_k=3)  # cosine ~0.55
+        assert [m.text for m in indirect] == ["the user is vegetarian"]
+        assert await service.retrieve("weather today", top_k=3) == []
+        await service._db.close()
+
+
+@pytest.mark.asyncio
+async def test_index_with_another_dimension_disables_memory_instead_of_corrupting(temp_settings):
+    import turbovec
+
+    other = turbovec.IdMapIndex(dim=16, bit_width=4)
+    with patch("src.infra.turbovec_memory._global_turbovec_index", other):
+        service = await _local_service(temp_settings)
+        assert not service.is_enabled
+        assert await service.store("s", "user", "hello") is False
+        if service._db is not None:
+            await service._db.close()

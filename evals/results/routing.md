@@ -5,7 +5,7 @@
 | Split | n | Accuracy | Macro-F1 | Top-2 acc | Profile acc |
 |---|---|---|---|---|---|
 | Held-out | 70 | 94.3% | 0.929 | 97.1% | 94.3% |
-| 5-fold CV (training phrases) | 958 | 84.9% | 0.837 | - | 87.9% |
+| 5-fold CV (training phrases) | 969 | 85.7% | 0.840 | - | 88.6% |
 
 ## End to end (route + rule-based arguments, no LLM)
 
@@ -13,28 +13,26 @@
 
 | Metric | Value |
 |---|---|
-| Handled correctly overall | 96.0% |
-| Tool requests finished with **no LLM call** | 82.0% (50/61) |
-| Direct dispatches that were right | 98.0% |
-| Wrong direct dispatches | 1 |
+| Handled correctly overall | 100.0% |
+| Tool requests finished with **no LLM call** | 86.9% (53/61) |
+| Direct dispatches that were right | 100.0% |
+| Wrong direct dispatches | 0 |
 | Sent to the right expert / chat intent | 22 |
-| Sent to the wrong expert / intent | 2 |
-| Routing latency p50 / p95 | 0.82 ms / 1.21 ms |
+| Sent to the wrong expert / intent | 0 |
+| Routing latency p50 / p95 | 0.83 ms / 1.17 ms |
 
 ### Failures
 
-- `can you reach wikipedia.org` - direct_bad: tool:wikipedia_search {"query": "reach wikipedia.org"}
-- `where is the database session created in the repo` - llm_bad: expert:filesystem_expert
-- `keep in mind that I'm vegetarian` - llm_bad: conversational:None
+- none
 
 ### Correctly deferred to the LLM (tool requests)
 
 - `what's NVDA trading at` - finance_expert (tool unsure)
 - `how long has this machine been running` - monitor_expert (tool unsure)
-- `show the processes eating the most memory` - monitor_expert (tool unsure)
-- `could you open slack` - os_expert (tool unsure)
-- `kill the zoom app` - os_expert (category unsure)
+- `could you open slack` - os_expert (category unsure)
 - `new task: book the dentist` - task_expert (tool unsure)
+- `remind me to call the vet in 45 minutes` - task_expert (tool unsure)
+- `remember that my car is parked on level 3` - memory_expert (category unsure)
 - `look up how to descale a kettle` - research_expert (category unsure)
 - `tell me about the Mughal empire` - research_expert (tool unsure)
 - `check the weather in Goa and then add a task to pack an umbrella` - research_expert (multi-step)

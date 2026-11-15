@@ -18,6 +18,7 @@ Security constraints:
 import contextlib
 import logging
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +44,8 @@ class DockerSandboxExecutor:
     # or the SANDBOX_IMAGE setting, e.g. "python:3.10.14-slim@sha256:<digest>".
     DEFAULT_IMAGE = "python:3.10.14-slim"
     DEFAULT_TIMEOUT = 15  # seconds
+    LABEL = "amadeus.sandbox"  # marks our containers so leftovers can be swept
+    MEMORY_LIMIT_MB = 128
 
     def __init__(self, image: str | None = None) -> None:
         import docker  # optional dep — see [sandbox-docker] extra
@@ -50,6 +53,7 @@ class DockerSandboxExecutor:
         self.client = docker.from_env()
         self.image = image or self.DEFAULT_IMAGE
         self._ensure_image()
+        self._sweep_stale()
 
     def _ensure_image(self) -> None:
         """Pre-pull the execution image to prevent timeout on first run."""
@@ -62,6 +66,32 @@ class DockerSandboxExecutor:
             logger.info("Pulling sandbox image '%s'...", self.image)
             self.client.images.pull(self.image)
             logger.info("Sandbox image '%s' pulled successfully.", self.image)
+
+    def _sweep_stale(self) -> None:
+        """Remove sandbox containers a previous run failed to clean up."""
+        try:
+            for stale in self.client.containers.list(
+                all=True, filters={"label": self.LABEL, "status": "exited"}
+            ):
+                with contextlib.suppress(Exception):
+                    stale.remove(force=True)
+                    logger.info("Removed stale sandbox container %s.", stale.short_id)
+        except Exception as exc:
+            logger.warning("Sandbox sweep skipped: %s", exc)
+
+    @staticmethod
+    def _destroy(container: Any) -> None:
+        """Kill and remove *container*, retrying: a fork storm can make the first try fail."""
+        for attempt in range(1, 4):
+            try:
+                container.remove(force=True)
+                return
+            except Exception as exc:
+                if "No such container" in str(exc):
+                    return
+                logger.warning("Sandbox cleanup attempt %d failed: %s", attempt, exc)
+                time.sleep(attempt)
+        logger.error("Sandbox container %s could not be removed.", getattr(container, "id", "?"))
 
     def execute(self, code: str, timeout: int | None = None) -> dict[str, Any]:
         """
@@ -106,8 +136,8 @@ class DockerSandboxExecutor:
                     volumes={temp_dir: {"bind": "/workspace", "mode": "ro"}},
                     working_dir="/workspace",
                     # ── Resource clamping ──────────────────────────
-                    mem_limit="128m",
-                    memswap_limit="128m",  # no swap beyond the mem limit
+                    mem_limit=f"{self.MEMORY_LIMIT_MB}m",
+                    memswap_limit=f"{self.MEMORY_LIMIT_MB}m",  # no swap beyond the mem limit
                     nano_cpus=500_000_000,  # 0.5 CPU cores
                     pids_limit=128,  # fork-bomb guard
                     # ── Security hardening ─────────────────────────
@@ -121,6 +151,7 @@ class DockerSandboxExecutor:
                     tmpfs={"/tmp": "rw,size=16m,nosuid,nodev,noexec"},
                     # ── Lifecycle ──────────────────────────────────
                     detach=True,
+                    labels={self.LABEL: "1"},
                     stdout=True,
                     stderr=True,
                 )
@@ -147,6 +178,17 @@ class DockerSandboxExecutor:
                         logger.info("Sandbox execution succeeded (%d chars output).", len(out))
                         return {"status": "success", "output": out}
                     logger.warning("Sandbox execution error (exit %s): %s", status_code, err[:200])
+                    if not (err or out).strip():
+                        oom = False
+                        with contextlib.suppress(Exception):
+                            container.reload()
+                            oom = bool(container.attrs.get("State", {}).get("OOMKilled"))
+                        reason = (
+                            f"the {self.MEMORY_LIMIT_MB} MB memory limit was exceeded"
+                            if oom
+                            else f"exit code {status_code}"
+                        )
+                        return {"status": "error", "output": f"Script was killed: {reason}."}
                     return {"status": "error", "output": err or out}
                 except Exception as wait_exc:
                     # Timeout or wait failure → force kill.
@@ -172,5 +214,4 @@ class DockerSandboxExecutor:
             finally:
                 # Always remove the (detached) container.
                 if container is not None:
-                    with contextlib.suppress(Exception):
-                        container.remove(force=True)
+                    self._destroy(container)

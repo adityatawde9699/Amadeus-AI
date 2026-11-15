@@ -155,3 +155,25 @@ def test_search_result_format_shows_ranks():
     text = r.format()
     assert text.startswith("[notes.md : line 3] (rrf=0.0321 [sem_rank=0, bm25_rank=2])")
     assert text.endswith("hello") and "notes.md" in repr(r)
+
+
+def test_unrelated_query_returns_nothing_instead_of_the_least_bad_chunks(workspace, tmp_path):
+    idx = _indexer(workspace, tmp_path)
+    idx.build()
+    assert idx.search("quantum chromodynamics lattice") == []
+    assert idx.search("how are kubernetes pods scheduled")  # real matches still come back
+
+
+@pytest.mark.asyncio
+async def test_missing_index_is_reported_as_a_failure(workspace, tmp_path, monkeypatch):
+    from src.infra.tools import workspace_tools
+    from src.infra.tools.base import reported_failure
+
+    idx = _indexer(workspace, tmp_path)  # never built
+    monkeypatch.setattr(workspace_tools, "_indexer", idx)
+    result = await workspace_tools.search_workspace("kubernetes")
+    assert "not built" in result and reported_failure(result)
+
+    idx.build()
+    ok = await workspace_tools.search_workspace("how are kubernetes pods scheduled")
+    assert "kubernetes.md" in ok and not reported_failure(ok)

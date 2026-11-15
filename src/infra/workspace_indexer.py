@@ -119,6 +119,12 @@ _RRF_K = 60
 # ---------------------------------------------------------------------------
 
 
+# A chunk is only returned when it is semantically close to the query (cosine) or
+# an unusually strong lexical match (exact identifiers have low cosine).
+_MIN_COSINE = 0.20
+_MIN_STRONG_BM25 = 2.5
+
+
 def _bm25_tokenize(text: str) -> list[str]:
     """
     Fast, code-aware BM25 tokeniser.
@@ -476,10 +482,11 @@ class WorkspaceIndexer:
 
             # ── Stage 2: BM25 lexical retrieval ──────────────────────────
             bm25_rank_of: dict[int, int] = {}
+            bm25_scores: Any = None
             if self._bm25 is not None:
                 try:
                     q_tokens = _bm25_tokenize(query)
-                    bm25_scores: Any = self._bm25.get_scores(q_tokens)
+                    bm25_scores = self._bm25.get_scores(q_tokens)
                     bm25_ranked = np.argsort(bm25_scores)[::-1][:candidate_pool].tolist()
                     bm25_rank_of = {chunk_idx: rank for rank, chunk_idx in enumerate(bm25_ranked)}
                 except Exception as exc:
@@ -509,6 +516,12 @@ class WorkspaceIndexer:
 
                 # Skip very low RRF scores (both lists ranked it near the bottom)
                 if rrf_scores[idx] < _rrf_score(candidate_pool - 1) * 1.5:
+                    continue
+
+                # Absolute relevance floor: RRF is rank-based, so without this a
+                # nonsense query still "finds" the least-bad chunks.
+                lexical = float(bm25_scores[idx]) if bm25_scores is not None else 0.0
+                if float(semantic_scores[idx]) < _MIN_COSINE and lexical < _MIN_STRONG_BM25:
                     continue
 
                 meta = self._manifest[idx]

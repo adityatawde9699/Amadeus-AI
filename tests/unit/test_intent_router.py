@@ -156,3 +156,14 @@ def test_explicit_note_command_beats_the_classifier(tmp_path):
     # a second action means the agent, not a direct dispatch
     assert r.route("take a note saying hi and then check memory").reason != "explicit command"
     assert r.route("show memory usage").target == "get_memory_usage"
+
+
+def test_reachability_check_is_a_ping_not_a_site_search(tmp_path):
+    reg = ToolRegistry()
+    reg.register(_tool("ping_host", ToolCategory.MONITORING, "Ping a host."))
+    reg.register(_tool("wikipedia_search", ToolCategory.WEB_RESEARCH, "Search Wikipedia."))
+    r = IntentRouter(reg, model_dir=tmp_path, embedder=FakeEmbedder())
+    r.build()
+    for text in ("can you reach wikipedia.org", "is github.com up", "could you ping example.org"):
+        assert r.route(text).as_intent() == ("tool", "ping_host"), text
+    assert r.route("can you reach the wikipedia article on cats").target != "ping_host"

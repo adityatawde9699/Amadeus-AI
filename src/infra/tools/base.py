@@ -335,7 +335,11 @@ _FAILURE_PREFIX = re.compile(
     r"[\w ]{1,40}- access denied|"
     r"(?:code execution|screenshot|execution) (?:unavailable|failed)|"
     r"[\w ]{1,40} (?:is not enabled|is not configured|is disabled)\b|"
-    r"[\w ]{1,40} requires \w+\. install\b)",
+    r"[\w ]{1,40} requires \w+\. install\b|"
+    r"(?:cannot|can't|could not|couldn't|unable to|failed to) \w+|"
+    r"(?:source |destination )?(?:file|folder|path|directory)\b[^.\n]{0,60}"
+    r"(?:does not exist|not found|doesn't exist)|"
+    r"no such (?:file|directory|application|app)\b)",
     re.IGNORECASE,
 )
 

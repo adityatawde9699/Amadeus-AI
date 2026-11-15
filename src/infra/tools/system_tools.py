@@ -300,10 +300,18 @@ def search_file(file_name: str | None = None, name: str | None = None, **kwargs:
     parameters={
         "source_path": {"type": "string", "description": "Source file path"},
         "destination_path": {"type": "string", "description": "Destination file path"},
+        "overwrite": {
+            "type": "boolean",
+            "description": "Replace the destination if it already exists (default false)",
+            "default": False,
+        },
     },
 )
 def copy_file(
-    source_path: str | None = None, destination_path: str | None = None, **kwargs: Any
+    source_path: str | None = None,
+    destination_path: str | None = None,
+    overwrite: bool = False,
+    **kwargs: Any,
 ) -> str:
     """Copy a file from source to destination."""
     src = source_path or kwargs.get("source") or kwargs.get("src")
@@ -324,6 +332,10 @@ def copy_file(
 
         if not src_path.is_file():
             return f"Source file does not exist: {src}"
+        if dst_path.is_file() and not overwrite:
+            return (
+                f"Error: destination already exists: {dst_path}. Pass overwrite=true to replace it."
+            )
 
         dst_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src_path, dst_path)
@@ -347,10 +359,18 @@ def copy_file(
     parameters={
         "source_path": {"type": "string", "description": "Source file path"},
         "destination_path": {"type": "string", "description": "Destination file path"},
+        "overwrite": {
+            "type": "boolean",
+            "description": "Replace the destination if it already exists (default false)",
+            "default": False,
+        },
     },
 )
 def move_file(
-    source_path: str | None = None, destination_path: str | None = None, **kwargs: Any
+    source_path: str | None = None,
+    destination_path: str | None = None,
+    overwrite: bool = False,
+    **kwargs: Any,
 ) -> str:
     """Move a file from source to destination."""
     src = source_path or kwargs.get("source")
@@ -371,6 +391,10 @@ def move_file(
 
         if not src_path.is_file():
             return f"Source file does not exist: {src}"
+        if dst_path.is_file() and not overwrite:
+            return (
+                f"Error: destination already exists: {dst_path}. Pass overwrite=true to replace it."
+            )
 
         dst_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(src_path), str(dst_path))

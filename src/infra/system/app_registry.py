@@ -8,6 +8,7 @@ Utilizes rapidfuzz for fast string matching against the cache.
 import json
 import logging
 import platform
+import re
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,10 @@ from rapidfuzz import fuzz, process
 
 
 logger = logging.getLogger(__name__)
+
+# Bump when the scan produces different keys, so existing caches are rebuilt once.
+_CACHE_VERSION = "2"
+_TOKEN_SPLIT = re.compile(r"[\s._-]+")
 
 
 class AppRegistry:
@@ -30,13 +35,14 @@ class AppRegistry:
             cache_dir = Path.home() / ".amadeus"
 
         self.cache_file = cache_dir / "app_registry.json"
+        self._version_file = cache_dir / "app_registry.version"
 
         # In-memory dictionary mapped as { "lowercase friendly name": "absolute execution path" }
         self.apps: dict[str, str] = self._load_cache()
 
     def _load_cache(self) -> dict[str, str]:
         """Load from JSON cache if it exists, otherwise trigger a scan."""
-        if self.cache_file.exists():
+        if self.cache_file.exists() and self._cache_is_current():
             try:
                 with self.cache_file.open(encoding="utf-8") as f:
                     apps: dict[str, str] = json.load(f)
@@ -45,6 +51,12 @@ class AppRegistry:
             except Exception as e:
                 logger.exception("Failed to load app cache: %s. Rebuilding...", e)
         return self.scan_and_cache()
+
+    def _cache_is_current(self) -> bool:
+        try:
+            return self._version_file.read_text(encoding="utf-8").strip() == _CACHE_VERSION
+        except OSError:
+            return False
 
     def scan_and_cache(self) -> dict[str, str]:
         """Scans the OS, builds the dictionary, and caches it to disk."""
@@ -70,6 +82,7 @@ class AppRegistry:
             try:
                 with self.cache_file.open("w", encoding="utf-8") as f:
                     json.dump(discovered, f, indent=2)
+                self._version_file.write_text(_CACHE_VERSION, encoding="utf-8")
                 logger.info(
                     f"Successfully cached {len(discovered)} applications to {self.cache_file}"
                 )
@@ -122,33 +135,74 @@ class AppRegistry:
                     apps[name] = str(app_path)
         return apps
 
-    def _scan_linux(self) -> dict[str, str]:
-        """Parse .desktop files in standard Linux directories to find executables."""
-        import re as _re
+    @staticmethod
+    def _desktop_exec(exec_line: str) -> str:
+        """The command to run from a .desktop ``Exec=`` value (field codes removed)."""
+        cmd = re.sub(r"%[uUfFicdDnNkvm]", "", exec_line).strip()
+        tokens = cmd.split()
+        # ``env FOO=bar app`` wrappers: skip to the real program.
+        if tokens and tokens[0] == "env":
+            tokens = [t for t in tokens[1:] if "=" not in t]
+        if not tokens:
+            return ""
+        # flatpak/snap launchers need their arguments to name the app.
+        if Path(tokens[0]).name in {"flatpak", "snap"}:
+            return " ".join(tokens)
+        return tokens[0]
 
-        apps = {}
-        dirs = [Path("/usr/share/applications"), Path.home() / ".local/share/applications"]
-        for d in dirs:
-            if d.exists():
-                for desktop_file in d.glob("*.desktop"):
-                    name = desktop_file.stem.lower()
-                    try:
-                        content = desktop_file.read_text(encoding="utf-8", errors="ignore")
-                        # Extract Exec= line and strip field codes (%u, %f, etc.)
-                        exec_match = _re.search(r"^Exec=(.+)$", content, _re.MULTILINE)
-                        if exec_match:
-                            exec_val = exec_match.group(1).strip()
-                            # Remove field codes like %u %U %f %F %i %c %k
-                            exec_cmd = _re.sub(r"%[uUfFicdDnNk]", "", exec_val).strip()
-                            # Take only the first token (the binary)
-                            binary = exec_cmd.split()[0] if exec_cmd else ""
-                            if binary:
-                                apps[name] = binary
-                                continue
-                    except Exception:
-                        pass
-                    # Fallback: store the stem so we can attempt a $PATH lookup
-                    apps[name] = desktop_file.stem
+    @staticmethod
+    def _linux_app_dirs() -> list[Path]:
+        return [
+            Path("/usr/share/applications"),
+            Path("/var/lib/snapd/desktop/applications"),
+            Path("/var/lib/flatpak/exports/share/applications"),
+            Path.home() / ".local/share/flatpak/exports/share/applications",
+            Path.home() / ".local/share/applications",
+        ]
+
+    def _scan_linux(self) -> dict[str, str]:
+        """Parse .desktop files (system, snap, flatpak, user) into name -> command.
+
+        Each launchable app is reachable by its file stem and by the names people
+        actually say: ``Name=`` and ``GenericName=`` ("Visual Studio Code",
+        "Files", "Calculator"). Entries that are not applications a user would
+        open (``NoDisplay``/``Hidden``: settings panels, URL handlers) are skipped.
+        """
+        apps: dict[str, str] = {}
+        for d in self._linux_app_dirs():
+            if not d.exists():
+                continue
+            for desktop_file in sorted(d.glob("*.desktop")):
+                try:
+                    content = desktop_file.read_text(encoding="utf-8", errors="ignore")
+                except OSError:
+                    continue
+                # Only the [Desktop Entry] group (not [Desktop Action ...] blocks).
+                entry = content.split("\n[Desktop Action", 1)[0]
+                fields: dict[str, str] = {}
+                for line in entry.splitlines():
+                    key, sep, value = line.partition("=")
+                    if sep and key.strip() in {
+                        "Type",
+                        "Exec",
+                        "Name",
+                        "GenericName",
+                        "NoDisplay",
+                        "Hidden",
+                    }:
+                        fields.setdefault(key.strip(), value.strip())
+                if fields.get("Type", "Application") != "Application":
+                    continue
+                if fields.get("NoDisplay", "").lower() == "true" or (
+                    fields.get("Hidden", "").lower() == "true"
+                ):
+                    continue
+                command = self._desktop_exec(fields.get("Exec", "")) or desktop_file.stem
+                stem = desktop_file.stem.lower()
+                apps[stem] = command
+                for label in (fields.get("Name"), fields.get("GenericName")):
+                    if label and label.lower() not in apps:
+                        apps[label.lower()] = command
         return apps
 
     def get_executable(self, requested_name: str, score_cutoff: float = 80.0) -> str | None:
@@ -177,18 +231,30 @@ class AppRegistry:
             if requested_name == Path(abs_path).name.lower():
                 return abs_path
 
-        # 3. Fuzzy Matching (Substrings, slight misspellings)
-        # Use WRatio which handles different lengths, string cases, and token sorting well
-        match = process.extractOne(
-            requested_name, self.apps.keys(), scorer=fuzz.WRatio, score_cutoff=score_cutoff
-        )
+        # 3. Whole-word match: every word asked for is a word of the app name
+        # ("code" -> "visual studio code", "chrome" -> "google chrome").
+        wanted = {t for t in _TOKEN_SPLIT.split(requested_name) if t}
+        if wanted:
+            hits = [
+                key
+                for key in self.apps
+                if wanted <= {t for t in _TOKEN_SPLIT.split(key.lower()) if t}
+            ]
+            if hits:
+                return self.apps[min(hits, key=len)]
 
+        # 4. Typos ("spotfy", "fire fox"): whole-string similarity only. Partial
+        # matching (WRatio) paired "spotify" with "evolution-alarm-notify".
+        squashed = _TOKEN_SPLIT.sub("", requested_name)
+        match = process.extractOne(
+            squashed,
+            self.apps.keys(),
+            scorer=fuzz.ratio,
+            processor=lambda k: _TOKEN_SPLIT.sub("", k.lower()),
+            score_cutoff=max(score_cutoff, 80.0),
+        )
         if match:
-            best_match_key = match[0]  # The string matched from the keys
-            score = match[1]
-            logger.debug(
-                f"Fuzzy matched '{requested_name}' to '{best_match_key}' with score {score}"
-            )
-            return self.apps[best_match_key]
+            logger.debug("Fuzzy matched '%s' to '%s' (%.0f)", requested_name, match[0], match[1])
+            return self.apps[match[0]]
 
         return None

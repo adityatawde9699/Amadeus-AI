@@ -209,6 +209,44 @@ def get_running_processes(count: int = 10) -> str:
 # =============================================================================
 
 
+def _nvidia_smi_stats() -> str | None:
+    """GPU name, load, memory and temperature from ``nvidia-smi``; None if unavailable."""
+    import shutil
+    import subprocess
+
+    exe = shutil.which("nvidia-smi")
+    if not exe:
+        return None
+    try:
+        proc = subprocess.run(
+            [
+                exe,
+                "--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    lines = ["GPU Information:"]
+    for row in proc.stdout.strip().splitlines():
+        parts = [p.strip() for p in row.split(",")]
+        if len(parts) != 5:
+            continue
+        name, load, used, total, temp = parts
+        try:
+            pct = float(used) / float(total) * 100
+        except (ValueError, ZeroDivisionError):
+            pct = 0.0
+        lines.append(f"  {name}: {load}% load, {pct:.1f}% memory ({used}/{total} MiB), {temp}°C")
+    return "\n".join(lines) if len(lines) > 1 else None
+
+
 @tool(
     name="get_gpu_stats",
     description="Get GPU statistics (usage, memory, temperature)",
@@ -232,8 +270,12 @@ def get_gpu_stats() -> str:
         except ImportError:
             pass
 
-        # Fallback message
-        return "GPU monitoring requires GPUtil. Install with: pip install gputil"
+        # No GPUtil: ask the NVIDIA driver directly (nothing extra to install).
+        smi = _nvidia_smi_stats()
+        if smi:
+            return smi
+
+        return "No GPU statistics available (install GPUtil, or the NVIDIA driver for nvidia-smi)."
 
     except Exception as e:
         logger.exception("Error getting GPU stats: %s", e)

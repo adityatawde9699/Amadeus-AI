@@ -88,6 +88,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Settings:** `HITL_TIMEOUT_SECONDS` (was hard-coded to 60 s) and `CHECKPOINT_POSTGRES_URL`.
 
 ### Fixed
+- **Routing misses from the live test:** "search my workspace documents…", "keep in mind that…" and "where is X created in the repo" now route to the right tool, and "can you reach site.org" / "is site.org up" is a ping rather than a Wikipedia search (end-to-end eval: 100% handled, 0 wrong direct dispatches, 87% with no LLM call).
+- **`move_file` / `copy_file` no longer overwrite an existing destination** unless `overwrite=true` is passed. Containment (traversal, symlinks, outside paths) was verified.
+- **Memory works offline.** It reuses the ONNX MiniLM embedder instead of needing a Gemini key, refuses an index built with a different embedding size, and recalls indirect questions about stored facts ("what food does the user eat") by using a lower cutoff for facts the user asked to remember.
+- **Sandbox cleanup:** containers are labelled, removal is retried, leftovers are swept at startup (a fork bomb used to leave one behind), and an out-of-memory kill is reported instead of an empty error.
+- **`search_workspace` returns nothing for unrelated queries** instead of the least-bad chunks, and a missing index is reported as a failure.
+- **`get_gpu_stats` falls back to `nvidia-smi`**; `take_screenshot` tries Wayland tools first and says when Wayland is the problem.
+- **App launching:** the Linux app registry indexes display names (`Name=`, `GenericName=`), snap and flatpak apps, and skips settings panels and URL handlers. Matching is word-aware, so "visual studio code", "terminal" and "spotfy" resolve correctly and "spotify" no longer maps to an alarm daemon.
+- **More failure messages are recognised** ("Cannot find…", "Could not launch…", "…does not exist"), so the agent no longer treats them as success.
 - **Workspace RAG was a silent no-op in a default install and the Docker image.** It required sentence-transformers and now uses the ONNX MiniLM embedder.
 - **Semantic routing in the image failed to load.** `tokenizers` arrived only via the `[ml-fallback]` extra and is now a core dependency.
 - **Docker image cleanup:** the leftover 90 MB `model_fp32.onnx.data` was removed (image 1.35 GB → 1.06 GB), and the artifact toolchain is pinned.

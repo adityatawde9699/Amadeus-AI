@@ -571,6 +571,11 @@ EXPLICIT_COMMANDS: tuple[tuple[str, str], ...] = (
         r"(?:quick\s+|new\s+)?note\b|note\s+down\b|note\s*:)",
         "create_note",
     ),
+    (
+        r"^(?:can|could) you (?:reach|ping)\s+\S+\.[a-z]{2,}\b"
+        r"|^is\s+\S+\.[a-z]{2,}\s+(?:up|down|reachable|responding|online)\b",
+        "ping_host",
+    ),
 )
 
 # Tools the router never selects. ``get_greeting`` answers "hi"/"hello", which
@@ -693,6 +698,8 @@ TOOL_EXAMPLES: dict[str, list[str]] = {
         "grep the code for TODO",
         "search the codebase for the retry function",
         "where is the config class defined in the code",
+        "where is the cache client created in the repo",
+        "which file defines the router class in the project",
         "find usages of parse_args in the repo",
         "look through the source for the auth middleware",
     ],
@@ -700,6 +707,9 @@ TOOL_EXAMPLES: dict[str, list[str]] = {
         "search my workspace for notes about billing",
         "find documents mentioning kubernetes",
         "look in my workspace files for the deployment guide",
+        "search my workspace documents for the deployment notes",
+        "search my indexed documents for the onboarding checklist",
+        "find the document in my workspace about the quarterly report",
     ],
     "manage_plugins": ["list my plugins", "create a new plugin", "remove the plugin"],
     # ── file_system ────────────────────────────────────────────────────
@@ -787,6 +797,9 @@ TOOL_EXAMPLES: dict[str, list[str]] = {
         "is github.com reachable",
         "check latency to cloudflare.com",
         "test connectivity to my router",
+        "can you reach reddit.com",
+        "can you reach google.com",
+        "is example.com up and responding",
     ],
     # ── news / weather ─────────────────────────────────────────────────
     "get_news": [
@@ -810,6 +823,9 @@ TOOL_EXAMPLES: dict[str, list[str]] = {
         "don't forget that I prefer dark mode",
         "note for later that my sister's name is Riya",
         "remember my wifi password hint is the dog's name",
+        "keep in mind that I'm lactose intolerant",
+        "keep in mind I work night shifts",
+        "bear in mind that I'm left-handed",
     ],
     "forget_core_memory": [
         "forget that I like coffee",

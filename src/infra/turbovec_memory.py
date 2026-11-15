@@ -43,6 +43,10 @@ def _get_init_lock() -> asyncio.Lock:
     return _turbovec_init_lock
 
 
+_MIN_SIMILARITY = 0.65
+_IDENTITY_MIN_SIMILARITY = 0.40
+
+
 class TurbovecMemoryService:
     """
     Long-term semantic memory powered by Turbovec + local aiosqlite payload store.
@@ -123,6 +127,19 @@ class TurbovecMemoryService:
                         )
 
                 self._index = _global_turbovec_index
+                index_dim = getattr(self._index, "dim", self._embed_dim)
+                if index_dim != self._embed_dim:
+                    # An index built with another embedder (e.g. Gemini, 768-d)
+                    # cannot take these vectors; refuse instead of corrupting it.
+                    logger.error(
+                        "Memory index has dim=%d but the embedder produces dim=%d; memory "
+                        "disabled. Move %s aside to start a fresh index.",
+                        index_dim,
+                        self._embed_dim,
+                        self._index_path,
+                    )
+                    self._enabled = False
+                    return
 
                 logger.info(
                     "Turbovec initialized, dim=%d, size=%d", self._embed_dim, len(self._index)
@@ -156,6 +173,21 @@ class TurbovecMemoryService:
             pass
         except Exception as exc:
             logger.warning("Local embed model failed: %s", exc)
+
+        # Default install: no sentence-transformers, but the router and the
+        # workspace indexer already ship the ONNX MiniLM (same 384-d space), so
+        # memory works offline instead of needing a Gemini key.
+        try:
+            from src.infra.embeddings.onnx_embedder import OnnxEmbedder
+
+            onnx_dir = Path(self._settings.MODEL_DIR or "Model") / "embed" / "all-MiniLM-L6-v2-onnx"
+            if (onnx_dir / "model.onnx").exists():
+                self._local_embed_model = OnnxEmbedder(onnx_dir)
+                self._embed_dim = 384
+                self._use_local_embed = True
+                return
+        except Exception as exc:
+            logger.warning("ONNX memory embedder unavailable: %s", exc)
 
         self._use_local_embed = False
         if not self._settings.GEMINI_API_KEY:
@@ -374,7 +406,13 @@ class TurbovecMemoryService:
                         ) = row
                         similarity = result_scores.get(db_id, 0.0)
 
-                        if similarity < 0.65:
+                        # Facts the user asked us to remember are matched by indirect
+                        # questions ("what food does the user eat" -> "is vegetarian"),
+                        # which score ~0.5; unrelated queries stay below ~0.25.
+                        min_similarity = (
+                            _IDENTITY_MIN_SIMILARITY if subtype == "identity" else _MIN_SIMILARITY
+                        )
+                        if similarity < min_similarity:
                             continue
 
                         recency_decay = 0.0
