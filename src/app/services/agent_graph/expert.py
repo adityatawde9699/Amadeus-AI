@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+import re
 from typing import TYPE_CHECKING, Any
 
 from langgraph.types import interrupt
@@ -143,12 +144,30 @@ Available Tools (you may ONLY use these):
 {tool_menu}
 - FINISH: Use when task is complete. Input: {{"answer": "your final response"}}
 
-Create a plan and decide the FIRST action. The keys in "args" MUST be the exact
-parameter names shown in parentheses after the tool name. Respond with JSON only:
+Nothing has been done for this task yet: do not assume any part of it was
+already completed. Create a plan and decide the FIRST action. The keys in "args"
+MUST be the exact parameter names shown in parentheses after the tool name.
+Respond with JSON only:
 {json_template}"""
             try:
                 response = await self._generate_action(prompt, profile, lead="plan")
                 parsed = self._parse_json_response(response)
+                # A specialist was chosen because the request needs one of its
+                # tools. Finishing before calling any is almost always the model
+                # imagining the work was done ("goal already exists"): ask once
+                # more, stating that plainly. A second FINISH is accepted.
+                if (
+                    profile.categories
+                    and str(parsed.get("tool", "FINISH")) in ("FINISH", "")
+                    and self._expert_tools(profile)
+                ):
+                    retry = (
+                        prompt + "\n\nYou answered FINISH without calling a tool. No tool has run "
+                        "and nothing has been done yet. Pick the tool that performs the "
+                        "request. Use FINISH only if none of the tools can do it."
+                    )
+                    response = await self._generate_action(retry, profile, lead="plan")
+                    parsed = self._parse_json_response(response)
                 plan = parsed.get("plan", plan)
                 first_tool = parsed.get("tool", "FINISH")
                 first_args = parsed.get("args", {})
@@ -172,6 +191,7 @@ parameter names shown in parentheses after the tool name. Respond with JSON only
             "current_tool": first_tool,
             "current_args": first_args,
             "should_continue": first_tool != "FINISH",
+            "step_obs_start": len(state.get("observations", [])),
         }
 
         if first_tool == "FINISH":
@@ -386,6 +406,12 @@ Respond with JSON only:
 
         # FINISH
         final = next_args.get("answer", "")
+        failure = self._step_failure(observations[state.get("step_obs_start", 0) :])
+        if failure:
+            # Every tool call in this step failed. The model tends to finish
+            # with a success-sounding answer anyway; report what happened.
+            final = f"I couldn't complete this: {failure}"
+            next_args = {"answer": final}
         if not final and observations:
             final = " ".join(o.split(":", 1)[-1].strip() for o in observations if ":" in o)
 
@@ -399,6 +425,20 @@ Respond with JSON only:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _step_failure(step_observations: list[str]) -> str | None:
+        """The last error if every tool call in this step failed, else None."""
+        errors: list[str] = []
+        for obs in step_observations:
+            name, _, body = obs.partition(":")
+            if name.strip() == "FINISH" or not body:
+                continue
+            text = body.strip()
+            if not text.lower().startswith(("error", "skipped")):
+                return None  # at least one call produced a result
+            errors.append(re.sub(r"^error\s*[:\u2014-]?\s*", "", text, flags=re.IGNORECASE))
+        return errors[-1] if errors else None
 
     def _keyword_match(
         self, task: str, done_tools: set[str], profile: AgentProfile | None = None

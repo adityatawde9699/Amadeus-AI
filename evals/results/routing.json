@@ -120,7 +120,7 @@
         1
       ]
     ],
-    "top2_accuracy": 0.9857142857142858,
+    "top2_accuracy": 0.9714285714285714,
     "errors": [
       {
         "query": "put the laptop to sleep",
@@ -148,17 +148,17 @@
     "n": 75,
     "tool_cases": 61,
     "outcomes": {
-      "direct_ok": 51,
-      "llm_ok": 21,
+      "direct_ok": 50,
+      "llm_ok": 22,
       "direct_bad": 1,
       "llm_bad": 2
     },
     "correct": 0.96,
-    "llm_free_rate": 0.8360655737704918,
-    "direct_precision": 0.9807692307692307,
+    "llm_free_rate": 0.819672131147541,
+    "direct_precision": 0.9803921568627451,
     "wrong_dispatches": 1,
-    "latency_ms_p50": 0.88,
-    "latency_ms_p95": 1.4,
+    "latency_ms_p50": 0.82,
+    "latency_ms_p95": 1.21,
     "failures": [
       {
         "query": "can you reach wikipedia.org",
@@ -169,8 +169,8 @@
           "query": "reach wikipedia.org"
         },
         "reason": "direct",
-        "confidence": 0.991,
-        "tool_margin": 0.952
+        "confidence": 0.99,
+        "tool_margin": 0.946
       },
       {
         "query": "where is the database session created in the repo",
@@ -179,8 +179,8 @@
         "target": "filesystem_expert",
         "args": null,
         "reason": "tool unsure",
-        "confidence": 0.401,
-        "tool_margin": 0.009
+        "confidence": 0.381,
+        "tool_margin": 0.023
       },
       {
         "query": "keep in mind that I'm vegetarian",
@@ -189,7 +189,7 @@
         "target": null,
         "args": null,
         "reason": "chat intent",
-        "confidence": 0.619,
+        "confidence": 0.64,
         "tool_margin": 0.0
       }
     ],
@@ -202,7 +202,7 @@
         "args": null,
         "reason": "tool unsure",
         "confidence": 0.893,
-        "tool_margin": 0.106
+        "tool_margin": 0.165
       },
       {
         "query": "how long has this machine been running",
@@ -211,8 +211,18 @@
         "target": "monitor_expert",
         "args": null,
         "reason": "tool unsure",
-        "confidence": 0.755,
-        "tool_margin": 0.078
+        "confidence": 0.758,
+        "tool_margin": 0.009
+      },
+      {
+        "query": "show the processes eating the most memory",
+        "outcome": "llm_ok",
+        "kind": "expert",
+        "target": "monitor_expert",
+        "args": null,
+        "reason": "tool unsure",
+        "confidence": 0.445,
+        "tool_margin": 0.193
       },
       {
         "query": "could you open slack",
@@ -221,8 +231,8 @@
         "target": "os_expert",
         "args": null,
         "reason": "tool unsure",
-        "confidence": 0.199,
-        "tool_margin": 0.791
+        "confidence": 0.232,
+        "tool_margin": 0.807
       },
       {
         "query": "kill the zoom app",
@@ -230,9 +240,9 @@
         "kind": "expert",
         "target": "os_expert",
         "args": null,
-        "reason": "tool unsure",
-        "confidence": 0.594,
-        "tool_margin": 0.165
+        "reason": "category unsure",
+        "confidence": 0.52,
+        "tool_margin": 0.122
       },
       {
         "query": "new task: book the dentist",
@@ -242,7 +252,7 @@
         "args": null,
         "reason": "tool unsure",
         "confidence": 0.956,
-        "tool_margin": 0.163
+        "tool_margin": 0.108
       },
       {
         "query": "look up how to descale a kettle",
@@ -251,8 +261,8 @@
         "target": "research_expert",
         "args": null,
         "reason": "category unsure",
-        "confidence": 0.219,
-        "tool_margin": 0.012
+        "confidence": 0.227,
+        "tool_margin": 0.034
       },
       {
         "query": "tell me about the Mughal empire",
@@ -261,8 +271,8 @@
         "target": "research_expert",
         "args": null,
         "reason": "tool unsure",
-        "confidence": 0.447,
-        "tool_margin": 0.116
+        "confidence": 0.443,
+        "tool_margin": 0.173
       },
       {
         "query": "check the weather in Goa and then add a task to pack an umbrella",
@@ -271,7 +281,7 @@
         "target": "research_expert",
         "args": null,
         "reason": "multi-step",
-        "confidence": 0.728,
+        "confidence": 0.744,
         "tool_margin": 1.0
       },
       {
@@ -281,8 +291,8 @@
         "target": "developer_expert",
         "args": null,
         "reason": "category unsure",
-        "confidence": 0.189,
-        "tool_margin": 0.694
+        "confidence": 0.186,
+        "tool_margin": 0.662
       },
       {
         "query": "move the report into the archive folder and then email it to Sam",
@@ -291,8 +301,8 @@
         "target": "filesystem_expert",
         "args": null,
         "reason": "multi-step",
-        "confidence": 0.759,
-        "tool_margin": 0.094
+        "confidence": 0.773,
+        "tool_margin": 0.032
       }
     ],
     "rows": [
@@ -305,8 +315,8 @@
           "expression": "144 / 12"
         },
         "reason": "direct",
-        "confidence": 0.966,
-        "tool_margin": 0.962
+        "confidence": 0.964,
+        "tool_margin": 0.961
       },
       {
         "query": "how much is 15 percent of 240",
@@ -317,8 +327,8 @@
           "expression": "(15 / 100) * 240"
         },
         "reason": "direct",
-        "confidence": 0.942,
-        "tool_margin": 0.903
+        "confidence": 0.94,
+        "tool_margin": 0.909
       },
       {
         "query": "9 plus 16",
@@ -329,8 +339,8 @@
           "expression": "9 + 16"
         },
         "reason": "direct",
-        "confidence": 0.96,
-        "tool_margin": 0.986
+        "confidence": 0.961,
+        "tool_margin": 0.987
       },
       {
         "query": "change 68 fahrenheit into celsius",
@@ -343,8 +353,8 @@
           "to_unit": "C"
         },
         "reason": "direct",
-        "confidence": 0.878,
-        "tool_margin": 0.988
+        "confidence": 0.877,
+        "tool_margin": 0.987
       },
       {
         "query": "how many centimeters are in 6 feet",
@@ -358,7 +368,7 @@
         },
         "reason": "direct",
         "confidence": 0.971,
-        "tool_margin": 0.94
+        "tool_margin": 0.939
       },
       {
         "query": "convert 12 km to miles",
@@ -372,7 +382,7 @@
         },
         "reason": "direct",
         "confidence": 0.976,
-        "tool_margin": 0.958
+        "tool_margin": 0.959
       },
       {
         "query": "how much is 75 dollars in rupees",
@@ -385,8 +395,8 @@
           "to_currency": "INR"
         },
         "reason": "direct",
-        "confidence": 0.726,
-        "tool_margin": 0.744
+        "confidence": 0.739,
+        "tool_margin": 0.734
       },
       {
         "query": "what's the weather like in Chennai",
@@ -397,7 +407,7 @@
           "location": "Chennai"
         },
         "reason": "direct",
-        "confidence": 0.948,
+        "confidence": 0.947,
         "tool_margin": 1.0
       },
       {
@@ -421,7 +431,7 @@
           "location": "Tokyo"
         },
         "reason": "direct",
-        "confidence": 0.842,
+        "confidence": 0.843,
         "tool_margin": 1.0
       },
       {
@@ -445,8 +455,8 @@
           "query": "time"
         },
         "reason": "direct",
-        "confidence": 0.878,
-        "tool_margin": 0.986
+        "confidence": 0.884,
+        "tool_margin": 0.988
       },
       {
         "query": "which day of the week is it",
@@ -458,7 +468,7 @@
         },
         "reason": "direct",
         "confidence": 0.957,
-        "tool_margin": 0.994
+        "tool_margin": 0.993
       },
       {
         "query": "I could use a joke",
@@ -467,7 +477,7 @@
         "target": "tell_joke",
         "args": {},
         "reason": "direct",
-        "confidence": 0.589,
+        "confidence": 0.582,
         "tool_margin": 0.991
       },
       {
@@ -479,8 +489,8 @@
           "coin": "ethereum"
         },
         "reason": "direct",
-        "confidence": 0.645,
-        "tool_margin": 0.763
+        "confidence": 0.639,
+        "tool_margin": 0.734
       },
       {
         "query": "current price of dogecoin",
@@ -491,8 +501,8 @@
           "coin": "dogecoin"
         },
         "reason": "direct",
-        "confidence": 0.971,
-        "tool_margin": 0.883
+        "confidence": 0.973,
+        "tool_margin": 0.887
       },
       {
         "query": "what's NVDA trading at",
@@ -502,7 +512,7 @@
         "args": null,
         "reason": "tool unsure",
         "confidence": 0.893,
-        "tool_margin": 0.106
+        "tool_margin": 0.165
       },
       {
         "query": "check the tesla share price",
@@ -513,8 +523,8 @@
           "symbol": "TSLA"
         },
         "reason": "direct",
-        "confidence": 0.969,
-        "tool_margin": 0.595
+        "confidence": 0.97,
+        "tool_margin": 0.599
       },
       {
         "query": "any big sports news today",
@@ -527,7 +537,7 @@
           "count": 5
         },
         "reason": "direct",
-        "confidence": 0.968,
+        "confidence": 0.969,
         "tool_margin": 1.0
       },
       {
@@ -541,7 +551,7 @@
           "count": 5
         },
         "reason": "direct",
-        "confidence": 0.881,
+        "confidence": 0.886,
         "tool_margin": 1.0
       },
       {
@@ -551,8 +561,8 @@
         "target": "get_cpu_usage",
         "args": {},
         "reason": "direct",
-        "confidence": 0.952,
-        "tool_margin": 0.761
+        "confidence": 0.965,
+        "tool_margin": 0.738
       },
       {
         "query": "am I running out of ram",
@@ -561,8 +571,8 @@
         "target": "get_memory_usage",
         "args": {},
         "reason": "direct",
-        "confidence": 0.852,
-        "tool_margin": 0.867
+        "confidence": 0.871,
+        "tool_margin": 0.862
       },
       {
         "query": "how much free space is on my disk",
@@ -571,8 +581,8 @@
         "target": "get_disk_usage",
         "args": {},
         "reason": "direct",
-        "confidence": 0.943,
-        "tool_margin": 0.872
+        "confidence": 0.941,
+        "tool_margin": 0.848
       },
       {
         "query": "what's my battery percentage",
@@ -581,8 +591,8 @@
         "target": "get_battery_info",
         "args": {},
         "reason": "direct",
-        "confidence": 0.747,
-        "tool_margin": 0.954
+        "confidence": 0.76,
+        "tool_margin": 0.951
       },
       {
         "query": "how long has this machine been running",
@@ -591,8 +601,8 @@
         "target": "monitor_expert",
         "args": null,
         "reason": "tool unsure",
-        "confidence": 0.755,
-        "tool_margin": 0.078
+        "confidence": 0.758,
+        "tool_margin": 0.009
       },
       {
         "query": "what is my ip",
@@ -601,18 +611,18 @@
         "target": "get_network_info",
         "args": {},
         "reason": "direct",
-        "confidence": 0.331,
-        "tool_margin": 0.22
+        "confidence": 0.42,
+        "tool_margin": 0.482
       },
       {
         "query": "show the processes eating the most memory",
-        "outcome": "direct_ok",
-        "kind": "tool",
-        "target": "get_running_processes",
-        "args": {},
-        "reason": "direct",
-        "confidence": 0.443,
-        "tool_margin": 0.242
+        "outcome": "llm_ok",
+        "kind": "expert",
+        "target": "monitor_expert",
+        "args": null,
+        "reason": "tool unsure",
+        "confidence": 0.445,
+        "tool_margin": 0.193
       },
       {
         "query": "is the gpu being used",
@@ -621,8 +631,8 @@
         "target": "get_gpu_stats",
         "args": {},
         "reason": "direct",
-        "confidence": 0.867,
-        "tool_margin": 0.94
+        "confidence": 0.888,
+        "tool_margin": 0.931
       },
       {
         "query": "ping 1.1.1.1",
@@ -633,8 +643,8 @@
           "host": "1.1.1.1"
         },
         "reason": "direct",
-        "confidence": 0.449,
-        "tool_margin": 0.765
+        "confidence": 0.487,
+        "tool_margin": 0.751
       },
       {
         "query": "can you reach wikipedia.org",
@@ -645,8 +655,8 @@
           "query": "reach wikipedia.org"
         },
         "reason": "direct",
-        "confidence": 0.991,
-        "tool_margin": 0.952
+        "confidence": 0.99,
+        "tool_margin": 0.946
       },
       {
         "query": "take a screen capture",
@@ -655,7 +665,7 @@
         "target": "take_screenshot",
         "args": {},
         "reason": "direct",
-        "confidence": 0.935,
+        "confidence": 0.927,
         "tool_margin": 0.993
       },
       {
@@ -665,8 +675,8 @@
         "target": "list_open_apps",
         "args": {},
         "reason": "direct",
-        "confidence": 0.91,
-        "tool_margin": 0.944
+        "confidence": 0.867,
+        "tool_margin": 0.953
       },
       {
         "query": "launch the terminal",
@@ -677,8 +687,8 @@
           "app_name": "terminal"
         },
         "reason": "direct",
-        "confidence": 0.678,
-        "tool_margin": 0.381
+        "confidence": 0.757,
+        "tool_margin": 0.485
       },
       {
         "query": "could you open slack",
@@ -687,8 +697,8 @@
         "target": "os_expert",
         "args": null,
         "reason": "tool unsure",
-        "confidence": 0.199,
-        "tool_margin": 0.791
+        "confidence": 0.232,
+        "tool_margin": 0.807
       },
       {
         "query": "close firefox",
@@ -699,8 +709,8 @@
           "process_name": "firefox"
         },
         "reason": "direct",
-        "confidence": 0.93,
-        "tool_margin": 0.956
+        "confidence": 0.945,
+        "tool_margin": 0.955
       },
       {
         "query": "kill the zoom app",
@@ -708,9 +718,9 @@
         "kind": "expert",
         "target": "os_expert",
         "args": null,
-        "reason": "tool unsure",
-        "confidence": 0.594,
-        "tool_margin": 0.165
+        "reason": "category unsure",
+        "confidence": 0.52,
+        "tool_margin": 0.122
       },
       {
         "query": "show me what's inside the tests folder",
@@ -721,8 +731,8 @@
           "path": "tests"
         },
         "reason": "direct",
-        "confidence": 0.892,
-        "tool_margin": 0.429
+        "confidence": 0.891,
+        "tool_margin": 0.408
       },
       {
         "query": "print the contents of pyproject.toml",
@@ -733,8 +743,8 @@
           "path": "pyproject.toml"
         },
         "reason": "direct",
-        "confidence": 0.444,
-        "tool_margin": 0.726
+        "confidence": 0.45,
+        "tool_margin": 0.7
       },
       {
         "query": "read src/main.py",
@@ -746,7 +756,7 @@
         },
         "reason": "direct",
         "confidence": 0.9,
-        "tool_margin": 0.899
+        "tool_margin": 0.894
       },
       {
         "query": "locate the file invoice_march.pdf",
@@ -757,8 +767,8 @@
           "file_name": "invoice_march.pdf"
         },
         "reason": "direct",
-        "confidence": 0.96,
-        "tool_margin": 0.583
+        "confidence": 0.962,
+        "tool_margin": 0.651
       },
       {
         "query": "search the code for the rate limiter",
@@ -769,8 +779,8 @@
           "query": "rate limiter"
         },
         "reason": "direct",
-        "confidence": 0.591,
-        "tool_margin": 0.689
+        "confidence": 0.566,
+        "tool_margin": 0.643
       },
       {
         "query": "where is the database session created in the repo",
@@ -779,8 +789,8 @@
         "target": "filesystem_expert",
         "args": null,
         "reason": "tool unsure",
-        "confidence": 0.401,
-        "tool_margin": 0.009
+        "confidence": 0.381,
+        "tool_margin": 0.023
       },
       {
         "query": "add a todo to water the plants",
@@ -791,8 +801,8 @@
           "task_content": "water the plants"
         },
         "reason": "direct",
-        "confidence": 0.839,
-        "tool_margin": 0.661
+        "confidence": 0.844,
+        "tool_margin": 0.692
       },
       {
         "query": "new task: book the dentist",
@@ -802,7 +812,7 @@
         "args": null,
         "reason": "tool unsure",
         "confidence": 0.956,
-        "tool_margin": 0.163
+        "tool_margin": 0.108
       },
       {
         "query": "what's left on my task list",
@@ -813,8 +823,8 @@
           "status_filter": "pending"
         },
         "reason": "direct",
-        "confidence": 0.817,
-        "tool_margin": 0.875
+        "confidence": 0.841,
+        "tool_margin": 0.828
       },
       {
         "query": "list all of my notes",
@@ -823,8 +833,8 @@
         "target": "list_notes",
         "args": {},
         "reason": "direct",
-        "confidence": 0.886,
-        "tool_margin": 0.964
+        "confidence": 0.895,
+        "tool_margin": 0.949
       },
       {
         "query": "take a note: gate code is 9921",
@@ -834,9 +844,9 @@
         "args": {
           "content": "gate code is 9921"
         },
-        "reason": "direct",
-        "confidence": 0.585,
-        "tool_margin": 0.931
+        "reason": "explicit command",
+        "confidence": 1.0,
+        "tool_margin": 1.0
       },
       {
         "query": "remind me to call the vet in 45 minutes",
@@ -848,8 +858,8 @@
           "time": "in 45 minutes"
         },
         "reason": "direct",
-        "confidence": 0.922,
-        "tool_margin": 0.3
+        "confidence": 0.917,
+        "tool_margin": 0.244
       },
       {
         "query": "which reminders are set",
@@ -859,7 +869,7 @@
         "args": {},
         "reason": "direct",
         "confidence": 0.965,
-        "tool_margin": 0.614
+        "tool_margin": 0.699
       },
       {
         "query": "set a timer for 12 minutes",
@@ -870,8 +880,8 @@
           "duration_seconds": 720
         },
         "reason": "direct",
-        "confidence": 0.682,
-        "tool_margin": 0.927
+        "confidence": 0.705,
+        "tool_margin": 0.94
       },
       {
         "query": "let's start a focus session",
@@ -880,8 +890,8 @@
         "target": "start_pomodoro",
         "args": {},
         "reason": "direct",
-        "confidence": 0.866,
-        "tool_margin": 0.84
+        "confidence": 0.845,
+        "tool_margin": 0.804
       },
       {
         "query": "stop my pomodoro",
@@ -890,8 +900,8 @@
         "target": "stop_pomodoro",
         "args": {},
         "reason": "direct",
-        "confidence": 0.868,
-        "tool_margin": 0.765
+        "confidence": 0.863,
+        "tool_margin": 0.784
       },
       {
         "query": "how long is left in the pomodoro",
@@ -900,8 +910,8 @@
         "target": "pomodoro_status",
         "args": {},
         "reason": "direct",
-        "confidence": 0.956,
-        "tool_margin": 0.714
+        "confidence": 0.957,
+        "tool_margin": 0.645
       },
       {
         "query": "remember that my car is parked on level 3",
@@ -912,8 +922,8 @@
           "fact": "my car is parked on level 3"
         },
         "reason": "direct",
-        "confidence": 0.362,
-        "tool_margin": 0.304
+        "confidence": 0.329,
+        "tool_margin": 0.331
       },
       {
         "query": "keep in mind that I'm vegetarian",
@@ -922,7 +932,7 @@
         "target": null,
         "args": null,
         "reason": "chat intent",
-        "confidence": 0.619,
+        "confidence": 0.64,
         "tool_margin": 0.0
       },
       {
@@ -932,8 +942,8 @@
         "target": "list_active_goals",
         "args": {},
         "reason": "direct",
-        "confidence": 0.928,
-        "tool_margin": 0.556
+        "confidence": 0.923,
+        "tool_margin": 0.533
       },
       {
         "query": "google the best hiking trails near Pune",
@@ -945,7 +955,7 @@
         },
         "reason": "direct",
         "confidence": 0.565,
-        "tool_margin": 0.92
+        "tool_margin": 0.897
       },
       {
         "query": "look up how to descale a kettle",
@@ -954,8 +964,8 @@
         "target": "research_expert",
         "args": null,
         "reason": "category unsure",
-        "confidence": 0.219,
-        "tool_margin": 0.012
+        "confidence": 0.227,
+        "tool_margin": 0.034
       },
       {
         "query": "who was Nikola Tesla",
@@ -966,8 +976,8 @@
           "query": "Nikola Tesla"
         },
         "reason": "direct",
-        "confidence": 0.906,
-        "tool_margin": 0.882
+        "confidence": 0.903,
+        "tool_margin": 0.853
       },
       {
         "query": "tell me about the Mughal empire",
@@ -976,8 +986,8 @@
         "target": "research_expert",
         "args": null,
         "reason": "tool unsure",
-        "confidence": 0.447,
-        "tool_margin": 0.116
+        "confidence": 0.443,
+        "tool_margin": 0.173
       },
       {
         "query": "summarise https://example.org/article",
@@ -998,7 +1008,7 @@
         "target": "research_expert",
         "args": null,
         "reason": "multi-step",
-        "confidence": 0.728,
+        "confidence": 0.744,
         "tool_margin": 1.0
       },
       {
@@ -1008,8 +1018,8 @@
         "target": "developer_expert",
         "args": null,
         "reason": "category unsure",
-        "confidence": 0.189,
-        "tool_margin": 0.694
+        "confidence": 0.186,
+        "tool_margin": 0.662
       },
       {
         "query": "move the report into the archive folder and then email it to Sam",
@@ -1018,8 +1028,8 @@
         "target": "filesystem_expert",
         "args": null,
         "reason": "multi-step",
-        "confidence": 0.759,
-        "tool_margin": 0.094
+        "confidence": 0.773,
+        "tool_margin": 0.032
       },
       {
         "query": "hey, how's your day going",
@@ -1028,7 +1038,7 @@
         "target": null,
         "args": null,
         "reason": "chat intent",
-        "confidence": 0.937,
+        "confidence": 0.94,
         "tool_margin": 0.0
       },
       {
@@ -1038,7 +1048,7 @@
         "target": null,
         "args": null,
         "reason": "chat intent",
-        "confidence": 0.714,
+        "confidence": 0.727,
         "tool_margin": 0.0
       },
       {
@@ -1048,7 +1058,7 @@
         "target": null,
         "args": null,
         "reason": "chat intent",
-        "confidence": 0.383,
+        "confidence": 0.392,
         "tool_margin": 0.0
       },
       {
@@ -1058,7 +1068,7 @@
         "target": null,
         "args": null,
         "reason": "chat intent",
-        "confidence": 0.84,
+        "confidence": 0.847,
         "tool_margin": 0.0
       },
       {
@@ -1068,7 +1078,7 @@
         "target": null,
         "args": null,
         "reason": "chat intent",
-        "confidence": 0.89,
+        "confidence": 0.899,
         "tool_margin": 0.0
       },
       {
@@ -1078,7 +1088,7 @@
         "target": null,
         "args": null,
         "reason": "chat intent",
-        "confidence": 0.962,
+        "confidence": 0.966,
         "tool_margin": 0.0
       },
       {
@@ -1088,7 +1098,7 @@
         "target": null,
         "args": null,
         "reason": "chat intent",
-        "confidence": 0.695,
+        "confidence": 0.708,
         "tool_margin": 0.0
       },
       {
@@ -1098,7 +1108,7 @@
         "target": null,
         "args": null,
         "reason": "chat intent",
-        "confidence": 0.445,
+        "confidence": 0.439,
         "tool_margin": 0.0
       },
       {
@@ -1108,7 +1118,7 @@
         "target": null,
         "args": null,
         "reason": "chat intent",
-        "confidence": 0.604,
+        "confidence": 0.614,
         "tool_margin": 0.0
       },
       {
@@ -1118,7 +1128,7 @@
         "target": null,
         "args": null,
         "reason": "chat intent",
-        "confidence": 0.625,
+        "confidence": 0.627,
         "tool_margin": 0.0
       },
       {
@@ -1128,33 +1138,33 @@
         "target": null,
         "args": null,
         "reason": "chat intent",
-        "confidence": 0.237,
+        "confidence": 0.243,
         "tool_margin": 0.0
       }
     ]
   },
   "cross_validation": {
-    "n": 957,
-    "accuracy": 0.8672936259143156,
-    "macro_f1": 0.8495021543475839,
-    "profile_accuracy": 0.890282131661442,
+    "n": 958,
+    "accuracy": 0.848643006263048,
+    "macro_f1": 0.8370899501454003,
+    "profile_accuracy": 0.8789144050104384,
     "per_class": {
       "app_control": {
-        "precision": 0.7777777777777778,
-        "recall": 0.8181818181818182,
-        "f1": 0.7974683544303799,
+        "precision": 0.7108433734939759,
+        "recall": 0.7662337662337663,
+        "f1": 0.7374999999999999,
         "support": 77
       },
       "calculation": {
-        "precision": 0.9344262295081968,
-        "recall": 0.9827586206896551,
-        "f1": 0.9579831932773109,
+        "precision": 0.9032258064516129,
+        "recall": 0.9655172413793104,
+        "f1": 0.9333333333333333,
         "support": 58
       },
       "cloud_escalation": {
-        "precision": 0.8181818181818182,
-        "recall": 0.75,
-        "f1": 0.7826086956521738,
+        "precision": 0.8260869565217391,
+        "recall": 0.7916666666666666,
+        "f1": 0.8085106382978724,
         "support": 24
       },
       "communication": {
@@ -1164,15 +1174,15 @@
         "support": 17
       },
       "content_generation": {
-        "precision": 0.5,
-        "recall": 0.5,
-        "f1": 0.5,
+        "precision": 0.7142857142857143,
+        "recall": 0.4166666666666667,
+        "f1": 0.5263157894736842,
         "support": 12
       },
       "conversational": {
-        "precision": 0.8648648648648649,
-        "recall": 0.927536231884058,
-        "f1": 0.8951048951048951,
+        "precision": 0.8450704225352113,
+        "recall": 0.8695652173913043,
+        "f1": 0.8571428571428571,
         "support": 69
       },
       "datetime": {
@@ -1182,9 +1192,9 @@
         "support": 36
       },
       "developer": {
-        "precision": 0.7761194029850746,
+        "precision": 0.7323943661971831,
         "recall": 0.7761194029850746,
-        "f1": 0.7761194029850746,
+        "f1": 0.7536231884057972,
         "support": 67
       },
       "file_system": {
@@ -1194,77 +1204,77 @@
         "support": 96
       },
       "finance": {
-        "precision": 0.9459459459459459,
-        "recall": 0.8974358974358975,
-        "f1": 0.9210526315789475,
+        "precision": 0.9230769230769231,
+        "recall": 0.9230769230769231,
+        "f1": 0.9230769230769231,
         "support": 39
       },
       "monitoring": {
-        "precision": 0.8631578947368421,
-        "recall": 0.9111111111111111,
-        "f1": 0.8864864864864865,
+        "precision": 0.872093023255814,
+        "recall": 0.8333333333333334,
+        "f1": 0.8522727272727274,
         "support": 90
       },
       "news": {
-        "precision": 0.9032258064516129,
-        "recall": 0.9333333333333333,
-        "f1": 0.9180327868852459,
+        "precision": 0.90625,
+        "recall": 0.9666666666666667,
+        "f1": 0.9354838709677419,
         "support": 30
       },
       "os_control": {
-        "precision": 0.8245614035087719,
-        "recall": 0.7580645161290323,
-        "f1": 0.7899159663865545,
+        "precision": 0.75,
+        "recall": 0.6774193548387096,
+        "f1": 0.7118644067796611,
         "support": 62
       },
       "productivity": {
-        "precision": 0.717391304347826,
-        "recall": 0.6470588235294118,
-        "f1": 0.6804123711340206,
+        "precision": 0.7142857142857143,
+        "recall": 0.6862745098039216,
+        "f1": 0.7000000000000001,
         "support": 51
       },
       "task_manager": {
-        "precision": 0.9541984732824428,
-        "recall": 0.9259259259259259,
-        "f1": 0.9398496240601504,
-        "support": 135
+        "precision": 0.9402985074626866,
+        "recall": 0.9264705882352942,
+        "f1": 0.9333333333333335,
+        "support": 136
       },
       "weather": {
-        "precision": 0.9642857142857143,
+        "precision": 0.9310344827586207,
         "recall": 0.9642857142857143,
-        "f1": 0.9642857142857143,
+        "f1": 0.9473684210526316,
         "support": 28
       },
       "web_research": {
-        "precision": 0.8461538461538461,
-        "recall": 0.8333333333333334,
-        "f1": 0.8396946564885497,
+        "precision": 0.8181818181818182,
+        "recall": 0.8181818181818182,
+        "f1": 0.8181818181818182,
         "support": 66
       }
     },
     "confusions": [
       [
         "os_control -> app_control",
-        12
+        17
       ],
       [
         "app_control -> os_control",
+        10
+      ],
+      [
+        "monitoring -> developer",
         8
       ],
       [
-        "developer -> monitoring",
+        "file_system -> productivity",
         5
       ],
       [
-        "file_system -> developer",
-        5
-      ],
-      [
-        "task_manager -> productivity",
+        "productivity -> conversational",
         4
       ],
       [
-        "developer -> file_system",
+        "developer -> monitoring",
         4
       ],
       [
@@ -1272,23 +1282,35 @@
         4
       ],
       [
+        "conversational -> productivity",
+        4
+      ],
+      [
+        "developer -> file_system",
+        4
+      ],
+      [
+        "app_control -> task_manager",
+        3
+      ],
+      [
         "web_research -> news",
         3
       ],
       [
-        "productivity -> conversational",
+        "web_research -> cloud_escalation",
         3
       ],
       [
-        "developer -> app_control",
+        "developer -> web_research",
         3
       ],
       [
-        "conversational -> productivity",
+        "web_research -> developer",
         3
       ],
       [
-        "monitoring -> developer",
+        "cloud_escalation -> web_research",
         3
       ],
       [
@@ -1296,47 +1318,19 @@
         3
       ],
       [
-        "productivity -> content_generation",
-        2
-      ],
-      [
-        "task_manager -> monitoring",
-        2
-      ],
-      [
-        "file_system -> web_research",
-        2
-      ],
-      [
-        "file_system -> productivity",
-        2
-      ],
-      [
-        "productivity -> monitoring",
-        2
+        "file_system -> developer",
+        3
       ],
       [
         "app_control -> productivity",
         2
       ],
       [
-        "app_control -> task_manager",
+        "os_control -> calculation",
         2
       ],
       [
-        "os_control -> conversational",
-        2
-      ],
-      [
-        "cloud_escalation -> web_research",
-        2
-      ],
-      [
-        "task_manager -> conversational",
-        2
-      ],
-      [
-        "web_research -> developer",
+        "content_generation -> web_research",
         2
       ],
       [
@@ -1344,27 +1338,51 @@
         2
       ],
       [
-        "finance -> calculation",
+        "task_manager -> conversational",
         2
       ],
       [
-        "web_research -> content_generation",
+        "task_manager -> monitoring",
         2
       ],
       [
-        "developer -> web_research",
+        "app_control -> developer",
         2
       ],
       [
-        "news -> web_research",
+        "developer -> app_control",
+        2
+      ],
+      [
+        "productivity -> app_control",
+        2
+      ],
+      [
+        "monitoring -> os_control",
+        2
+      ],
+      [
+        "calculation -> finance",
+        2
+      ],
+      [
+        "finance -> conversational",
         1
       ],
       [
-        "content_generation -> developer",
+        "productivity -> content_generation",
         1
       ],
       [
-        "cloud_escalation -> content_generation",
+        "conversational -> task_manager",
+        1
+      ],
+      [
+        "conversational -> finance",
+        1
+      ],
+      [
+        "task_manager -> productivity",
         1
       ],
       [
@@ -1372,51 +1390,27 @@
         1
       ],
       [
-        "news -> conversational",
+        "task_manager -> calculation",
         1
       ],
       [
-        "web_research -> cloud_escalation",
+        "app_control -> monitoring",
         1
       ],
       [
-        "communication -> content_generation",
+        "file_system -> web_research",
         1
       ],
       [
-        "content_generation -> cloud_escalation",
+        "monitoring -> web_research",
         1
       ],
       [
-        "web_research -> app_control",
+        "productivity -> monitoring",
         1
       ],
       [
-        "monitoring -> app_control",
-        1
-      ],
-      [
-        "monitoring -> cloud_escalation",
-        1
-      ],
-      [
-        "file_system -> conversational",
-        1
-      ],
-      [
-        "finance -> web_research",
-        1
-      ],
-      [
-        "monitoring -> os_control",
-        1
-      ],
-      [
-        "finance -> conversational",
-        1
-      ],
-      [
-        "productivity -> app_control",
+        "monitoring -> conversational",
         1
       ],
       [
@@ -1428,15 +1422,23 @@
         1
       ],
       [
-        "conversational -> developer",
+        "monitoring -> calculation",
         1
       ],
       [
-        "cloud_escalation -> monitoring",
+        "file_system -> conversational",
         1
       ],
       [
-        "calculation -> finance",
+        "developer -> os_control",
+        1
+      ],
+      [
+        "content_generation -> cloud_escalation",
+        1
+      ],
+      [
+        "conversational -> monitoring",
         1
       ],
       [
@@ -1444,39 +1446,23 @@
         1
       ],
       [
-        "app_control -> monitoring",
+        "monitoring -> weather",
         1
       ],
       [
-        "productivity -> datetime",
+        "os_control -> conversational",
         1
       ],
       [
-        "content_generation -> web_research",
+        "news -> datetime",
         1
       ],
       [
-        "cloud_escalation -> developer",
+        "finance -> calculation",
         1
       ],
       [
-        "task_manager -> datetime",
-        1
-      ],
-      [
-        "os_control -> monitoring",
-        1
-      ],
-      [
-        "developer -> communication",
-        1
-      ],
-      [
-        "app_control -> developer",
-        1
-      ],
-      [
-        "weather -> finance",
+        "weather -> web_research",
         1
       ],
       [
@@ -1484,23 +1470,55 @@
         1
       ],
       [
-        "cloud_escalation -> calculation",
+        "conversational -> calculation",
         1
       ],
       [
-        "monitoring -> calculation",
+        "cloud_escalation -> developer",
         1
       ],
       [
-        "monitoring -> web_research",
+        "task_manager -> communication",
+        1
+      ],
+      [
+        "task_manager -> datetime",
+        1
+      ],
+      [
+        "developer -> conversational",
+        1
+      ],
+      [
+        "finance -> web_research",
+        1
+      ],
+      [
+        "communication -> content_generation",
+        1
+      ],
+      [
+        "content_generation -> developer",
+        1
+      ],
+      [
+        "cloud_escalation -> monitoring",
+        1
+      ],
+      [
+        "task_manager -> app_control",
+        1
+      ],
+      [
+        "web_research -> app_control",
+        1
+      ],
+      [
+        "monitoring -> app_control",
         1
       ],
       [
         "web_research -> file_system",
-        1
-      ],
-      [
-        "productivity -> cloud_escalation",
         1
       ]
     ],

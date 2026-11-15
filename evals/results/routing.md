@@ -4,8 +4,8 @@
 
 | Split | n | Accuracy | Macro-F1 | Top-2 acc | Profile acc |
 |---|---|---|---|---|---|
-| Held-out | 70 | 94.3% | 0.929 | 98.6% | 94.3% |
-| 5-fold CV (training phrases) | 957 | 86.7% | 0.850 | - | 89.0% |
+| Held-out | 70 | 94.3% | 0.929 | 97.1% | 94.3% |
+| 5-fold CV (training phrases) | 958 | 84.9% | 0.837 | - | 87.9% |
 
 ## End to end (route + rule-based arguments, no LLM)
 
@@ -14,12 +14,12 @@
 | Metric | Value |
 |---|---|
 | Handled correctly overall | 96.0% |
-| Tool requests finished with **no LLM call** | 83.6% (51/61) |
-| Direct dispatches that were right | 98.1% |
+| Tool requests finished with **no LLM call** | 82.0% (50/61) |
+| Direct dispatches that were right | 98.0% |
 | Wrong direct dispatches | 1 |
-| Sent to the right expert / chat intent | 21 |
+| Sent to the right expert / chat intent | 22 |
 | Sent to the wrong expert / intent | 2 |
-| Routing latency p50 / p95 | 0.88 ms / 1.4 ms |
+| Routing latency p50 / p95 | 0.82 ms / 1.21 ms |
 
 ### Failures
 
@@ -31,8 +31,9 @@
 
 - `what's NVDA trading at` - finance_expert (tool unsure)
 - `how long has this machine been running` - monitor_expert (tool unsure)
+- `show the processes eating the most memory` - monitor_expert (tool unsure)
 - `could you open slack` - os_expert (tool unsure)
-- `kill the zoom app` - os_expert (tool unsure)
+- `kill the zoom app` - os_expert (category unsure)
 - `new task: book the dentist` - task_expert (tool unsure)
 - `look up how to descale a kettle` - research_expert (category unsure)
 - `tell me about the Mughal empire` - research_expert (tool unsure)

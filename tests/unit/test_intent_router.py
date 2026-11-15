@@ -137,3 +137,22 @@ def test_greeting_tool_is_never_routed(tmp_path):
     r.build()
     assert "get_greeting" not in r._tool_names
     assert r.route("hello").kind == "conversational"
+
+
+def test_explicit_note_command_beats_the_classifier(tmp_path):
+    reg = ToolRegistry()
+    reg.register(_tool("create_note", ToolCategory.TASK_MANAGER, "Create a note."))
+    reg.register(_tool("get_memory_usage", ToolCategory.MONITORING, "Memory usage."))
+    r = IntentRouter(reg, model_dir=tmp_path, embedder=FakeEmbedder())
+    r.build()
+    for text in (
+        "take a note saying memory was checked",
+        "note: the wifi code is 7788",
+        "Please jot down a note about memory usage",
+    ):
+        d = r.route(text)
+        assert d.as_intent() == ("tool", "create_note") and d.reason == "explicit command", text
+    assert r.expert_for_query("create a note saying memory was checked") == "task_expert"
+    # a second action means the agent, not a direct dispatch
+    assert r.route("take a note saying hi and then check memory").reason != "explicit command"
+    assert r.route("show memory usage").target == "get_memory_usage"

@@ -353,10 +353,20 @@ def build_agent_tools(
         settings = get_settings()
         try:
             target_dir = str(settings.BASE_DIR / "src")
+            # Models pass "py" or ".py" where grep needs a glob ("*.py"), which
+            # silently matched no files and read as "not in the codebase".
+            file_pattern = (file_pattern or "*").strip()
+            if file_pattern.isalnum():
+                file_pattern = f"*.{file_pattern}"
+            elif file_pattern.startswith("."):
+                file_pattern = f"*{file_pattern}"
             # Safely pass arguments as a list without shell formatting
             # "--" ends option parsing so a query like "-f /etc/passwd" or
             # "--include=..." is treated as a literal pattern, not a grep option.
-            args = ["grep", "-r", "-l", f"--include={file_pattern}", "--", query, target_dir]
+            args = [
+                "grep", "-r", "-l", "--exclude-dir=__pycache__",
+                f"--include={file_pattern}", "--", query, target_dir,
+            ]  # fmt: skip
 
             process = await asyncio.create_subprocess_exec(
                 *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE

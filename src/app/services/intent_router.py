@@ -35,6 +35,7 @@ from typing import TYPE_CHECKING, Any
 
 from src.app.services.routing_data import (
     CHAT_INTENTS,
+    EXPLICIT_COMMANDS,
     GLOBAL_INTENTS,
     ROUTER_EXCLUDED_TOOLS,
     TOOL_EXAMPLES,
@@ -64,6 +65,7 @@ TOOL_MIN_CATEGORY_PROB = 0.25
 # The runner-up category joins the tool ranking when it is this close to the top.
 RUNNER_UP_RATIO = 0.4
 
+_EXPLICIT = tuple((re.compile(p, re.IGNORECASE), tool) for p, tool in EXPLICIT_COMMANDS)
 _URL_RE = re.compile(r"https?://\S+", re.IGNORECASE)
 _TRIGGER_RE = re.compile(r"'([^']{3,60})'")
 # Requests that chain actions need the agent, not a single tool.
@@ -335,6 +337,14 @@ class IntentRouter:
             return RouteDecision(
                 "tool", "fetch_webpage_content", "web_research", 1.0, 1.0, 1.0, "url"
             )
+        if not _MULTI_STEP_RE.search(text):
+            for pattern, tool_name in _EXPLICIT:
+                tool = self._registry.get(tool_name)
+                if tool is not None and pattern.search(text):
+                    category = _category_value(tool.category)
+                    return RouteDecision(
+                        "tool", tool_name, category, 1.0, 1.0, 1.0, "explicit command"
+                    )
         if not self._ready or not text:
             return RouteDecision(
                 "conversational", None, "conversational", 0.0, 0.0, 0.0, "not ready"

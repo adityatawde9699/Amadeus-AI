@@ -37,6 +37,8 @@ class AmadeusState(TypedDict, total=False):
     observations: Annotated[list[str], _merge_lists]
     tools_used: Annotated[list[str], _merge_lists]
     final_answer: str
+    # Index into `observations` where the current expert step began.
+    step_obs_start: int
     requires_hitl: bool
     hitl_request_id: str
     permission_profile: str

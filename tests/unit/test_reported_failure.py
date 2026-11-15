@@ -40,3 +40,30 @@ def test_failure_messages_are_detected(output):
 )
 def test_results_are_not_flagged(output):
     assert not reported_failure(output)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("given", "expected"), [("py", "*.py"), (".md", "*.md"), ("*.py", "*.py"), ("", "*")]
+)
+async def test_search_codebase_normalises_file_pattern(monkeypatch, given, expected):
+    import asyncio
+
+    from src.infra.tools import agent_tools
+
+    seen: list[str] = []
+
+    class _Proc:
+        returncode = 0
+
+        async def communicate(self):
+            return b"/x/src/a.py\n", b""
+
+    async def fake_exec(*args, **_):
+        seen.extend(a for a in args if str(a).startswith("--include="))
+        return _Proc()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+    tool = next(t for t in agent_tools.build_agent_tools() if t.name == "search_codebase")
+    await tool.function(query="IntentRouter", file_pattern=given)
+    assert seen == [f"--include={expected}"]

@@ -561,6 +561,18 @@ GLOBAL_INTENTS: dict[str, list[str]] = {
     ],
 }
 
+# Explicit commands: phrasings that name the action outright, so no classifier
+# is needed (and one would be misled by the content: "take a note saying memory
+# was checked" is a note, not a memory or monitoring request). Keep this list
+# to wording that cannot mean anything else; everything else is learned.
+EXPLICIT_COMMANDS: tuple[tuple[str, str], ...] = (
+    (
+        r"^(?:please\s+)?(?:(?:take|make|create|write|jot|save|add)\s+(?:down\s+)?(?:a\s+)?"
+        r"(?:quick\s+|new\s+)?note\b|note\s+down\b|note\s*:)",
+        "create_note",
+    ),
+)
+
 # Tools the router never selects. ``get_greeting`` answers "hi"/"hello", which
 # is conversation: routing it as a tool turned every greeting into a canned
 # line. The agent can still call these tools.
@@ -853,6 +865,7 @@ TOOL_EXAMPLES: dict[str, list[str]] = {
     ],
     "list_reminders": ["show my reminders", "what reminders do I have"],
     "create_note": [
+        "take a note saying the disk was cleaned up",
         "take a note: the wifi password hint is blue",
         "note: the router address is 192.168.1.1",
         "take a note: server room key is with reception",

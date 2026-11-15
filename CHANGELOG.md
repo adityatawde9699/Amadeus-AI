@@ -112,6 +112,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - Multi-step requests sent steps to experts that lacked the tool ("tell me the time" went to the OS expert). The intent router now assigns each step's expert.
   - Greetings ran the `get_greeting` tool because the date/time category was trained on "hello" and "hi". Greetings go to chat now, and the router never selects that tool.
   - `get_news` returned nothing for countries NewsAPI doesn't cover; it now falls back to US headlines.
+  - The agent finished before calling any tool and claimed the work was done ("goal already exists"). The plan prompt now states that nothing has been done yet, and a FINISH with no tool call is retried once.
+  - The agent reported success after every tool call in a step had failed. It now reports the failure.
+  - `search_codebase` matched no files when the model passed `py` or `.py` as the file pattern; both are normalised to `*.py`. It also skips `__pycache__`.
+  - "take a note …" is an explicit command and always creates a note, whatever the note says ("…saying memory was checked" used to go to the memory expert).
   - App names are extracted cleanly ("open the gedit editor" gives `gedit`). More example phrases for tasks, notes, reminders, scheduling and file writes.
 - **`QueueManager.get_job_result` always failed.** It called `ArqRedis.get_job`, which doesn't exist. It now uses `arq.jobs.Job`. Found by mypy.
 - **"unmute" muted the volume.** The volume argument parser matched `"mute"` first.
