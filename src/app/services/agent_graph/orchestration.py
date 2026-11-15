@@ -113,6 +113,21 @@ Respond with JSON only:
                 continue
             if expert not in self._profiles:
                 expert = "generalist"
+            # The LLM picks experts from one-line descriptions and often sends
+            # a step to one that lacks the tool ("tell me the time" -> OS
+            # expert). The intent router knows which expert owns which tools,
+            # so its choice wins when it has one.
+            subtask_router = getattr(self, "subtask_router", None)
+            if subtask_router is not None:
+                try:
+                    routed = subtask_router(subtask)
+                except Exception:
+                    routed = None
+                if routed in self._profiles and routed != expert:
+                    logger.info(
+                        "Orchestrator: step %r reassigned %s -> %s", subtask[:60], expert, routed
+                    )
+                    expert = routed
             steps.append({"expert": expert, "subtask": subtask})
             if len(steps) >= max_steps:
                 break

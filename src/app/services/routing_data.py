@@ -350,14 +350,9 @@ TRAINING_DATA: dict[str, list[str]] = {
         "what month is it",
         "current year",
         "day of the week",
-        "good morning",
         "what hour is it",
         "how many days left in the month",
         "is today a weekday",
-        "hello",
-        "hi there",
-        "greet me",
-        "good evening",
         "tell me a joke",
         "make me laugh",
         "something funny",
@@ -467,6 +462,11 @@ GLOBAL_INTENTS: dict[str, list[str]] = {
     "conversational": [
         "hello",
         "hi there",
+        "hi",
+        "hey",
+        "hello there, how is it going",
+        "good afternoon",
+        "greetings",
         "how are you?",
         "good morning",
         "thanks",
@@ -561,6 +561,11 @@ GLOBAL_INTENTS: dict[str, list[str]] = {
     ],
 }
 
+# Tools the router never selects. ``get_greeting`` answers "hi"/"hello", which
+# is conversation: routing it as a tool turned every greeting into a canned
+# line. The agent can still call these tools.
+ROUTER_EXCLUDED_TOOLS: frozenset[str] = frozenset({"get_greeting"})
+
 # Intents that are answered by the LLM directly rather than by a tool or expert.
 CHAT_INTENTS: frozenset[str] = frozenset(
     {"conversational", "cloud_escalation", "content_generation"}
@@ -580,6 +585,8 @@ TOOL_EXAMPLES: dict[str, list[str]] = {
         "run vlc",
     ],
     "terminate_program": [
+        "close the text editor",
+        "close the gimp window",
         "close chrome",
         "kill spotify",
         "quit vlc",
@@ -650,7 +657,6 @@ TOOL_EXAMPLES: dict[str, list[str]] = {
         "what year is it",
         "time right now",
     ],
-    "get_greeting": ["greet me", "give me a greeting"],
     "tell_joke": [
         "tell me a joke",
         "make me laugh",
@@ -702,7 +708,14 @@ TOOL_EXAMPLES: dict[str, list[str]] = {
         "search files for the word invoice",
         "find files containing budget",
     ],
-    "fs_write_file": ["write hello to out.txt", "save this text into a file"],
+    "fs_write_file": [
+        "write the text done into status.txt",
+        "save the words see you at noon to memo.txt",
+        "create a file named todo.txt containing buy bread",
+        "put this line into log.txt",
+        "write hello to out.txt",
+        "save this text into a file",
+    ],
     "search_file": [
         "find the file resume.pdf",
         "locate my tax document",
@@ -796,11 +809,22 @@ TOOL_EXAMPLES: dict[str, list[str]] = {
     "execute_goal": ["execute goal 4", "start working on goal 1"],
     "update_goal": ["mark goal 2 as done", "update goal 5 status to paused"],
     "schedule_future_task": [
+        "in 5 minutes check the cpu temperature again",
+        "in 20 minutes look at the server status",
+        "two hours from now verify the download finished",
+        "in 45 minutes check on the build logs",
+        "in 10 minutes check whether the backup finished",
+        "after half an hour review the deployment",
+        "an hour from now look at the error logs again",
         "in 20 minutes check the build",
         "schedule a task for 2 hours from now",
     ],
     # ── task_manager ───────────────────────────────────────────────────
     "add_task": [
+        "add a task to book flight tickets",
+        "add task water the garden",
+        "add a new task for cleaning the garage",
+        "add this to my tasks: submit the tax form",
         "add a todo to call the bank",
         "new task: buy groceries",
         "put finish the report on my task list",
@@ -820,12 +844,21 @@ TOOL_EXAMPLES: dict[str, list[str]] = {
         "give me a summary of my tasks",
     ],
     "add_reminder": [
+        "remind me to take my medicine in 10 minutes",
+        "remind me to stretch in an hour",
+        "set a reminder to call dad at 7pm",
         "remind me to stretch in 30 minutes",
         "set a reminder for the meeting at 3pm",
         "remind me tomorrow to pay rent",
     ],
     "list_reminders": ["show my reminders", "what reminders do I have"],
     "create_note": [
+        "take a note: the wifi password hint is blue",
+        "note: the router address is 192.168.1.1",
+        "take a note: server room key is with reception",
+        "take a note: the locker combination is 1234",
+        "make a note that the parcel arrives monday",
+        "jot down the door code 5566",
         "take a note: the door code is 4411",
         "note down that the meeting moved to friday",
         "save a note about the recipe",

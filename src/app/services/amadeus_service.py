@@ -170,6 +170,7 @@ class AmadeusService:
             memory_service=self.memory_service,
             checkpointer=None,  # patched in initialize()
         )
+        self.graph.subtask_router = self._intent_router.expert_for_query
 
         logger.info(
             "AmadeusService initialized — %d tools...",

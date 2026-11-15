@@ -142,6 +142,26 @@ async def test_news_headlines(info):
 
 
 @pytest.mark.asyncio
+async def test_news_falls_back_to_us_when_country_has_none(info):
+    seen = []
+
+    def handler(request):
+        country = request.url.params["country"]
+        seen.append(country)
+        articles = [{"title": "A", "source": {"name": "S1"}}] if country == "us" else []
+        return httpx.Response(200, json={"status": "ok", "articles": articles})
+
+    out = await info(handler).get_news_async(category="technology", country="in")
+    assert seen == ["in", "us"]
+    assert out == "Top 1 technology headlines:\n1. A (S1)"
+
+    out = await info(
+        lambda r: httpx.Response(200, json={"status": "ok", "articles": []})
+    ).get_news_async(country="us")
+    assert out == "No news articles found for general in us."
+
+
+@pytest.mark.asyncio
 async def test_wikipedia_summary_and_404_fallback(info):
     def handler(request):
         if "rest_v1" in request.url.path:

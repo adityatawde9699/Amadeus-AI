@@ -250,6 +250,14 @@ async def get_news_async(
 
         articles = data.get("articles", [])
 
+        # NewsAPI's top-headlines returns nothing for many countries. Fall back
+        # to US headlines for the same category rather than reporting no news.
+        if not articles and country != "us":
+            params["country"] = "us"
+            response = await session.get(base_url, params=params, timeout=10)
+            if response.status_code == 200 and response.json().get("status") == "ok":
+                articles = response.json().get("articles", [])
+
         if not articles:
             return f"No news articles found for {category} in {country}."
 

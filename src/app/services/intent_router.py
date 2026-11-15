@@ -36,6 +36,7 @@ from typing import TYPE_CHECKING, Any
 from src.app.services.routing_data import (
     CHAT_INTENTS,
     GLOBAL_INTENTS,
+    ROUTER_EXCLUDED_TOOLS,
     TOOL_EXAMPLES,
     TRAINING_DATA,
 )
@@ -196,7 +197,7 @@ class IntentRouter:
 
     def _training_sets(self) -> tuple[list[str], list[str], list[str], list[str]]:
         """(category texts, category labels, tool texts, tool labels)."""
-        tools = self._registry.list_all()
+        tools = [t for t in self._registry.list_all() if t.name not in ROUTER_EXCLUDED_TOOLS]
         self._tool_category = {t.name: _category_value(t.category) for t in tools}
 
         tool_texts: list[str] = []
@@ -310,6 +311,22 @@ class IntentRouter:
         except ValueError:
             return None
         return None if profile.name == "generalist" else profile.name
+
+    def expert_for_query(self, query: str) -> str | None:
+        """The expert profile that should handle *query*, or None if unknown.
+
+        Used by the orchestrator to assign each step of a multi-step request.
+        Categories without a dedicated expert (date/time, jokes) and chat go
+        to the generalist, which has every tool.
+        """
+        if not self._ready:
+            return None
+        decision = self.route(query)
+        if decision.kind == "expert":
+            return decision.target
+        if decision.kind == "tool":
+            return self.expert_for(decision.category) or "generalist"
+        return "generalist"
 
     def route(self, query: str) -> RouteDecision:
         """Route *query*. Falls back to ``conversational`` when not ready."""

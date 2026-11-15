@@ -81,6 +81,24 @@ class ExpertNodes(ActionHelpers, OutcomeMemory, GraphBase):
 
         profile = self._profiles.get(expert_name, self._profiles["generalist"])
 
+        # An expert whose tools are not registered (e.g. email with
+        # ENABLE_EMAIL=false) cannot do anything. Say so instead of letting
+        # the model answer from imagination ("No unread emails found").
+        if profile.categories and not self._expert_tools(profile):
+            answer = (
+                f"I can't do that right now: the {profile.display_name} has no tools enabled "
+                "on this installation."
+            )
+            return {
+                "plan": "No tools available for this expert.",
+                "iteration": 1,
+                "max_iterations": max_iter,
+                "current_tool": "FINISH",
+                "current_args": {"answer": answer},
+                "should_continue": False,
+                "final_answer": answer,
+            }
+
         # Build plan via LLM
         plan = "No plan (keyword mode)"
         first_tool = ""

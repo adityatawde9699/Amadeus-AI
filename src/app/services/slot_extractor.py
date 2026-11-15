@@ -345,7 +345,19 @@ def _app(verbs: str, key: str) -> Callable[[str], Slots | None]:
         name = _after(_clean(text), rf"\b(?:{verbs})\s+(?:up\s+)?(?:the\s+)?")
         if not name:
             return None
-        name = re.sub(r"\s+(?:app|application|program|window)$", "", name, flags=re.IGNORECASE)
+        # "the app gimp", "process named gimp", "gedit editor", "zoom app" -> the name
+        name = re.sub(
+            r"^(?:app|application|program|process|task)\s+(?:(?:named|called)\s+)?",
+            "",
+            name,
+            flags=re.IGNORECASE,
+        )
+        name = re.sub(
+            r"\s+(?:app|application|program|window|process|editor|browser|player|client)$",
+            "",
+            name,
+            flags=re.IGNORECASE,
+        )
         return {key: name} if name else None
 
     return extractor

@@ -83,6 +83,9 @@ class AmadeusGraph(OrchestrationNodes, ExpertNodes):
         self.tool_registry = tool_registry
         self.tool_executor = tool_executor
         self.llm_generate = llm_generate
+        # Optional: maps an orchestration step to the expert that owns its tools
+        # (set by AmadeusService to the intent router). None = trust the LLM.
+        self.subtask_router: Callable[[str], str | None] | None = None
         self._llm_accepts_schema = self._accepts_kwarg(llm_generate, "json_schema")
         self.default_max_iterations = max_iterations
         self.memory_service = memory_service

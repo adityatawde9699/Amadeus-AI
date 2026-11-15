@@ -122,3 +122,18 @@ def test_embeddings_are_cached(router, tmp_path):
     again = IntentRouter(router._registry, model_dir=tmp_path, embedder=Exploding())
     again.build()
     assert again.is_ready
+
+
+def test_expert_for_query(router):
+    assert router.expert_for_query("stop the pomodoro") == "task_expert"
+    assert router.expert_for_query("hello") == "generalist"  # chat: generalist has every tool
+
+
+def test_greeting_tool_is_never_routed(tmp_path):
+    reg = ToolRegistry()
+    reg.register(_tool("get_greeting", ToolCategory.DATETIME, "Greet. Trigger: 'hello', 'hi'"))
+    reg.register(_tool("get_weather", ToolCategory.WEATHER, "Weather."))
+    r = IntentRouter(reg, model_dir=tmp_path, embedder=FakeEmbedder())
+    r.build()
+    assert "get_greeting" not in r._tool_names
+    assert r.route("hello").kind == "conversational"

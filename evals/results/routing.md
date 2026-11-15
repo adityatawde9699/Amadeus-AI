@@ -4,8 +4,8 @@
 
 | Split | n | Accuracy | Macro-F1 | Top-2 acc | Profile acc |
 |---|---|---|---|---|---|
-| Held-out | 70 | 95.7% | 0.950 | 98.6% | 95.7% |
-| 5-fold CV (training phrases) | 936 | 85.7% | 0.836 | - | 89.4% |
+| Held-out | 70 | 94.3% | 0.929 | 98.6% | 94.3% |
+| 5-fold CV (training phrases) | 957 | 86.7% | 0.850 | - | 89.0% |
 
 ## End to end (route + rule-based arguments, no LLM)
 
@@ -19,7 +19,7 @@
 | Wrong direct dispatches | 1 |
 | Sent to the right expert / chat intent | 21 |
 | Sent to the wrong expert / intent | 2 |
-| Routing latency p50 / p95 | 1.07 ms / 1.65 ms |
+| Routing latency p50 / p95 | 0.88 ms / 1.4 ms |
 
 ### Failures
 
@@ -31,9 +31,9 @@
 
 - `what's NVDA trading at` - finance_expert (tool unsure)
 - `how long has this machine been running` - monitor_expert (tool unsure)
-- `kill the zoom app` - os_expert (category unsure)
-- `new task: book the dentist` - task_expert (direct)
-- `remind me to call the vet in 45 minutes` - task_expert (tool unsure)
+- `could you open slack` - os_expert (tool unsure)
+- `kill the zoom app` - os_expert (tool unsure)
+- `new task: book the dentist` - task_expert (tool unsure)
 - `look up how to descale a kettle` - research_expert (category unsure)
 - `tell me about the Mughal empire` - research_expert (tool unsure)
 - `check the weather in Goa and then add a task to pack an umbrella` - research_expert (multi-step)
@@ -44,7 +44,7 @@
 
 | Category | Recall | Precision | Support |
 |---|---|---|---|
-| productivity | 50% | 67% | 4 |
+| productivity | 25% | 50% | 4 |
 | os_control | 75% | 100% | 4 |
 | app_control | 100% | 100% | 4 |
 | calculation | 100% | 100% | 4 |
@@ -55,7 +55,7 @@
 | developer | 100% | 100% | 4 |
 | file_system | 100% | 80% | 4 |
 | finance | 100% | 100% | 4 |
-| monitoring | 100% | 100% | 4 |
+| monitoring | 100% | 80% | 4 |
 | news | 100% | 100% | 4 |
 | task_manager | 100% | 100% | 6 |
 | weather | 100% | 100% | 4 |
@@ -65,4 +65,5 @@
 
 - `put the laptop to sleep` - gold **os_control**, predicted productivity
 - `put together a word doc summarizing the quarterly results` - gold **productivity**, predicted content_generation
+- `open the budget xlsx and read the totals` - gold **productivity**, predicted monitoring
 - `draft the meeting minutes as a docx file` - gold **productivity**, predicted file_system
